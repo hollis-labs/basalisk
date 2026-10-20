@@ -1,0 +1,11 @@
+# Import INSIDE the existing private *.nanite.cloud site, before its fallback.
+# That site owns the Tailscale bind and TLS certificate. This is not a standalone
+# public listener. Set BASALISK_UPSTREAM to the managed loopback host:port.
+# Basalisk must run with BASALISK_HTTPS_PROXY=1 and a loopback LISTEN_ADDR.
+@basalisk host basalisk.nanite.cloud
+handle @basalisk {
+	reverse_proxy {$BASALISK_UPSTREAM} {
+		# Preserve the canonical Host and browser Origin for WebAuthn and CSRF.
+		header_up X-Forwarded-Proto https
+	}
+}

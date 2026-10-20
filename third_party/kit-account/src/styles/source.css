@@ -1,0 +1,5 @@
+/* Tailwind v4: register this package's shipped class strings. */
+@source "../../dist/**/*.js";
+
+/* Basalisk consumes this unpublished snapshot directly as TypeScript. */
+@source "../components";

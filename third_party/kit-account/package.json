@@ -1,0 +1,45 @@
+{
+  "name": "@hollis-labs/kit-account",
+  "version": "0.0.0",
+  "description": "Controlled local-first profile, identity, API-token and connected-account surfaces; host-owned data and transport.",
+  "keywords": [
+    "react",
+    "account",
+    "design-system"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hollis-labs/design-kit.git",
+    "directory": "packages/kit-account"
+  },
+  "homepage": "https://github.com/hollis-labs/design-kit/tree/main/packages/kit-account#readme",
+  "bugs": {
+    "url": "https://github.com/hollis-labs/design-kit/issues"
+  },
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "files": [
+    "src",
+    "LICENSE",
+    "PROVENANCE.md"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./source.css": "./src/styles/source.css"
+  },
+  "peerDependencies": {
+    "tailwindcss": "^4.0.0",
+    "@base-ui/react": "^1.3.0",
+    "lucide-react": "^1.7.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@hollis-labs/design-components": "^0.5.0",
+    "@hollis-labs/design-tokens": "^0.5.0"
+  },
+  "private": true
+}

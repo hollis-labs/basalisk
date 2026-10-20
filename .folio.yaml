@@ -1,0 +1,109 @@
+folio_version: "0.1"
+generated_at: 2026-10-18T05:08:22.017036307Z
+generator: folio/0.1.0
+presets:
+  - id: app-dashboard
+    version: 2.1.0
+    source: bundled
+    resolved_path: bundled:presets/app-dashboard
+inputs:
+  base_path: /
+  chimera_gui_recipe: design-0.4.0-react-19.3.0
+  chimera_version: v0.0.0-20261008115211-389155313ee5
+  description: A personal operating system for data, tools, and integrations
+  design_kit_version: 0.4.0
+  github_owner: chrispian
+  go_packages: ./...
+  go_version: 1.26.6
+  go_webui_version: v0.1.0
+  gui_host: chimera
+  project_name: basalisk
+computed:
+  app_title: Basalisk
+  module_path: github.com/chrispian/basalisk
+  year: "2026"
+files:
+  .github/workflows/ci.yml:
+    preset: app-dashboard
+    digest_at_gen: sha256:c41392a4c871f9e29ec890fdb182f3d1fba325ef0df26a3d6b32b35b5b801323
+  .gitignore:
+    preset: app-dashboard
+    digest_at_gen: sha256:5faa601cdc279badb0e308d8263517f28a12a7914f78807459b0a1900e891861
+  .golangci.yml:
+    preset: app-dashboard
+    digest_at_gen: sha256:16ac94ca7ae9a4e2562ea5acd0b55fd9d75bd3a6c69f373c0a5f9b2332feb3a4
+  LICENSE:
+    preset: app-dashboard
+    digest_at_gen: sha256:60891eca2dc55aa9dacbe6170bbacfaeffea281bc5d73edda7869584fc854e48
+  Makefile:
+    preset: app-dashboard
+    digest_at_gen: sha256:6376f025d087df7f779bef365447883c45b63edad34677050f05d3061ca6d0e6
+  README.md:
+    preset: app-dashboard
+    digest_at_gen: sha256:5953de23a3791c72e6a896538d373aa7e2bed7b5a2f69b20253e717135f8d948
+  chimera-provenance.json:
+    preset: app-dashboard
+    digest_at_gen: sha256:5d12983c8823998b27c832d9cfc87e6b297b6e3783339ab6628cf9985d3b94df
+  cmd/basalisk/main.go:
+    preset: app-dashboard
+    digest_at_gen: sha256:b4b93830a47ef7bae404f3479c057fe4e7ff4a9265c99b335724e0f33759b41f
+  frontend/biome.json:
+    preset: app-dashboard
+    digest_at_gen: sha256:09db2498b070e1cade5cab46c122eac2f52e8b397d13d958ce6d9b3799eb77c3
+  frontend/eslint.config.js:
+    preset: app-dashboard
+    digest_at_gen: sha256:8f386c3503452c2b03ee3e7481b32585a70c5ad15d6affec8158e723cbbd108b
+  frontend/index.html:
+    preset: app-dashboard
+    digest_at_gen: sha256:998367416c778e8ffb81579009cb044bf4305e6577fd62f0fff24d44db815b5c
+  frontend/package-lock.json:
+    preset: app-dashboard
+    digest_at_gen: sha256:a4928705b4311b2d04d55b712f2e49535227a78d16dfe0f29e60e259ff81d105
+  frontend/package.json:
+    preset: app-dashboard
+    digest_at_gen: sha256:57995ec7059a5b8c36f382d409a0f74b53c7db160aa68b8297972ded8dcc3ba0
+  frontend/src/App.tsx:
+    preset: app-dashboard
+    digest_at_gen: sha256:139fc93cce3fdba65722154fec8d481bfd9d34929ffb552ce8bc2c2136a926e9
+  frontend/src/api/client.ts:
+    preset: app-dashboard
+    digest_at_gen: sha256:fb92ad9c1f9f6e91467c34091edfcdf5cbcc3ab5c49bb132f0f78185fa8d1a98
+  frontend/src/api/context.tsx:
+    preset: app-dashboard
+    digest_at_gen: sha256:4e8e5771dc74e0e077d177c1c5d71b5defb1dd43970a9d8fbf412151058b9a86
+  frontend/src/index.css:
+    preset: app-dashboard
+    digest_at_gen: sha256:0767f5c567d4d124c5e05cd0d231f5271bbb42ddc2bb09390d8259a993556858
+  frontend/src/main.tsx:
+    preset: app-dashboard
+    digest_at_gen: sha256:22fc175b049cf2812510ca064f01273f62dc3b3ac995e6982184e9e82b94727e
+  frontend/src/pages/dashboard.tsx:
+    preset: app-dashboard
+    digest_at_gen: sha256:8a4988256f90f530950f9c9e9815c01377819cbaf96f2b489c832e06311d5bdc
+  frontend/tsconfig.json:
+    preset: app-dashboard
+    digest_at_gen: sha256:cedfb706483b4f605f648289e499c031cc92d2ce22755ec282bdc0dff9a4b42c
+  frontend/vite.config.ts:
+    preset: app-dashboard
+    digest_at_gen: sha256:0191b6a72f94b02c24781a244b1f32f7fa36f0075a01238d80e4691c2ed2fc6f
+  go.mod:
+    preset: app-dashboard
+    digest_at_gen: sha256:f62ae89f01d801ee598804ed22670663b3f5790fa589cb19aa37ca68bfb5cb10
+  internal/webui/dist/.gitkeep:
+    preset: app-dashboard
+    digest_at_gen: sha256:b071f7f9b5cb72296d0e5030c17497ca641fbfdd7d413fd30fa85b74eb2c59cb
+  internal/webui/embed.go:
+    preset: app-dashboard
+    digest_at_gen: sha256:fe3f22cfdb0773a7a3ae31294216b7057cbf047f4ad60a7bb3ef86f5d3af6fe0
+  lefthook.yml:
+    preset: app-dashboard
+    digest_at_gen: sha256:83f3027a5afe1df21685a33f3a7b9817c0d68279501e1a7357fa55c8742abdbd
+  licenses/Chimera-MIT.txt:
+    preset: app-dashboard
+    digest_at_gen: sha256:816abd4283dace8d00289ef65d55b96cc11dac0579615e81e495851bc933b7ec
+sync_history:
+  - at: 2026-10-18T05:08:22.017036307Z
+    operation: init
+    presets:
+      - id: app-dashboard
+        version: 2.1.0
