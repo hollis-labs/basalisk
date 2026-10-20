@@ -29,5 +29,6 @@ resources:
     env:
       LISTEN_ADDR: 127.0.0.1:8085           # must be loopback
       BASALISK_HTTPS_PROXY: '1'             # only behind a TLS proxy for the canonical host
-      BASALISK_DATA_DIR: ~/.local/share/basalisk
+      # Data and config default to the XDG data/config homes; set BASALISK_DATA_DIR or
+      # BASALISK_CONFIG_DIR only to relocate them.
     port: 8085

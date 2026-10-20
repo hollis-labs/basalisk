@@ -16,6 +16,11 @@ require (
 )
 
 require (
+	github.com/adrg/xdg v0.5.3 // indirect
+	github.com/hollis-labs/libs/core/util v0.6.0
+)
+
+require (
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect

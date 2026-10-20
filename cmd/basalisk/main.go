@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/hollis-labs/basalisk/internal/account"
+	"github.com/hollis-labs/basalisk/internal/appdirs"
 	"github.com/hollis-labs/basalisk/internal/assurance"
 	"github.com/hollis-labs/basalisk/internal/requestorigin"
 	"github.com/hollis-labs/basalisk/internal/webui"
@@ -24,7 +24,11 @@ func main() {
 	if proxy != "" && proxy != "0" && proxy != "1" {
 		log.Fatal("BASALISK_HTTPS_PROXY must be 0 or 1")
 	}
-	assuranceConfig, err := assurance.LoadHostConfig(os.Getenv("BASALISK_ASSURANCE_CONFIG"))
+	dirs, err := appdirs.Resolve(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
+	assuranceConfig, err := assurance.LoadHostConfig(dirs.AssuranceConfigPath(os.Getenv))
 	if err != nil {
 		log.Fatal("Invalid Basalisk assurance configuration")
 	}
@@ -36,19 +40,7 @@ func main() {
 	if err != nil || (hostName != "localhost" && (net.ParseIP(hostName) == nil || !net.ParseIP(hostName).IsLoopback())) {
 		log.Fatal("Basalisk currently requires a loopback LISTEN_ADDR (for example 127.0.0.1:8080)")
 	}
-	dir := os.Getenv("BASALISK_DATA_DIR")
-	if dir == "" {
-		state := os.Getenv("XDG_STATE_HOME")
-		if state == "" {
-			home, homeErr := os.UserHomeDir()
-			if homeErr != nil {
-				log.Fatal(homeErr)
-			}
-			state = filepath.Join(home, ".local", "state")
-		}
-		dir = filepath.Join(state, "basalisk")
-	}
-	store, err := account.Open(dir)
+	store, err := account.Open(dirs.Data)
 	if err != nil {
 		log.Fatal("Could not open Basalisk data store: ", err)
 	}
