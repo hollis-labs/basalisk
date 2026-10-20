@@ -1,0 +1,16 @@
+{
+  "schema": "folio-chimera-shell/v1",
+  "host": "v0.0.0-20261008115211-389155313ee5",
+  "guiRecipe": "design-0.4.0-react-19.3.0",
+  "source": "Chimera accepted consumer recipe1201957826677c535ba5d8c9ede100c2f1a4cde8; existing Folio app-owned frontend and APIs",
+  "lock": "frontend/package-lock.json; app-owned dependency extensions described in appOverrides",
+  "plugins": false,
+  "legacyInputs": "design_kit_version/go_webui_version apply only to go-webui branch",
+  "appOverrides": {
+    "designKit": "0.5.x published packages (resolved in frontend/package-lock.json)",
+    "settings": "@hollis-labs/kit-settings 0.2.x",
+    "account": "private source snapshot in third_party/kit-account; see its PROVENANCE.md",
+    "note": "guiRecipe records the original Folio scaffold; the customized app no longer uses the exact frozen GUI dependency recipe.",
+    "assurance": "Go 1.26.9; published libs/security/webauthn v0.1.0 and libs/mesh/core v0.8.0 HITL outcomes; RFC 8785 canonicalizer pinned in go.mod/go.sum. Folio provenance preserved; app Go/toolchain configuration intentionally customized."
+  }
+}

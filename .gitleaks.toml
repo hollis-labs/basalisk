@@ -1,0 +1,8 @@
+title = "Basalisk gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic WebAuthn test vector (synthetic_only: true); authenticator_data is public test data, not a credential."
+paths = ['''internal/assurance/testdata/operation-proof-v1\.json''']

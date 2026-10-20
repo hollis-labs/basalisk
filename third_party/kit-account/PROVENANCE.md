@@ -1,0 +1,1 @@
+Source snapshot of Hollis Labs design-kit packages/kit-account at commit 1669672759a61fd4e3ade95517e7ada85b4d836a (MIT). Original component source is unchanged; tests omitted, package exports point to TypeScript for Vite consumption, and source.css additionally registers src/components with Tailwind. This unpublished private kit is vendored until a release exists.

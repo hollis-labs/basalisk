@@ -1,0 +1,33 @@
+# Example Cerberus descriptor for running Basalisk as a supervised service from an
+# installed binary. Copy it outside this repository (for example to
+# ~/.config/basalisk/), replace the placeholders, then `cerberus register <file>`.
+# Do not commit your real descriptor: it names your paths and hosts.
+kind: cerberus-project/v1
+owner: basalisk
+namespace: local
+project:
+  id: basalisk
+  name: Basalisk
+resources:
+- id: basalisk
+  type: process
+  project: basalisk
+  connector: local
+  config:
+    dir: ~/path/to/basalisk-checkout        # build source for `cerberus resource deploy`
+    command:
+    - ./basalisk
+    build_strategy:
+      kind: make_standard
+      rules:
+        output: basalisk
+    mode: os_service
+    supervisor: systemd_user                # launchd on macOS; `auto` picks one
+    run_from: artifact
+    service_name: basalisk
+    artifact_path: ~/.local/bin/basalisk    # the installed binary
+    env:
+      LISTEN_ADDR: 127.0.0.1:8085           # must be loopback
+      BASALISK_HTTPS_PROXY: '1'             # only behind a TLS proxy for the canonical host
+      BASALISK_DATA_DIR: ~/.local/share/basalisk
+    port: 8085
