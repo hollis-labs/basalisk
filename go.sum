@@ -1,3 +1,5 @@
+github.com/adrg/xdg v0.5.3 h1:xRnxJXne7+oWDatRhR1JLnvuccuIeCoBu2rtuLqQB78=
+github.com/adrg/xdg v0.5.3/go.mod h1:nlTsY+NNiCBGCK2tpm09vRqfVzrc2fLmXGpBLF0zlTQ=
 github.com/cyberphone/json-canonicalization v0.0.0-20261011152517-32a48195b9b2 h1:kiKRqubtsqSxZQKODeKebT0Im5VtsHkLnmVHNSTIgrk=
 github.com/cyberphone/json-canonicalization v0.0.0-20261011152517-32a48195b9b2/go.mod h1:uzvlm1mxhHkdfqitSA92i7Se+S9ksOn3a3qmv/kyOCw=
 github.com/danieljoos/wincred v1.2.3 h1:v7dZC2x32Ut3nEfRH+vhoZGvN72+dQ/snVXo/vMFLdQ=
@@ -30,6 +32,8 @@ github.com/hollis-labs/chimera v0.0.0-20261008115211-389155313ee5 h1:2JzG7PC8650
 github.com/hollis-labs/chimera v0.0.0-20261008115211-389155313ee5/go.mod h1:mv6cOQtOWRNhFjU2Q0PGs8a532OohpvHFraADZ4ypms=
 github.com/hollis-labs/go-webui v0.2.0 h1:1dyG97XZlxKxu0UL3gSkMh8u6IHvKwSS63OYbfKamFE=
 github.com/hollis-labs/go-webui v0.2.0/go.mod h1:m3/AQC9IFCMR51IqsPWu+VY4NN6NjkD/I9zedQbQ0B8=
+github.com/hollis-labs/libs/core/util v0.6.0 h1:uqVSuuRtKAzwDcMf5ekFlBUO9g6aZzAAp81dRadac4U=
+github.com/hollis-labs/libs/core/util v0.6.0/go.mod h1:CpS3EUj+MHivKVnGWJj8Vtq1+J3TN1uPyPCbLzhQLh0=
 github.com/hollis-labs/libs/mesh/core v0.8.0 h1:XFeak/8MRzBnCw3xj0nj2VBNv6GaUYY/WsP1rKVVsjc=
 github.com/hollis-labs/libs/mesh/core v0.8.0/go.mod h1:K1a1oeFXakkaJDyKogI/I2j+2lpKklTZgdtzSw45Bss=
 github.com/hollis-labs/libs/security/auth v0.1.0 h1:Bq4pmTr4bnRY7a1bQq2ycuutRlCD4RCh44xPdb0PnBw=

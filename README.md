@@ -352,9 +352,23 @@ explicit user-started capture and fresh active-session context produce records.
 
 ## Data and security
 
-Data defaults to `$XDG_STATE_HOME/basalisk`, or `~/.local/state/basalisk` when
-`XDG_STATE_HOME` is unset. `BASALISK_DATA_DIR` overrides the whole data directory.
-The app creates a private directory (0700) and SQLite database (0600).
+Basalisk follows the XDG base directory layout, resolved by the shared
+`apppaths` library:
+
+| Kind | Default | Override |
+| --- | --- | --- |
+| Data (database, secrets, backups) | `$XDG_DATA_HOME/basalisk`, else `~/.local/share/basalisk` | `BASALISK_DATA_DIR` |
+| Configuration | `$XDG_CONFIG_HOME/basalisk`, else `~/.config/basalisk` | `BASALISK_CONFIG_DIR` |
+
+The assurance host configuration is `assurance.json` in the configuration
+directory when that file exists; `BASALISK_ASSURANCE_CONFIG` names a different
+file. Keep operator configuration there, never in the checkout.
+
+The app creates a private data directory (0700) and SQLite database (0600).
+Earlier versions kept data in `$XDG_STATE_HOME/basalisk`. If a database is there
+and none exists in the data directory, Basalisk refuses to start rather than
+open an empty installation and reopen owner setup. Move the directory (stop the
+app first) or set `BASALISK_DATA_DIR` to keep using the old one.
 
 SQLite stores the owner profile, bcrypt password hash, hashed session tokens,
 integration metadata, and activity identity/session/context/journal records.
