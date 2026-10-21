@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Security
+
+- Go toolchain 1.26.10 (`go` directive and CI pin) for GO-2026-6809 (crypto/x509); no behavior change.
+
 ### Changed
 
 - **Data now lives under `XDG_DATA_HOME` and configuration under `XDG_CONFIG_HOME`**, resolved with the shared `apppaths` library, instead of `XDG_STATE_HOME`. `BASALISK_DATA_DIR` still overrides the data directory and `BASALISK_CONFIG_DIR` the configuration directory. **Breaking for existing installs:** with a database in the old state directory and none in the new data directory, startup is refused with the fix named, so an empty installation is never opened silently. Move `~/.local/state/basalisk` to `~/.local/share/basalisk` (app stopped) or set `BASALISK_DATA_DIR`.
