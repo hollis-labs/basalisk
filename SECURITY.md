@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Basalisk is pre-release software with no tagged versions. Security fixes are made on `main`. There are no backports.
+Basalisk is pre-1.0 software (tagged `0.x`). Security fixes are made on `main` and released as a new patch version. There are no backports.
 
 ## Report a vulnerability
 
