@@ -1,0 +1,18 @@
+schema: fleet-deploy/v1
+app: basalisk
+repo: hollis-labs/basalisk
+artifact: {name: "basalisk-{sha12}", tarball: "basalisk_{version}_{os}_{arch}.tar.gz", sums: SHA256SUMS}
+targets:
+  - id: agent-os-basalisk
+    when: {os: linux, arch: amd64}
+    hosts: [agent-os]
+    binary: basalisk
+    install_root: ~/.local/share/fleet/releases/basalisk
+    symlinks:
+      - path: ~/.local/bin/basalisk            # the unit's ExecStart path; today a regular file, replaced by a symlink
+    unit_dropins: []
+    preflight:
+      - {kind: sqlite_backup, db: ~/.local/share/basalisk/basalisk.db, dest: "{backup_dir}/basalisk.pre-{version}.db"}
+      # - {kind: migration_check, db: ~/.local/share/basalisk/basalisk.db}   # enable once build-info.json exists
+    restart: {via: systemd-user, unit: basalisk}      # alternative: {via: cerberus, resource: basalisk-agent-os, approval: print}
+    health: {url: "http://127.0.0.1:8085/healthz", expect_status: [200], timeout: 30s}
