@@ -1,0 +1,21 @@
+# RULE-ID PATH-GLOB REASON   (owner-reviewed; every allowlisted finding is still printed)
+#
+# Test inputs for credential handling. Each is an invented value the test feeds to code that must
+# reject, hide or never return it; none names a real credential.
+credentials-in-url internal/api/http_test.go test input: an integration URL carrying credentials must be rejected
+secret-assignment internal/feread/client_test.go test fixture: invented bearer value for a fake upstream
+#
+# History only: the WebAuthn operation-proof test vector that lived in the removed assurance
+# package (a follow-up restores that package from git history). It is canned protocol data, not a key.
+generic-api-key internal/assurance/testdata/* test vector from the removed assurance package, not a credential
+#
+# An HTML autocomplete attribute value ("new-password"), not a credential.
+secret-assignment frontend/src/pages/entry.tsx HTML autocomplete attribute value "new-password", not a credential
+#
+# Fleet inventory alias required by deploy.yaml (fleet-deploy/v1) to name the target host; not an address.
+agent-box-host deploy.yaml fleet inventory alias required by fleet-deploy/v1, not an address
+#
+# History only: files that existed in the pre-conversion commits and no longer exist in the tree.
+token-store-file frontend/.npmrc contains only install-links=true (for a file: dependency since removed); no token
+secret-assignment frontend/src/App.tsx HTML autocomplete attribute value "new-password", not a credential
+credentials-in-url internal/account/http_test.go test input: an integration URL carrying invented credentials must be rejected

@@ -41,12 +41,12 @@ func New(config Config, resolver *secrets.Resolver, client *http.Client) (*Clien
 	if client == nil {
 		client = &http.Client{}
 	}
-	copy := *client
-	copy.Timeout = 10 * time.Second
-	copy.Jar = nil
-	copy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	clientCopy := *client
+	clientCopy.Timeout = 10 * time.Second
+	clientCopy.Jar = nil
+	clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	config.IssuerURL = strings.TrimRight(config.IssuerURL, "/")
-	return &Client{config, resolver, &copy}, nil
+	return &Client{config, resolver, &clientCopy}, nil
 }
 func (c *Client) request(ctx context.Context, method, endpoint, bearer string, body []byte, out any, accepted ...int) error {
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
@@ -60,7 +60,7 @@ func (c *Client) request(ctx context.Context, method, endpoint, bearer string, b
 	if err != nil {
 		return failed("connection_unavailable", true)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		switch res.StatusCode {
 		case 401, 403:
@@ -139,7 +139,7 @@ func safeID(s string) bool {
 		return false
 	}
 	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' {
 			return false
 		}
 	}

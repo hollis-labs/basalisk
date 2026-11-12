@@ -3,6 +3,7 @@ package dataread
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"strings"
@@ -65,12 +66,12 @@ func host(t *testing.T, p *fakeProvider, policy Authorizer, m Membership) *Host 
 func TestAuthorizationBeforeReadAndAfterResponse(t *testing.T) {
 	p := &fakeProvider{}
 	h := host(t, p, nil, nil)
-	if _, e := h.Get(verified(), testGet("one")); e != ErrAccess || p.calls != 0 {
+	if _, e := h.Get(verified(), testGet("one")); !errors.Is(e, ErrAccess) || p.calls != 0 {
 		t.Fatal("default policy did not deny", e, p.calls)
 	}
 	h = host(t, p, AuthorizeFunc(allow), nil)
 	for _, ctx := range []context.Context{context.Background(), auth.WithPrincipal(context.Background(), auth.Principal{ID: "owner-1"}), auth.WithPrincipal(context.Background(), auth.Principal{Verified: true, ID: "owner-1", ExpiresAt: time.Now().Add(-time.Second)})} {
-		if _, e := h.Get(ctx, testGet("one")); e != ErrAccess || p.calls != 0 {
+		if _, e := h.Get(ctx, testGet("one")); !errors.Is(e, ErrAccess) || p.calls != 0 {
 			t.Fatal("unverified/expired authority reached provider", e)
 		}
 	}
@@ -82,7 +83,7 @@ func TestAuthorizationBeforeReadAndAfterResponse(t *testing.T) {
 		return allow(c, a, target)
 	}), nil)
 	p.get = func(in GetRequest) (Item, error) { revoked = true; return testItem(in.Ref.ID), nil }
-	if got, e := h.Get(verified(), testGet("one")); e != ErrAccess || got.Item.Title != "" {
+	if got, e := h.Get(verified(), testGet("one")); !errors.Is(e, ErrAccess) || got.Item.Title != "" {
 		t.Fatal("in-flight revocation leaked content", got, e)
 	}
 }
@@ -92,15 +93,15 @@ func TestExactIdentityAndRevision(t *testing.T) {
 	h := host(t, p, AuthorizeFunc(allow), nil)
 	in := testGet("one")
 	in.Version = VersionRequest{Mode: "revision", ID: "original-revision"}
-	if _, e := h.Get(verified(), in); e != ErrVersion {
+	if _, e := h.Get(verified(), in); !errors.Is(e, ErrVersion) {
 		t.Fatal("revision fell back", e)
 	}
 	p.get = func(GetRequest) (Item, error) { return testItem("canonical-other"), nil }
-	if _, e := h.Get(verified(), testGet("one")); e != ErrUnavailable {
+	if _, e := h.Get(verified(), testGet("one")); !errors.Is(e, ErrUnavailable) {
 		t.Fatal("alias crossed authorization boundary", e)
 	}
 	in.Version = VersionRequest{Mode: "if_current", ID: "current"}
-	if _, e := h.Get(verified(), in); e != ErrInvalid {
+	if _, e := h.Get(verified(), in); !errors.Is(e, ErrInvalid) {
 		t.Fatal("unsupported version accepted", e)
 	}
 }
@@ -136,16 +137,16 @@ func TestPaginationBindsGrantCallerAndQueryWithoutDroppingItems(t *testing.T) {
 	}
 	q.Cursor = first.NextCursor
 	other := auth.WithPrincipal(context.Background(), auth.Principal{ID: "another-owner", Verified: true})
-	if _, e = h.Query(other, q); e != ErrCursor {
+	if _, e = h.Query(other, q); !errors.Is(e, ErrCursor) {
 		t.Fatal("caller replay", e)
 	}
 	changed := q
 	changed.Limit++
-	if _, e = h.Query(verified(), changed); e != ErrCursor {
+	if _, e = h.Query(verified(), changed); !errors.Is(e, ErrCursor) {
 		t.Fatal("query replay", e)
 	}
 	policyVersion = "policy-2"
-	if _, e = h.Query(verified(), q); e != ErrCursor {
+	if _, e = h.Query(verified(), q); !errors.Is(e, ErrCursor) {
 		t.Fatal("policy replay", e)
 	}
 	policyVersion = "policy-1"
@@ -176,11 +177,11 @@ func TestPaginationBindsGrantCallerAndQueryWithoutDroppingItems(t *testing.T) {
 	}
 	h.now = func() time.Time { return time.Now().Add(3 * time.Minute) }
 	q.Cursor = first.NextCursor
-	if _, e = h.Query(verified(), q); e != ErrCursor {
+	if _, e = h.Query(verified(), q); !errors.Is(e, ErrCursor) {
 		t.Fatal("expired cursor", e)
 	}
 	h = host(t, p, AuthorizeFunc(allow), nil)
-	if _, e = h.Query(verified(), q); e != ErrCursor {
+	if _, e = h.Query(verified(), q); !errors.Is(e, ErrCursor) {
 		t.Fatal("restart cursor survived", e)
 	}
 }
@@ -190,7 +191,7 @@ func TestSelectionNeedsWholeCandidateAuthorization(t *testing.T) {
 	h := host(t, p, AuthorizeFunc(func(context.Context, auth.Principal, Target) (Grant, error) {
 		return Grant{ID: "one-resource", PolicyVersion: "p"}, nil
 	}), nil)
-	if _, e := h.Query(verified(), QueryRequest{Source: testSource, Mode: "selection", Scope: "all"}); e != ErrUnsupported || p.calls != 0 {
+	if _, e := h.Query(verified(), QueryRequest{Source: testSource, Mode: "selection", Scope: "all"}); !errors.Is(e, ErrUnsupported) || p.calls != 0 {
 		t.Fatal("broad selection reached provider", e)
 	}
 }
@@ -215,7 +216,7 @@ func TestSessionMembershipIsNotAReadGrantAndMissingContentIsPartial(t *testing.T
 		return allow(c, p, target)
 	}), m)
 	q := QueryRequest{Source: testSource, Mode: "session", SessionID: "session-1"}
-	if _, e := h.Query(verified(), q); e != ErrAccess || p.calls != 0 {
+	if _, e := h.Query(verified(), q); !errors.Is(e, ErrAccess) || p.calls != 0 {
 		t.Fatal("membership conferred access", e, p.calls)
 	}
 	h = host(t, p, AuthorizeFunc(allow), m)
@@ -247,7 +248,7 @@ func TestHTTPAndToolDispatchUseTheSameBoundary(t *testing.T) {
 			t.Fatal("cacheable response")
 		}
 	}
-	if _, e := h.Call(verified(), "data.get", []byte(`{"principal":{"verified":true},"ref":{},"version":{}}`)); e != ErrInvalid {
+	if _, e := h.Call(verified(), "data.get", []byte(`{"principal":{"verified":true},"ref":{},"version":{}}`)); !errors.Is(e, ErrInvalid) {
 		t.Fatal("client authority accepted", e)
 	}
 }
@@ -259,11 +260,11 @@ func TestOutputBudgetAndSafeErrors(t *testing.T) {
 		return it, nil
 	}}
 	h := host(t, p, AuthorizeFunc(allow), nil)
-	if _, e := h.Get(verified(), testGet("one")); e != ErrLimit {
+	if _, e := h.Get(verified(), testGet("one")); !errors.Is(e, ErrLimit) {
 		t.Fatal(e)
 	}
 	p.get = func(GetRequest) (Item, error) { return Item{}, fmt.Errorf("upstream secret detail") }
-	if _, e := h.Get(verified(), testGet("one")); e != ErrUnavailable {
+	if _, e := h.Get(verified(), testGet("one")); !errors.Is(e, ErrUnavailable) {
 		t.Fatal("raw error escaped", e)
 	}
 }

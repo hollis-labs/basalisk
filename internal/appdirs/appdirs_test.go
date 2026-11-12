@@ -1,7 +1,6 @@
 package appdirs
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,16 +20,6 @@ func xdg(t *testing.T) string {
 	return base
 }
 
-func touch(t *testing.T, path string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestDefaultsFollowXDGAndCreateNothing(t *testing.T) {
 	base := xdg(t)
 	d, err := Resolve(env(nil))
@@ -40,9 +29,6 @@ func TestDefaultsFollowXDGAndCreateNothing(t *testing.T) {
 	if want := filepath.Join(base, "data", "basalisk"); d.Data != want {
 		t.Fatalf("data = %q, want %q", d.Data, want)
 	}
-	if want := filepath.Join(base, "config", "basalisk"); d.Config != want {
-		t.Fatalf("config = %q, want %q", d.Config, want)
-	}
 	for _, dir := range []string{"data", "config", "state", "cache"} {
 		if _, err := os.Stat(filepath.Join(base, dir)); err == nil {
 			t.Fatalf("Resolve created %s", dir)
@@ -50,53 +36,40 @@ func TestDefaultsFollowXDGAndCreateNothing(t *testing.T) {
 	}
 }
 
-func TestExplicitDirectoriesWin(t *testing.T) {
+func TestExplicitDirectoryWins(t *testing.T) {
 	xdg(t)
-	data, cfg := t.TempDir(), t.TempDir()
-	d, err := Resolve(env(map[string]string{DataDirEnv: data, ConfigDirEnv: cfg}))
-	if err != nil || d.Data != data || d.Config != cfg {
+	data := t.TempDir()
+	d, err := Resolve(env(map[string]string{DataDirEnv: data}))
+	if err != nil || d.Data != data {
 		t.Fatalf("got %+v, %v", d, err)
 	}
-}
-
-func TestLegacyStateDataStopsStartup(t *testing.T) {
-	base := xdg(t)
-	touch(t, filepath.Join(base, "state", "basalisk", "basalisk.db"))
-	_, err := Resolve(env(nil))
-	if !errors.Is(err, ErrLegacyData) {
-		t.Fatalf("err = %v, want ErrLegacyData", err)
+	if d.Database() != filepath.Join(data, "basalisk.db") || d.SigningKey() != filepath.Join(data, "identity-signing.key") || d.Secrets() != filepath.Join(data, "secrets") {
+		t.Fatalf("file names changed: %q %q %q", d.Database(), d.SigningKey(), d.Secrets())
 	}
 }
 
-func TestLegacyGuardClearsOnceDataIsMovedOrOverridden(t *testing.T) {
-	base := xdg(t)
-	touch(t, filepath.Join(base, "state", "basalisk", "basalisk.db"))
-
-	if _, err := Resolve(env(map[string]string{DataDirEnv: filepath.Join(base, "state", "basalisk")})); err != nil {
-		t.Fatalf("explicit legacy directory refused: %v", err)
-	}
-	touch(t, filepath.Join(base, "data", "basalisk", "basalisk.db"))
-	if _, err := Resolve(env(nil)); err != nil {
-		t.Fatalf("migrated data still refused: %v", err)
-	}
-}
-
-func TestAssuranceConfigPath(t *testing.T) {
-	xdg(t)
-	cfg := t.TempDir()
-	d, err := Resolve(env(map[string]string{ConfigDirEnv: cfg}))
-	if err != nil {
+func TestPrepareMakesPrivateAndTightensLooseModes(t *testing.T) {
+	d := Dirs{Data: filepath.Join(t.TempDir(), "data")}
+	if err := d.Prepare(); err != nil {
 		t.Fatal(err)
 	}
-	none := env(nil)
-	if got := d.AssuranceConfigPath(none); got != "" {
-		t.Fatalf("no file: got %q", got)
+	// A directory and file made too open by an earlier run are tightened, not trusted.
+	if err := os.Chmod(d.Data, 0o755); err != nil { //nolint:gosec // deliberately loose, to prove Prepare tightens it
+		t.Fatal(err)
 	}
-	touch(t, filepath.Join(cfg, "assurance.json"))
-	if got, want := d.AssuranceConfigPath(none), filepath.Join(cfg, "assurance.json"); got != want {
-		t.Fatalf("config dir file: got %q, want %q", got, want)
+	if err := os.Chmod(d.Database(), 0o644); err != nil { //nolint:gosec // deliberately loose, to prove Prepare tightens it
+		t.Fatal(err)
 	}
-	if got := d.AssuranceConfigPath(env(map[string]string{AssuranceConfigEnv: "/explicit.json"})); got != "/explicit.json" {
-		t.Fatalf("env must win: got %q", got)
+	if err := d.Prepare(); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{d.Data, d.Database()} {
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			t.Fatalf("%s is accessible to other users: %v", p, info.Mode())
+		}
 	}
 }

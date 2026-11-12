@@ -1,0 +1,23 @@
+# Basalisk on Substrate. The manifest is the shell: modules and config.
+# Secure by default: the auth guard enforces, and the app is its own identity provider.
+app: basalisk
+variant: app-host
+profiles: [minimal]
+modules:
+  add: [secrets, auth, database, identity, cli]
+config:
+  logging: { level: info, format: text }
+  httphost: { addr: "127.0.0.1:8085" }
+  # Paths here are defaults relative to the working directory. The binary
+  # resolves the data directory (XDG data home or BASALISK_DATA_DIR) and
+  # replaces them with absolute paths before the modules start.
+  database:
+    sqlite: { path: basalisk.db }
+  auth: { mode: enforce }
+  # Sign-in lasts 12 hours, as it did before Substrate. Behind a local TLS proxy set
+  # trusted_proxy and allowed_origins in the SUBSTRATE_CONFIG file.
+  identity: { key_file: identity-signing.key, session_ttl: 12h }
+  secrets: { state_dir: secrets }
+  # The app's own `basalisk:` block (internal/settings) is not declared here: the manifest accepts
+  # config only for catalogue modules. Set it, and any other override, in the YAML file named by
+  # SUBSTRATE_CONFIG (docs/architecture.md lists every key).

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -138,7 +139,7 @@ func (h *Host) Discover(ctx context.Context) ([]Descriptor, error) {
 func (h *Host) Get(ctx context.Context, in GetRequest) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	item, _, err := h.get(ctx, in)
+	item, err := h.get(ctx, in)
 	if err != nil {
 		return Result{}, err
 	}
@@ -148,49 +149,49 @@ func (h *Host) Get(ctx context.Context, in GetRequest) (Result, error) {
 	}
 	return out, nil
 }
-func (h *Host) get(ctx context.Context, in GetRequest) (Item, Grant, error) {
+func (h *Host) get(ctx context.Context, in GetRequest) (Item, error) {
 	if !validGet(in) {
-		return Item{}, Grant{}, ErrInvalid
+		return Item{}, ErrInvalid
 	}
 	target := Target{Action: "get", Source: in.Ref.Source(), Get: in}
 	g, err := h.authorize(ctx, target)
 	if err != nil {
-		return Item{}, Grant{}, err
+		return Item{}, err
 	}
 	r, ok := h.providers[in.Ref.Source()]
 	if !ok {
-		return Item{}, Grant{}, ErrUnavailable
+		return Item{}, ErrUnavailable
 	}
 	if !slices.Contains(r.descriptor.Kinds, in.Ref.Kind) || !slices.Contains(r.descriptor.VersionModes, in.Version.Mode) {
-		return Item{}, Grant{}, ErrUnsupported
+		return Item{}, ErrUnsupported
 	}
 	if r.descriptor.KindVersionModes != nil && !slices.Contains(r.descriptor.KindVersionModes[in.Ref.Kind], in.Version.Mode) {
-		return Item{}, Grant{}, ErrUnsupported
+		return Item{}, ErrUnsupported
 	}
 	if in.Version.Mode == "revision" && r.descriptor.RevisionRequiresHistory && !g.WholeHistory {
-		return Item{}, Grant{}, ErrUnsupported
+		return Item{}, ErrUnsupported
 	}
 	item, err := r.provider.Get(ctx, in)
 	if changed := h.unchanged(ctx, target, g); changed != nil {
-		return Item{}, Grant{}, changed
+		return Item{}, changed
 	}
 	if err != nil {
-		return Item{}, Grant{}, SafeError(err)
+		return Item{}, SafeError(err)
 	}
 	// Alias resolution is not authorization. Refuse a canonical identity change.
 	if !validItem(item, in.Ref.Source()) || item.Ref != in.Ref {
-		return Item{}, Grant{}, ErrUnavailable
+		return Item{}, ErrUnavailable
 	}
 	if in.Version.Mode == "revision" && (item.Version.Kind != "immutable_revision" || item.Version.ID != in.Version.ID) {
-		return Item{}, Grant{}, ErrVersion
+		return Item{}, ErrVersion
 	}
 	if in.Version.Mode == "if_current" && (item.Version.Kind != "current_token" || item.Version.ID != in.Version.Token) {
-		return Item{}, Grant{}, ErrChanged
+		return Item{}, ErrChanged
 	}
 	if ctx.Err() != nil {
-		return Item{}, Grant{}, ErrUnavailable
+		return Item{}, ErrUnavailable
 	}
-	return item, g, nil
+	return item, nil
 }
 func validItem(it Item, source Source) bool {
 	return it.Ref.Source() == source && ValidID(it.Ref.ID) && ValidID(it.Ref.Kind) && (it.Version.Kind == "immutable_revision" || it.Version.Kind == "current_token") && ValidID(it.Version.ID) && it.ProjectionVersion != "" && it.ContentTrust == "untrusted_source"
@@ -331,8 +332,8 @@ func (h *Host) Query(ctx context.Context, in QueryRequest) (Page, error) {
 			}
 		}
 		for _, ref := range refs {
-			it, _, e := h.get(ctx, ref)
-			if e == ErrAccess {
+			it, e := h.get(ctx, ref)
+			if errors.Is(e, ErrAccess) {
 				return Page{}, e
 			}
 			if e != nil {

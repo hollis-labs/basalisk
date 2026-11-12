@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- Rebuilt on [Substrate](https://github.com/hollis-labs/substrate): the manifest `cmd/basalisk/substrate.yaml` selects the framework modules, and accounts, sign-in, sessions, API keys and tokens are now the Substrate identity module.
+- The frontend is rebuilt on the app-shell with the published design kits.
+- The default port is 8085 (was 8080).
+- Configuration comes from the manifest and an optional YAML file named by `SUBSTRATE_CONFIG`. The `basalisk:` block holds `allowed_hosts` and the Fragments delivery keys; see `docs/architecture.md`.
+- API errors are flat `{code, message, details?}` bodies. Sign-in bodies use snake_case fields (`display_name`, `current_password`, `new_password`).
+- Writes with the session cookie send `X-Requested-With` (replacing `X-Basalisk-Request`) and a same-origin `Origin`.
+- `/api/` routes require the scopes `basalisk.read` (GET) and `basalisk.write` (changes).
+- Activity sessions and preferences belong to the verified identity subject.
+
+### Removed
+
+- The assurance and WebAuthn backend, `/api/assurance/*` and the `/assurance/` status mount. A follow-up restores them from git history.
+- `GET /api/identity` (humanIdentity).
+- The Folio/Chimera host and the `requestorigin` package (replaced by `internal/hostguard` and the identity module's `trusted_proxy`).
+- The `BASALISK_*` environment variables except `BASALISK_DATA_DIR`, and `LISTEN_ADDR`; see the mapping in `docs/conversion-notes.md`.
+- `deploy/`: the Caddy fragment and the Cerberus example (deployment descriptors belong with the operator's infrastructure).
+
+### Breaking
+
+- New database schema with no migration. Startup refuses a database from the earlier version: move the old data directory aside and run first-run setup again.
+- Paired companion devices pair again, and integration credentials are entered again.
+- API request and response shapes changed as listed in `docs/conversion-notes.md`.
+
 ## [0.1.0] - 2026-10-20
 
 First tagged release (the baseline tag; later changes are listed under the next version).

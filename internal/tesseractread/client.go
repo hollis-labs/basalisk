@@ -156,7 +156,7 @@ func (c *Client) request(ctx context.Context, token, method, path string, body a
 	if e != nil {
 		return dataread.ErrUnavailable
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch resp.StatusCode {
 	case 200:
 	case 401, 403:

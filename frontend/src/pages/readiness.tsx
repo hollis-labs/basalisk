@@ -94,7 +94,7 @@ export function ReadinessPage({ timezone }: { timezone: string }) {
     <div className="page-content">
       <div className="page-intro">
         <p className="eyebrow">CONNECTIONS</p>
-        <h1>Capture readiness</h1>
+        <h2>Capture readiness</h2>
         <p>Pairing, delivery setup, and the notes Basalisk is looking after.</p>
       </div>
       <Notice error={error} />

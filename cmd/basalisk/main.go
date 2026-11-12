@@ -1,122 +1,54 @@
-// Command basalisk serves the Basalisk dashboard UI.
+// Command basalisk is the Basalisk dashboard server, built on Substrate. The shell (config,
+// logging, health, HTTP, auth, identity, secrets, database, CLI skeleton) comes from the
+// manifest; this file and internal/ are the app: its data, its routes and its companion API.
 package main
 
 import (
 	"context"
-	"log"
-	"net"
-	"net/http"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/hollis-labs/basalisk/internal/account"
-	"github.com/hollis-labs/basalisk/internal/appdirs"
-	"github.com/hollis-labs/basalisk/internal/assurance"
-	"github.com/hollis-labs/basalisk/internal/requestorigin"
-	"github.com/hollis-labs/basalisk/internal/webui"
+	"github.com/spf13/cobra"
+
+	"github.com/hollis-labs/substrate/boot"
+	"github.com/hollis-labs/substrate/modules/cli"
+	"github.com/hollis-labs/substrate/modules/database"
+
+	"github.com/hollis-labs/basalisk/internal/persistence"
 )
 
 func main() {
-	addr := listenAddr()
-	proxy := os.Getenv("BASALISK_HTTPS_PROXY")
-	if proxy != "" && proxy != "0" && proxy != "1" {
-		log.Fatal("BASALISK_HTTPS_PROXY must be 0 or 1")
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, os.Getenv); err != nil {
+		fmt.Fprintln(os.Stderr, "basalisk:", err)
+		stop()
+		os.Exit(1)
 	}
-	dirs, err := appdirs.Resolve(os.Getenv)
-	if err != nil {
-		log.Fatal(err)
-	}
-	assuranceConfig, err := assurance.LoadHostConfig(dirs.AssuranceConfigPath(os.Getenv))
-	if err != nil {
-		log.Fatal("Invalid Basalisk assurance configuration")
-	}
-	if assuranceConfig != nil && proxy != "1" {
-		log.Fatal("Assurance requires BASALISK_HTTPS_PROXY=1")
-	}
-
-	hostName, _, err := net.SplitHostPort(addr)
-	if err != nil || (hostName != "localhost" && (net.ParseIP(hostName) == nil || !net.ParseIP(hostName).IsLoopback())) {
-		log.Fatal("Basalisk currently requires a loopback LISTEN_ADDR (for example 127.0.0.1:8080)")
-	}
-	store, err := account.Open(dirs.Data)
-	if err != nil {
-		log.Fatal("Could not open Basalisk data store: ", err)
-	}
-	defer func() {
-		if closeErr := store.Close(); closeErr != nil {
-			log.Printf("Could not close Basalisk data store: %v", closeErr)
-		}
-	}()
-	statusHandler, err := store.ConfigureAssuranceHost(context.Background(), assuranceConfig, nil)
-	if err != nil {
-		log.Fatal("Could not configure Basalisk assurance")
-	}
-	mux := http.NewServeMux()
-	mux.Handle("/api/", store.Handler())
-	companion := store.CompanionHandler()
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-	go store.PruneObservations(ctx)
-	worker, err := store.NewFragmentWorker(account.DeliveryConfigFromEnv(os.Getenv), nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if worker != nil {
-		done := make(chan struct{})
-		go func() { defer close(done); worker.Run(ctx) }()
-		defer func() { cancel(); <-done }()
-	}
-	h, err := webui.New(mux)
-	if err != nil {
-		log.Fatal(err)
-	}
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("Basalisk listening on %s; UI base %s", listener.Addr(), webui.BasePath)
-	// Validate Host before the Chimera host sees a request, preventing DNS rebinding.
-	handler := applicationHandler(h.Handler(), companion, statusHandler)
-	server := &http.Server{Handler: requestorigin.Handler(proxy == "1", handler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
-	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
-	}()
-	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-		log.Fatal(err)
-	}
-
 }
 
-// Chimera mounts its app routes under /api/. Native enrollment and observation
-// paths are separate from that cookie-authenticated surface and from SPA fallback.
-func applicationHandler(ui, companion, status http.Handler) http.Handler {
-	mux := http.NewServeMux()
-	mux.Handle("/auth/", companion)
-	mux.Handle("/companion/", companion)
-	if status != nil {
-		mux.Handle("/assurance/", status)
-	} else {
-		// An unconfigured status endpoint must never return the SPA.
-		mux.HandleFunc("/assurance/", func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Cache-Control", "no-store")
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"error":"assurance_status_unavailable"}`))
-		})
+func run(ctx context.Context, getenv func(string) string) error {
+	config, err := prepare(getenv)
+	if err != nil {
+		return err
 	}
-	mux.Handle("/", ui)
-	return mux
-}
+	fsys, root := persistence.Migrations()
+	database.UseMigrationFS(fsys, root)
 
-func listenAddr() string {
-	if addr := os.Getenv("LISTEN_ADDR"); addr != "" {
-		return addr
+	started, err := boot.Start(ctx, substrateApp, substrateModules, config)
+	if err != nil {
+		return err
 	}
-	return "127.0.0.1:8080"
+	defer func() { _ = started.Stop(context.Background()) }()
+
+	b := &basalisk{app: started.App}
+	rootCmd := cli.Root(started.App)
+	serve := b.serveCmd(ctx)
+	// `basalisk` with no command serves, like `basalisk serve`.
+	rootCmd.RunE = func(c *cobra.Command, args []string) error { return serve.RunE(c, args) }
+	rootCmd.Args = cobra.NoArgs
+	rootCmd.AddCommand(serve)
+	return rootCmd.ExecuteContext(ctx)
 }

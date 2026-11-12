@@ -4,7 +4,7 @@ How a change gets from your clone into `main`. This is deliberately short: most 
 
 ## Before your first change
 
-`README.md` has the run and build steps. Run `lefthook install` — a tracked config installs no hooks by itself, and a clone that skips it has no commit or push checks and says nothing about it.
+`README.md` has the run and build steps (`make all`, then `./basalisk`). Run `lefthook install` — a tracked config installs no hooks by itself, and a clone that skips it has no commit or push checks and says nothing about it.
 
 `AGENTS.md` is the fastest orientation to the layout and the boundaries that are not obvious from reading the code. It is written for an agent working in the repo, which makes it unusually direct about the things that bite.
 
@@ -12,7 +12,7 @@ How a change gets from your clone into `main`. This is deliberately short: most 
 
 1. **Branch.** `<type>/<short-slug>`, where the type matches the change — `feat`, `fix`, `docs`, `chore`. Nothing enforces this; it is what the history does.
 2. **Change one thing.** A branch carrying two unrelated changes costs the reviewer the ability to accept one and question the other.
-3. **Run the checks** when the change is done: `make test vet`, and from `frontend/` the `typecheck` and `lint` scripts if you touched the UI.
+3. **Run the checks** when the change is done: `make test vet lint` and `make pins`, and `make scan` for the public-repo hygiene scan. If you touched the UI, build it first (`make ui-build`; the Go tests embed it) and run the `typecheck` and `lint` scripts from `frontend/`. Changing `cmd/basalisk/substrate.yaml` needs `make generate`.
 4. **Push, and open a pull request** against `main`.
 
 Commit subjects follow the conventional-commit shape — a type, an optional scope, a colon, then the summary.
@@ -25,14 +25,15 @@ A change to authentication, session, origin or secret handling should name the t
 
 ## The one that cannot be undone
 
-**Do not point tests or experiments at your real data directory.** Setup creates the owner once and closes permanently, and there is no account reset. Use a disposable `BASALISK_DATA_DIR`, and never create or modify the owner account of an instance you care about from a test or an agent.
+**Do not point tests or experiments at your real data directory.** Setup creates the first account once and closes, and there is no account reset. Use a disposable `BASALISK_DATA_DIR`, and never create or modify the first account of an instance you care about from a test or an agent.
 
 ## Things that surprise people
 
 - **`internal/webui/dist/.gitkeep` must stay.** `go:embed` fails to compile without a match. Do not delete it and do not commit the built bundle beside it. Build the UI before the binary with `make all`.
-- **No secrets or real config in the repository.** Operator descriptors, environment files and data live outside the checkout; only `*.example.*` files are tracked.
-- **`.folio.yaml` is scaffold provenance.** Leave it as generated; record intentional dependency customization in `chimera-provenance.json`.
-- **`third_party/kit-account` is an unpublished source snapshot** with its own provenance notes.
+- **No secrets or real config in the repository.** Operator descriptors, environment files and data live outside the checkout; only `*.example.*` files are tracked. The repository is public, and `make scan` is a CI check.
+- **Pins live in Substrate.** Versions in `go.mod` follow Substrate's `bom/bom.yaml`. Do not edit them by hand: change the BOM in the Substrate repository, then update the requirement and run `make pins` to confirm they match.
+- **`cmd/basalisk/substrate_wiring.go` is generated.** Edit the manifest and run `make generate`.
+- **`.folio.yaml` and `chimera-provenance.json` are scaffold provenance.** Leave them as they are.
 
 ## What this does not cover
 
