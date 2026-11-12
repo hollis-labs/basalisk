@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -34,6 +35,7 @@ func TestRealTesseract(t *testing.T) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
+		//nolint:gosec // test-only: binary is the opt-in test executable from the environment
 		cmd := exec.CommandContext(ctx, binary, args...)
 		cmd.Dir = dir
 		cmd.Env = env
@@ -73,9 +75,11 @@ func TestRealTesseract(t *testing.T) {
 	addr := l.Addr().String()
 	l.Close()
 	ctx, cancel := context.WithCancel(context.Background())
+	//nolint:gosec // test-only: binary is the opt-in test executable from the environment
 	cmd := exec.CommandContext(ctx, binary, "serve", "--addr", addr, "--managed-auth")
 	cmd.Dir = dir
 	cmd.Env = env
+	//nolint:gosec // test-only: path is a fixture inside this test's temp dir
 	logFile, e := os.Create(filepath.Join(dir, "source.log"))
 	if e != nil {
 		cancel()
@@ -93,8 +97,8 @@ func TestRealTesseract(t *testing.T) {
 	target, _ := url.Parse("http://" + addr)
 	ready := false
 	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); {
-		r, e := probe.Get(target.String() + "/v1/health/readiness")
-		if e == nil {
+		r, probeErr := probe.Get(target.String() + "/v1/health/readiness")
+		if probeErr == nil {
 			r.Body.Close()
 			if r.StatusCode == 200 {
 				ready = true
@@ -104,6 +108,7 @@ func TestRealTesseract(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if !ready {
+		//nolint:gosec // test-only: path is the log file this test created in its temp dir
 		b, _ := os.ReadFile(logFile.Name())
 		t.Fatal("disposable source failed to start: ", string(b))
 	}
@@ -115,14 +120,14 @@ func TestRealTesseract(t *testing.T) {
 		r, _ := http.NewRequest(method, proxy.URL+path, bytes.NewReader(b))
 		r.Header.Set("Authorization", "Bearer "+token)
 		r.Header.Set("Content-Type", "application/json")
-		resp, e := proxy.Client().Do(r)
-		if e != nil {
-			t.Fatal(e)
+		resp, doErr := proxy.Client().Do(r)
+		if doErr != nil {
+			t.Fatal(doErr)
 		}
 		defer resp.Body.Close()
-		raw, e := io.ReadAll(io.LimitReader(resp.Body, 2*dataread.MaxBytes))
-		if e != nil {
-			t.Fatal(e)
+		raw, doErr := io.ReadAll(io.LimitReader(resp.Body, 2*dataread.MaxBytes))
+		if doErr != nil {
+			t.Fatal(doErr)
 		}
 		if resp.StatusCode != want {
 			t.Fatalf("disposable source %s %s: %d %s", method, path, resp.StatusCode, raw)
@@ -184,14 +189,14 @@ func TestRealTesseract(t *testing.T) {
 			if mode == "revision" {
 				version = saved.Revision
 			}
-			got, e := h.Get(caller(), get(saved.ID, kind, mode, version))
-			if e != nil || got.Item.Version.ID != saved.Revision || got.Item.BodyMarkdown != "# "+kind {
-				t.Fatal("domain read", kind, mode, got, e)
+			got, getErr := h.Get(caller(), get(saved.ID, kind, mode, version))
+			if getErr != nil || got.Item.Version.ID != saved.Revision || got.Item.BodyMarkdown != "# "+kind {
+				t.Fatal("domain read", kind, mode, got, getErr)
 			}
 		}
-		page, e := h.Query(caller(), dataread.QueryRequest{Source: c.source(), Mode: "recall", Recall: &dataread.RecallSelector{Namespace: ns, Kind: kind}})
-		if e != nil || len(page.Items) != 1 || page.Items[0].Ref.ID != saved.ID {
-			t.Fatal("domain recall", kind, page, e)
+		page, qErr := h.Query(caller(), dataread.QueryRequest{Source: c.source(), Mode: "recall", Recall: &dataread.RecallSelector{Namespace: ns, Kind: kind}})
+		if qErr != nil || len(page.Items) != 1 || page.Items[0].Ref.ID != saved.ID {
+			t.Fatal("domain recall", kind, page, qErr)
 		}
 	}
 	current, e := h.Get(caller(), get(first.ID, "memory", "latest", ""))
@@ -203,13 +208,13 @@ func TestRealTesseract(t *testing.T) {
 	if e != nil || historical.Item.BodyMarkdown != "# Visible first revision" {
 		t.Fatal("exact revision", historical, e)
 	}
-	if _, e = h.Get(caller(), get(first.ID, "memory", "revision", private.Revision)); e != dataread.ErrVersion {
+	if _, e = h.Get(caller(), get(first.ID, "memory", "revision", private.Revision)); !errors.Is(e, dataread.ErrVersion) {
 		t.Fatal("foreign revision association", e)
 	}
-	if _, e = h.Get(caller(), get(private.ID, "memory", "latest", "")); e != dataread.ErrAccess {
+	if _, e = h.Get(caller(), get(private.ID, "memory", "latest", "")); !errors.Is(e, dataread.ErrAccess) {
 		t.Fatal("cross-namespace current read", e)
 	}
-	if _, e = h.Get(caller(), get(private.ID, "memory", "revision", private.Revision)); e != dataread.ErrAccess {
+	if _, e = h.Get(caller(), get(private.ID, "memory", "revision", private.Revision)); !errors.Is(e, dataread.ErrAccess) {
 		t.Fatal("cross-namespace history read", e)
 	}
 	if _, e = h.Get(caller(), get(draft.ID, "workspace", "if_current", draft.Token)); e != nil {
@@ -217,15 +222,15 @@ func TestRealTesseract(t *testing.T) {
 	}
 	edit := map[string]any{"item_id": draft.ID, "version_token": draft.Token, "body": "# Workspace v2", "session_id": "disposable-test", "author": map[string]string{"agent_id": "basalisk-test"}}
 	call("POST", "/v1/workspace/write", writer.Token, edit, 200)
-	if got, e := h.Get(caller(), get(draft.ID, "workspace", "if_current", draft.Token)); e != dataread.ErrChanged || got.Item.BodyMarkdown != "" {
-		t.Fatal("stale workspace fallback", got, e)
+	if got, gErr := h.Get(caller(), get(draft.ID, "workspace", "if_current", draft.Token)); !errors.Is(gErr, dataread.ErrChanged) || got.Item.BodyMarkdown != "" {
+		t.Fatal("stale workspace fallback", got, gErr)
 	}
 	q := dataread.QueryRequest{Source: c.source(), Mode: "recall", Recall: &dataread.RecallSelector{Namespace: memoryNS, Kind: "memory"}, Limit: 13}
 	seen := map[string]bool{}
 	for pages := 0; pages < 10; pages++ {
-		page, e := h.Query(caller(), q)
-		if e != nil {
-			t.Fatal("actual recall", e)
+		page, qErr := h.Query(caller(), q)
+		if qErr != nil {
+			t.Fatal("actual recall", qErr)
 		}
 		for _, it := range page.Items {
 			if it.Namespace != memoryNS || seen[it.Ref.ID] {
@@ -252,12 +257,12 @@ func TestRealTesseract(t *testing.T) {
 	}
 	q.Cursor = ""
 	q.Recall = &dataread.RecallSelector{Namespace: memoryNS, Kind: "memory", Query: "Visible"}
-	if page, e := h.Query(caller(), q); e != nil || len(page.Items) == 0 || page.Ranking != "relevance" {
-		t.Fatal("lexical recall", page, e)
+	if page, qErr := h.Query(caller(), q); qErr != nil || len(page.Items) == 0 || page.Ranking != "relevance" {
+		t.Fatal("lexical recall", page, qErr)
 	}
 	q.Recall = &dataread.RecallSelector{Namespace: workspaceNS, Kind: "workspace"}
-	if page, e := h.Query(caller(), q); e != nil || len(page.Items) != 1 || page.Items[0].Version.Kind != "current_token" {
-		t.Fatal("workspace recall", page, e)
+	if page, qErr := h.Query(caller(), q); qErr != nil || len(page.Items) != 1 || page.Items[0].Version.Kind != "current_token" {
+		t.Fatal("workspace recall", page, qErr)
 	}
 	// Source rejects unauthorized selectors before returning candidates/facets.
 	for _, ns := range []string{privateNS, "project/*"} {
@@ -287,11 +292,11 @@ func TestRealTesseract(t *testing.T) {
 		t.Fatal("missing buffered page", e)
 	}
 	c.token = func(context.Context) (string, error) { return "", dataread.ErrAccess }
-	if _, e = h.Get(caller(), get(first.ID, "memory", "latest", "")); e != dataread.ErrAccess {
+	if _, e = h.Get(caller(), get(first.ID, "memory", "latest", "")); !errors.Is(e, dataread.ErrAccess) {
 		t.Fatal("revoked enrollment", e)
 	}
 	q.Cursor = buffered.NextCursor
-	if _, e = h.Query(caller(), q); e != dataread.ErrAccess {
+	if _, e = h.Query(caller(), q); !errors.Is(e, dataread.ErrAccess) {
 		t.Fatal("revoked buffered read", e)
 	}
 	t.Log("Actual Tesseract verified namespace/read ceiling, current/history reads, workspace CAS and scoped paged recall; resolver revocation blocks buffered reads")

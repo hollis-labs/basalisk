@@ -1,3 +1,14 @@
+# Basalisk on Substrate: one binary with the dashboard embedded, listening on 127.0.0.1:8085.
+#
+# FIRST DEPLOY OF THIS SCHEMA: the Substrate rebuild changed the database schema and there is no
+# migration. The new binary refuses to start on the old database ("move the old data directory
+# aside"). Before the first deploy, stop the unit and move the old data directory
+# (~/.local/share/basalisk, or BASALISK_DATA_DIR) aside; the new version then creates a fresh
+# one and first-run setup runs again. Paired companion apps pair again and stored integration
+# credentials are entered again. See docs/conversion-notes.md ("For the operator"). The
+# sqlite_backup preflight below keeps a copy of the old database but does not move it.
+# Settings that were environment variables (BASALISK_*) are keys in the file named by
+# SUBSTRATE_CONFIG; set it in the unit, not in this file.
 schema: fleet-deploy/v1
 app: basalisk
 repo: hollis-labs/basalisk

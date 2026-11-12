@@ -79,7 +79,7 @@ export function IntegrationsPage({ timezone }: { timezone: string }) {
     <div className="page-content">
       <div className="page-intro">
         <p className="eyebrow">CONNECTIONS</p>
-        <h1>Integrations & keys</h1>
+        <h2>Integrations & keys</h2>
         <p>The services that power your personal tools.</p>
       </div>
       <div className="toolbar">

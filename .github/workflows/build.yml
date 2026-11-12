@@ -13,6 +13,6 @@ jobs:
       main_pkg: ./cmd/basalisk
       node_version: "22"
       ui_cmd: "cd frontend && npm ci && npm run build"          # == make ui-build; writes internal/webui/dist (embedded)
-      test_cmd: "go vet ./cmd/... ./internal/... && go test -race -count=1 ./cmd/... ./internal/..."
+      test_cmd: "go vet ./... && go test -race -count=1 ./..."
       extra_files: deploy.yaml
-      ldflags_var: ""       # no main.version var found; set to the real one if added
+      ldflags_var: ""       # cmd/basalisk has no version variable (the version command is the Substrate cli skeleton's); set it if one is added

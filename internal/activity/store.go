@@ -23,6 +23,8 @@ var (
 
 type Store struct{ db *sql.DB }
 
+// Identity names this installation and the caller. The installation id is local to the
+// database; the user id is the caller's verified principal subject.
 type Identity struct {
 	InstallationID string `json:"installationId"`
 	UserID         string `json:"userId"`
@@ -85,42 +87,9 @@ type Command struct {
 
 func id(prefix string) string { return prefix + rand.Text() }
 
-// Init upgrades the existing account database atomically. The reserved owner ID
-// is stable even before first-run setup and never depends on a username or host.
-func Init(db *sql.DB) (*Store, error) {
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	_, err = tx.Exec(`
-CREATE TABLE IF NOT EXISTS activity_identity (
- singleton INTEGER PRIMARY KEY CHECK(singleton=1), installation_id TEXT NOT NULL, user_id TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS activity_contexts (
- id TEXT PRIMARY KEY, project TEXT NOT NULL, workstream TEXT NOT NULL, source TEXT NOT NULL, recorded_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS activity_sessions (
- sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, user_id TEXT NOT NULL,
- title TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('active','paused','ended')), revision INTEGER NOT NULL,
- context_id TEXT NOT NULL REFERENCES activity_contexts(id), started_at TEXT NOT NULL, updated_at TEXT NOT NULL, ended_at TEXT NOT NULL);
-CREATE UNIQUE INDEX IF NOT EXISTS activity_one_open ON activity_sessions(user_id) WHERE status != 'ended';
-CREATE TABLE IF NOT EXISTS activity_events (
- sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, session_id TEXT NOT NULL REFERENCES activity_sessions(id),
- actor_id TEXT NOT NULL, kind TEXT NOT NULL, revision INTEGER NOT NULL, context_id TEXT NOT NULL REFERENCES activity_contexts(id),
- source TEXT NOT NULL, occurred_at TEXT NOT NULL, received_at TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS activity_events_session ON activity_events(session_id,sequence);
-CREATE TABLE IF NOT EXISTS activity_commands (
- request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, result TEXT NOT NULL);`)
-	if err == nil {
-		_, err = tx.Exec("INSERT OR IGNORE INTO activity_identity VALUES(1,?,?)", id("bas_"), id("usr_"))
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err = tx.Commit(); err != nil {
-		return nil, err
-	}
-	return &Store{db: db}, nil
-}
+// New returns the store over the app's database. The schema belongs to the app's migration
+// (internal/persistence); this package only reads and writes it.
+func New(db *sql.DB) *Store { return &Store{db: db} }
 
 type scanner interface{ Scan(...any) error }
 
@@ -136,13 +105,15 @@ func readSession(row scanner) (Session, error) {
 	return s, err
 }
 
-func (s *Store) State(ctx context.Context) (State, error) {
-	var state State
-	err := s.db.QueryRowContext(ctx, "SELECT installation_id,user_id FROM activity_identity WHERE singleton=1").Scan(&state.Identity.InstallationID, &state.Identity.UserID)
+// State is the installation identity and the user's open session, if any. Activity sessions
+// belong to the person who started them: every read and change below is scoped to userID.
+func (s *Store) State(ctx context.Context, userID string) (State, error) {
+	state := State{Identity: Identity{UserID: userID}}
+	err := s.db.QueryRowContext(ctx, "SELECT installation_id FROM activity_identity WHERE singleton=1").Scan(&state.Identity.InstallationID)
 	if err != nil {
 		return state, err
 	}
-	current, err := readSession(s.db.QueryRowContext(ctx, sessionSelect+"WHERE s.status != 'ended'"))
+	current, err := readSession(s.db.QueryRowContext(ctx, sessionSelect+"WHERE s.user_id=? AND s.status != 'ended'", userID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return state, nil
 	}
@@ -152,13 +123,13 @@ func (s *Store) State(ctx context.Context) (State, error) {
 	return state, err
 }
 
-func (s *Store) Sessions(ctx context.Context, before int64) (Page[Session], error) {
+func (s *Store) Sessions(ctx context.Context, userID string, before int64) (Page[Session], error) {
 	p := Page[Session]{Items: []Session{}}
-	rows, err := s.db.QueryContext(ctx, sessionSelect+"WHERE (?=0 OR s.sequence<?) ORDER BY s.sequence DESC LIMIT 21", before, before)
+	rows, err := s.db.QueryContext(ctx, sessionSelect+"WHERE s.user_id=? AND (?=0 OR s.sequence<?) ORDER BY s.sequence DESC LIMIT 21", userID, before, before)
 	if err != nil {
 		return p, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		item, err := readSession(rows)
 		if err != nil {
@@ -173,14 +144,9 @@ func (s *Store) Sessions(ctx context.Context, before int64) (Page[Session], erro
 	return p, rows.Err()
 }
 
-func (s *Store) Events(ctx context.Context, sessionID string, before int64) (Page[Event], error) {
+func (s *Store) Events(ctx context.Context, userID, sessionID string, before int64) (Page[Event], error) {
 	p := Page[Event]{Items: []Event{}}
-	var exists int
-	err := s.db.QueryRowContext(ctx, "SELECT 1 FROM activity_sessions WHERE id=?", sessionID).Scan(&exists)
-	if errors.Is(err, sql.ErrNoRows) {
-		return p, ErrNotFound
-	}
-	if err != nil {
+	if err := s.Owns(ctx, userID, sessionID); err != nil {
 		return p, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT e.sequence,e.id,e.session_id,e.actor_id,e.kind,e.revision,
@@ -190,7 +156,7 @@ func (s *Store) Events(ctx context.Context, sessionID string, before int64) (Pag
 	if err != nil {
 		return p, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var e Event
 		if err = rows.Scan(&e.Sequence, &e.ID, &e.SessionID, &e.ActorID, &e.Kind, &e.Revision,
@@ -207,8 +173,19 @@ func (s *Store) Events(ctx context.Context, sessionID string, before int64) (Pag
 	return p, rows.Err()
 }
 
-func validText(value string, max int) bool {
-	return len(value) <= max && !strings.ContainsFunc(value, unicode.IsControl)
+// Owns reports ErrNotFound unless the session exists and belongs to userID, so one user cannot
+// tell another's sessions from missing ones.
+func (s *Store) Owns(ctx context.Context, userID, sessionID string) error {
+	var exists int
+	err := s.db.QueryRowContext(ctx, "SELECT 1 FROM activity_sessions WHERE id=? AND user_id=?", sessionID, userID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
+func validText(value string, limit int) bool {
+	return len(value) <= limit && !strings.ContainsFunc(value, unicode.IsControl)
 }
 
 func (c *Command) validate() bool {
@@ -233,19 +210,21 @@ func (c *Command) validate() bool {
 // Apply commits a session change, its context, journal entry, and retry receipt
 // together. Retrying a request returns the original result, even after later
 // edits; reusing its ID for another command is a conflict.
-func (s *Store) Apply(ctx context.Context, c Command) (Session, error) {
+func (s *Store) Apply(ctx context.Context, userID string, c Command) (Session, error) {
 	var result Session
 	if !c.validate() {
 		return result, ErrInvalid
 	}
 	raw, _ := json.Marshal(c)
-	hash := sha256.Sum256(raw)
+	// The caller is part of the fingerprint: another user reusing a request id conflicts
+	// instead of receiving the first user's receipt.
+	hash := sha256.Sum256(append([]byte(userID+"\x00"), raw...))
 	fingerprint := hex.EncodeToString(hash[:])
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return result, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var previousHash, previousResult string
 	err = tx.QueryRowContext(ctx, "SELECT fingerprint,result FROM activity_commands WHERE request_id=?", c.RequestID).Scan(&previousHash, &previousResult)
 	if err == nil {
@@ -262,15 +241,13 @@ func (s *Store) Apply(ctx context.Context, c Command) (Session, error) {
 	kind := ""
 	if c.Action == "start" {
 		var open int
-		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM activity_sessions WHERE status!='ended'").Scan(&open); err != nil {
+		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM activity_sessions WHERE user_id=? AND status!='ended'", userID).Scan(&open); err != nil {
 			return result, err
 		}
 		if open != 0 {
 			return result, ErrConflict
 		}
-		if err = tx.QueryRowContext(ctx, "SELECT user_id FROM activity_identity WHERE singleton=1").Scan(&result.UserID); err != nil {
-			return result, err
-		}
+		result.UserID = userID
 		result.ID = id("act_")
 		result.Title = c.Title
 		result.Status = "active"
@@ -278,7 +255,7 @@ func (s *Store) Apply(ctx context.Context, c Command) (Session, error) {
 		result.StartedAt = now
 		kind = "started"
 	} else {
-		result, err = readSession(tx.QueryRowContext(ctx, sessionSelect+"WHERE s.id=?", c.SessionID))
+		result, err = readSession(tx.QueryRowContext(ctx, sessionSelect+"WHERE s.id=? AND s.user_id=?", c.SessionID, userID))
 		if errors.Is(err, sql.ErrNoRows) {
 			return result, ErrNotFound
 		}

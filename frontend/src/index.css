@@ -3,6 +3,8 @@
 @import "@hollis-labs/design-app-runtime/shell-reset.css";
 @import "@hollis-labs/kit-account/source.css";
 @import "@hollis-labs/kit-settings/source.css";
+/* app-shell ships TypeScript source with Tailwind classes and no source.css of its own. */
+@source "../node_modules/@hollis-labs/app-shell/src";
 
 :root {
   color-scheme: dark light;
@@ -126,7 +128,7 @@ fieldset {
 .page-intro {
   margin-bottom: 2.5rem;
 }
-.page-intro h1 {
+.page-intro h2 {
   font-size: clamp(1.8rem, 3vw, 2.6rem);
   letter-spacing: -0.04em;
   line-height: 1.2;

@@ -1,23 +1,16 @@
-// Package webui supplies embedded assets to the maintained Chimera host.
+// Package webui embeds the built SPA (frontend/ builds into dist/).
 package webui
 
 import (
 	"embed"
 	"io/fs"
-	"net/http"
-
-	"github.com/hollis-labs/chimera/host"
 )
-
-const BasePath = "/"
 
 //go:embed all:dist
 var embedded embed.FS
 
-func New(routes http.Handler) (*host.Host, error) {
-	assets, err := fs.Sub(embedded, "dist")
-	if err != nil {
-		return nil, err
-	}
-	return host.New(host.Config{Name: "basalisk", Assets: assets, BasePath: BasePath, Routes: routes})
+// Assets returns the built SPA rooted at dist/, for httphost.Options{Assets: ...}.
+// An unbuilt tree holds only dist/.gitkeep, which still compiles and serves nothing.
+func Assets() (fs.FS, error) {
+	return fs.Sub(embedded, "dist")
 }

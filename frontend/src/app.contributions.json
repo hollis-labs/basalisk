@@ -1,0 +1,158 @@
+{
+  "schema_version": 0,
+  "module": "basalisk",
+  "contributions": [
+    {
+      "kind": "nav.item",
+      "key": "home",
+      "label": "Home",
+      "icon": "home",
+      "route": "/",
+      "priority": 1
+    },
+    {
+      "kind": "surface",
+      "key": "home",
+      "label": "Home",
+      "title": "Workspace",
+      "route": "/",
+      "layout": "dashboard"
+    },
+
+    {
+      "kind": "nav.item",
+      "key": "sessions",
+      "label": "Work sessions",
+      "icon": "history",
+      "route": "/sessions",
+      "priority": 2
+    },
+    {
+      "kind": "surface",
+      "key": "sessions",
+      "label": "Work sessions",
+      "title": "Work sessions",
+      "route": "/sessions",
+      "layout": "list"
+    },
+
+    {
+      "kind": "nav.item",
+      "key": "outbox",
+      "label": "Fragment outbox",
+      "icon": "inbox",
+      "route": "/outbox",
+      "priority": 3
+    },
+    {
+      "kind": "surface",
+      "key": "outbox",
+      "label": "Fragment outbox",
+      "title": "Fragment outbox",
+      "route": "/outbox",
+      "layout": "list"
+    },
+
+    {
+      "kind": "nav.item",
+      "key": "readiness",
+      "label": "Capture readiness",
+      "icon": "cable",
+      "route": "/readiness",
+      "priority": 4
+    },
+    {
+      "kind": "surface",
+      "key": "readiness",
+      "label": "Capture readiness",
+      "title": "Capture readiness",
+      "route": "/readiness",
+      "layout": "detail"
+    },
+
+    {
+      "kind": "nav.item",
+      "key": "devices",
+      "label": "Devices",
+      "icon": "laptop",
+      "route": "/devices",
+      "priority": 5
+    },
+    {
+      "kind": "surface",
+      "key": "devices",
+      "label": "Devices",
+      "title": "Devices",
+      "route": "/devices",
+      "layout": "list"
+    },
+
+    {
+      "kind": "nav.item",
+      "key": "account",
+      "label": "Account & preferences",
+      "icon": "user",
+      "route": "/account",
+      "priority": 6
+    },
+    {
+      "kind": "surface",
+      "key": "account",
+      "label": "Account & preferences",
+      "title": "Account & preferences",
+      "route": "/account",
+      "layout": "form"
+    },
+
+    {
+      "kind": "nav.item",
+      "key": "integrations",
+      "label": "Integrations & keys",
+      "icon": "cable",
+      "route": "/integrations",
+      "priority": 7
+    },
+    {
+      "kind": "surface",
+      "key": "integrations",
+      "label": "Integrations & keys",
+      "title": "Integrations & keys",
+      "route": "/integrations",
+      "layout": "list"
+    },
+
+    {
+      "kind": "nav.item",
+      "key": "security",
+      "label": "Security",
+      "icon": "shield",
+      "route": "/security",
+      "priority": 8
+    },
+    {
+      "kind": "surface",
+      "key": "security",
+      "label": "Security",
+      "title": "Security",
+      "route": "/security",
+      "layout": "form"
+    },
+
+    {
+      "kind": "nav.item",
+      "key": "sign-out",
+      "label": "Sign out",
+      "icon": "log-out",
+      "route": "/sign-out",
+      "region": "nav.footer"
+    },
+    {
+      "kind": "surface",
+      "key": "sign-out",
+      "label": "Sign out",
+      "title": "Sign out",
+      "route": "/sign-out",
+      "layout": "form"
+    }
+  ]
+}
