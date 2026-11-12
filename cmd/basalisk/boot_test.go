@@ -13,11 +13,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/hollis-labs/substrate/boot"
-	"github.com/hollis-labs/substrate/modules/database"
-
-	"github.com/hollis-labs/basalisk/internal/persistence"
 )
 
 // started boots the real stack (every module the manifest selects, the real migrations, the
@@ -33,25 +28,14 @@ func started(t *testing.T, dataDir string, override string) string {
 		}
 		env["SUBSTRATE_CONFIG"] = file
 	}
-	config, err := prepare(func(k string) string { return env[k] })
-	if err != nil {
-		t.Fatal(err)
-	}
-	var cfg map[string]any
-	if err = json.Unmarshal([]byte(config), &cfg); err != nil {
-		t.Fatal(err)
-	}
-	cfg["httphost"] = map[string]any{"addr": "127.0.0.1:0"}
-	config2, _ := json.Marshal(cfg)
-
 	// The config module reads SUBSTRATE_CONFIG from the process environment.
 	if f := env["SUBSTRATE_CONFIG"]; f != "" {
 		t.Setenv("SUBSTRATE_CONFIG", f)
 	}
-	fsys, root := persistence.Migrations()
-	database.UseMigrationFS(fsys, root)
 	ctx, cancel := context.WithCancel(context.Background())
-	run, err := boot.Start(ctx, substrateApp, substrateModules, string(config2))
+	run, err := bootWith(ctx, func(k string) string { return env[k] }, func(cfg map[string]any) {
+		cfg["httphost"] = map[string]any{"addr": "127.0.0.1:0"}
+	})
 	if err != nil {
 		cancel()
 		t.Fatal(err)
@@ -348,17 +332,9 @@ func TestPrepareWritesAbsolutePathsIntoTheDataDirectory(t *testing.T) {
 
 func TestServeRefusesANonLoopbackAddress(t *testing.T) {
 	dir := t.TempDir()
-	config, err := prepare(func(k string) string { return map[string]string{"BASALISK_DATA_DIR": dir}[k] })
-	if err != nil {
-		t.Fatal(err)
-	}
-	var cfg map[string]any
-	_ = json.Unmarshal([]byte(config), &cfg)
-	cfg["httphost"] = map[string]any{"addr": "0.0.0.0:8085"}
-	raw, _ := json.Marshal(cfg)
-	fsys, root := persistence.Migrations()
-	database.UseMigrationFS(fsys, root)
-	run, err := boot.Start(context.Background(), substrateApp, substrateModules, string(raw))
+	run, err := bootWith(context.Background(), func(k string) string { return map[string]string{"BASALISK_DATA_DIR": dir}[k] }, func(cfg map[string]any) {
+		cfg["httphost"] = map[string]any{"addr": "0.0.0.0:8085"}
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

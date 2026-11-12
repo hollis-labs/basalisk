@@ -10,23 +10,29 @@ Things Substrate did not provide, or choices that were ambiguous. Each says what
 1. **`libs/security/pairing` pin: resolved.** It was missing from the Substrate BOM, so `substrate pins check --app .`
    failed. The one-line BOM entry landed in Substrate main (1ceedec) and `go run github.com/hollis-labs/substrate/cmd/substrate
    pins check --app .` now passes (`app pins match the bom`). Pairing is pinned in the BOM like any other lib.
-2. **The manifest cannot carry the app's own config.** `config:` accepts only catalogue modules ("config for unknown
-   module"), so the `basalisk:` block (allowed hosts, delivery) cannot have defaults in `substrate.yaml`. It is read
-   from `app.Config["basalisk"]`, which the `config` module fills from the `SUBSTRATE_CONFIG` file. Defaults are
-   in `internal/settings` (all empty).
-3. **The `config` override merges one level deep.** An override of `database.sqlite` replaces the whole block, so it
-   must repeat `path`. Flat blocks (`identity`, `basalisk`) merge key by key.
-4. **No hook to resolve run-time paths.** The data directory is only known at run time (XDG or
-   `BASALISK_DATA_DIR`), but the manifest compiles to a constant. `cmd/basalisk/config.go` rewrites the generated
-   config JSON (database path, identity key file, secrets directory) before `boot.Start`. The module override file
-   was not used because it needs a file on disk per start.
-5. **No pre-migration hook for the legacy guard.** The database module migrates as soon as it opens the file, so the
-   guard runs in `main` before `boot.Start`. To judge the file that will really be opened it also reads a
-   `database.sqlite.path` override from the `SUBSTRATE_CONFIG` file, duplicating the config module's merge rule.
-6. **The identity module has no user lookup.** `GET /api/account` needs username, display name and email, and the
-   Principal carries only the display name. `internal/api.IdentityUsers` reads the module's `identity_users` table
-   directly (read-only). This couples Basalisk to that table. A `Service.User(ctx, id)` accessor, or a
-   `GET /api/identity/profile`, would remove it.
+2. **The manifest cannot carry the app's own config: resolved.** `config:` used to accept only catalogue modules, so
+   the `basalisk:` block had no defaults in `substrate.yaml` and lived in `internal/settings`. Substrate (#8) now
+   accepts an app block; the defaults (all empty) are in `cmd/basalisk/substrate.yaml` and the app reads them from
+   `app.Config["basalisk"]`.
+3. **The `config` override merged one level deep: resolved.** An override of `database.sqlite` replaced the whole
+   block and had to repeat `path`. Substrate (#6) now deep-merges the `SUBSTRATE_CONFIG` file, so overriding only
+   `database.sqlite.path` (or only one other nested key) leaves its siblings alone.
+4. **No hook to resolve run-time paths: resolved.** The data directory is only known at run time (XDG or
+   `BASALISK_DATA_DIR`), but the manifest compiles to a constant. Before, `cmd/basalisk/config.go` rewrote the
+   generated config JSON before `boot.Start`. Substrate (#9) adds `boot.StartWith` with an `AfterConfig` hook, which
+   runs after the `SUBSTRATE_CONFIG` override is applied; Basalisk's hook resolves the data directory and anchors the
+   database path, identity key file and secrets directory in it. A path from the override that is absolute is the
+   operator's choice and is kept; a relative one (including the manifest default) is replaced with the data-dir
+   path. `effectiveDatabasePath` is gone.
+5. **No pre-migration hook for the legacy guard: resolved.** The database module migrates as soon as it opens the
+   file, so the guard used to run in `main` before `boot.Start` and re-read the `SUBSTRATE_CONFIG` file to judge the
+   file that would really be opened, duplicating the config module's merge rule. It is now `Before["database"]`, a
+   hook on the boot sequence that reads the path from the merged config the module will read. Tests in
+   `cmd/basalisk/boot_test.go` cover an old-layout directory and an override that moves the database.
+6. **The identity module had no user lookup: resolved.** `GET /api/account` needs username, display name and email,
+   and the Principal carries only the display name, so `internal/api.IdentityUsers` read the module's
+   `identity_users` table directly. Substrate (#7) adds `Service.User(ctx, id)`, and `IdentityUsers` now wraps it;
+   a disabled or unknown user maps to `ErrNoUser`. Basalisk no longer touches the table.
 7. **`/api/data/*` was never served.** The old `dataread` host's HTTP handler was "intentionally not mounted until
    enrollment and caller policy are available", and nothing called `NewReadHost`. The packages (`dataread`, `feread`,
    `tesseractread`, `fecapture`) and `NewReadHost` are ported with their tests, but no `/api/data/*` route is

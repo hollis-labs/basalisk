@@ -17,6 +17,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `/api/` routes require the scopes `basalisk.read` (GET) and `basalisk.write` (changes).
 - Activity sessions and preferences belong to the verified identity subject.
 
+- Pinned Substrate to main 09c04e5. The app's pages come from `frontend.contributions` (`cmd/basalisk/app.ui.json`) instead of a client-side merge; the `basalisk:` defaults are in `substrate.yaml`; the data-directory paths are set in the `AfterConfig` boot hook and the pre-Substrate database guard runs as `Before["database"]`; `GET /api/account` reads the user through the identity `Service.User`. An override file may now set only `database.sqlite.path`. A relative database, key or secrets path in the override is replaced with the data-directory path; an absolute one is kept.
+
 ### Removed
 
 - The assurance and WebAuthn backend, `/api/assurance/*` and the `/assurance/` status mount. A follow-up restores them from git history.
