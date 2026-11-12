@@ -314,7 +314,7 @@ export function SessionsPage({ timezone }: { timezone: string }) {
     <div className="page-content">
       <div className="page-intro">
         <p className="eyebrow">YOUR ACTIVITY</p>
-        <h1>Work sessions</h1>
+        <h2>Work sessions</h2>
         <p>Keep a thread through your work, even as you switch projects.</p>
       </div>
       <Notice error={error} />

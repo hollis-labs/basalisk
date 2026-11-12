@@ -132,7 +132,7 @@ export function DevicesPage({ timezone }: { timezone: string }) {
     <div className="page-content">
       <div className="page-intro">
         <p className="eyebrow">YOUR DEVICES</p>
-        <h1>Apps &amp; devices</h1>
+        <h2>Apps &amp; devices</h2>
         <p>Connect your Mac companion and capture apps to this workspace.</p>
       </div>
       <Notice error={error} />

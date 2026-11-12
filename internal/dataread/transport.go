@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 )
@@ -66,16 +67,16 @@ func (h *Host) Handler() http.Handler {
 			if err != nil {
 				err = SafeError(err)
 				status := 503
-				switch err {
-				case ErrAccess:
+				switch {
+				case errors.Is(err, ErrAccess):
 					status = 403
-				case ErrInvalid, ErrUnsupported:
+				case errors.Is(err, ErrInvalid), errors.Is(err, ErrUnsupported):
 					status = 400
-				case ErrCursor, ErrVersion, ErrChanged:
+				case errors.Is(err, ErrCursor), errors.Is(err, ErrVersion), errors.Is(err, ErrChanged):
 					status = 409
-				case ErrNotFound:
+				case errors.Is(err, ErrNotFound):
 					status = 404
-				case ErrLimit:
+				case errors.Is(err, ErrLimit):
 					status = 413
 				}
 				w.WriteHeader(status)

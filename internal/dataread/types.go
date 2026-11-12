@@ -14,7 +14,7 @@ import (
 const MaxBytes = 1 << 20
 const MaxItems = 50
 
-// This projection contains a source Markdown preview as well as display text.
+// Projection names the reader projection. It contains a source Markdown preview as well as display text.
 // It is not a body-free summary; policy must authorize every projected field.
 const Projection = "reader-preview.v1"
 const TesseractProjection = "tesseract-text.v1"
@@ -210,7 +210,7 @@ func ValidID(s string) bool {
 		return false
 	}
 	for _, c := range s {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' && c != '_' {
 			return false
 		}
 	}

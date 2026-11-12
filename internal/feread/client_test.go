@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -65,14 +66,14 @@ func TestNoCaptureOrOwnerCredentialFallback(t *testing.T) {
 		t.Run(scope, func(t *testing.T) {
 			calls := 0
 			c, _ := makeClient(t, func(http.ResponseWriter, *http.Request) { calls++ }, scope)
-			if _, e := c.Get(context.Background(), readRequest()); e != dataread.ErrAccess || calls != 0 {
+			if _, e := c.Get(context.Background(), readRequest()); !errors.Is(e, dataread.ErrAccess) || calls != 0 {
 				t.Fatal("wrong grant reached network", e, calls)
 			}
 		})
 	}
 	c, _ := makeClient(t, func(http.ResponseWriter, *http.Request) { t.Error("owner credential reached network") }, Scope)
 	c.token = func(context.Context) (string, error) { return strings.Repeat("a", 64), nil }
-	if _, e := c.Get(context.Background(), readRequest()); e != dataread.ErrAccess {
+	if _, e := c.Get(context.Background(), readRequest()); !errors.Is(e, dataread.ErrAccess) {
 		t.Fatal(e)
 	}
 }
@@ -102,7 +103,7 @@ func TestRedirectSizeIdentityAndVersionFailures(t *testing.T) {
 				w.WriteHeader(tc.status)
 				fmt.Fprint(w, tc.body)
 			}, Scope)
-			if _, e := c.Get(context.Background(), readRequest()); e != tc.expected {
+			if _, e := c.Get(context.Background(), readRequest()); !errors.Is(e, tc.expected) {
 				t.Fatal(e)
 			}
 		})
@@ -121,7 +122,7 @@ func TestSelectionIsClosedAndKeepsNativeCursorInternal(t *testing.T) {
 	if e != nil || len(page.Items) != 1 || page.Cursor != "next-native" {
 		t.Fatal(page, e)
 	}
-	if _, e = c.Select(context.Background(), "inbox", ""); e != dataread.ErrUnsupported {
+	if _, e = c.Select(context.Background(), "inbox", ""); !errors.Is(e, dataread.ErrUnsupported) {
 		t.Fatal("personal Reader scope enabled", e)
 	}
 }

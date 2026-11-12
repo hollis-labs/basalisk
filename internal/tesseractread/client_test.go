@@ -3,6 +3,7 @@ package tesseractread
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -92,10 +93,10 @@ func TestCurrentAndWorkspaceVersions(t *testing.T) {
 	if e != nil || got.Item.Version.Kind != "current_token" {
 		t.Fatal(got, e)
 	}
-	if got, e = h.Get(caller(), req("workspace", "if_current", "old-token")); e != dataread.ErrChanged || got.Item.BodyMarkdown != "" {
+	if got, e = h.Get(caller(), req("workspace", "if_current", "old-token")); !errors.Is(e, dataread.ErrChanged) || got.Item.BodyMarkdown != "" {
 		t.Fatal("stale workspace exposed content", got, e)
 	}
-	if _, e = h.Get(caller(), req("workspace", "revision", "token-1")); e != dataread.ErrUnsupported {
+	if _, e = h.Get(caller(), req("workspace", "revision", "token-1")); !errors.Is(e, dataread.ErrUnsupported) {
 		t.Fatal("workspace fabricated history", e)
 	}
 }
@@ -125,7 +126,7 @@ func TestExactRevisionUsesAuthorizedItemHistory(t *testing.T) {
 	if e != nil || it.Version.ID != "rev-old" || calls != 2 {
 		t.Fatal(it, e, calls)
 	}
-	if _, e = c.Get(context.Background(), req("memory", "revision", "missing")); e != dataread.ErrVersion {
+	if _, e = c.Get(context.Background(), req("memory", "revision", "missing")); !errors.Is(e, dataread.ErrVersion) {
 		t.Fatal(e)
 	}
 }
@@ -144,7 +145,7 @@ func TestCredentialCeilingBeforeContent(t *testing.T) {
 			w := whoami()
 			tc.change(w)
 			c := fakeClient(t, w, func(http.ResponseWriter, *http.Request) { t.Error("reached content with wrong credential ceiling") })
-			if _, e := c.Get(context.Background(), req("memory", "latest", "")); e != dataread.ErrAccess {
+			if _, e := c.Get(context.Background(), req("memory", "latest", "")); !errors.Is(e, dataread.ErrAccess) {
 				t.Fatal(e)
 			}
 		})
@@ -166,7 +167,7 @@ func TestMalformedOrOutOfScopeResponsesRefuseWholePage(t *testing.T) {
 				tc.mutate(v)
 				json.NewEncoder(w).Encode(v)
 			})
-			if _, e := c.Get(context.Background(), req("memory", "latest", "")); e != tc.want {
+			if _, e := c.Get(context.Background(), req("memory", "latest", "")); !errors.Is(e, tc.want) {
 				t.Fatal(e)
 			}
 		})
@@ -202,7 +203,7 @@ func TestRecallPreservesManifestAndCursorIsolation(t *testing.T) {
 	q.Cursor = page.NextCursor
 	original := *q.Recall
 	q.Recall = &dataread.RecallSelector{Namespace: workspaceNS, Kind: "workspace", Query: "markdown"}
-	if _, e = h.Query(caller(), q); e != dataread.ErrCursor {
+	if _, e = h.Query(caller(), q); !errors.Is(e, dataread.ErrCursor) {
 		t.Fatal("cursor scope widened", e)
 	}
 	q.Recall = &original
@@ -210,7 +211,7 @@ func TestRecallPreservesManifestAndCursorIsolation(t *testing.T) {
 	if e != nil || len(last.Items) != 1 || last.Status != "partial" || last.Exhausted || last.NextCursor != "" || !last.SourceTruncated || last.SourceTruncationReason != "budget_bytes" || calls != 1 || !last.ObservedAt.Equal(page.ObservedAt) {
 		t.Fatal(last, e, calls)
 	}
-	if _, e = c.Recall(context.Background(), dataread.RecallSelector{Namespace: "project/*", Kind: "memory"}, ""); e != dataread.ErrAccess || calls != 1 {
+	if _, e = c.Recall(context.Background(), dataread.RecallSelector{Namespace: "project/*", Kind: "memory"}, ""); !errors.Is(e, dataread.ErrAccess) || calls != 1 {
 		t.Fatal("broad selector reached source", e)
 	}
 }
@@ -229,7 +230,7 @@ func TestTesseractHTTPAndCommonDispatchParity(t *testing.T) {
 		r := httptest.NewRequest("POST", "/api/data/get", strings.NewReader(string(b))).WithContext(caller())
 		h.Handler().ServeHTTP(w, r)
 		if version == "stale" {
-			if callErr != dataread.ErrChanged || w.Code != 409 || strings.Contains(w.Body.String(), "Markdown") {
+			if !errors.Is(callErr, dataread.ErrChanged) || w.Code != 409 || strings.Contains(w.Body.String(), "Markdown") {
 				t.Fatal("stale transport mismatch", callErr, w.Code)
 			}
 		} else if callErr != nil || out == nil || w.Code != 200 {
@@ -256,7 +257,7 @@ func TestSourceRevocationBlocksBufferedContinuation(t *testing.T) {
 	}
 	who["verified"] = false
 	q.Cursor = page.NextCursor
-	if got, e := h.Query(caller(), q); e != dataread.ErrAccess || len(got.Items) != 0 || calls != 1 {
+	if got, e := h.Query(caller(), q); !errors.Is(e, dataread.ErrAccess) || len(got.Items) != 0 || calls != 1 {
 		t.Fatal("revoked source served buffered content", got, e, calls)
 	}
 }
@@ -270,7 +271,7 @@ func TestHistoryBudgetNeverBecomesMissingRevision(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(map[string]any{"results": []any{wireRecord("item-1", "memory", fmt.Sprintf("rev-%d", calls))}, "manifest": map[string]any{"results_returned": 1, "results_total": 1000, "truncated": true, "truncation_reason": "budget_bytes", "next_cursor": fmt.Sprintf("cursor-%d", calls)}})
 	})
-	if _, e := c.Get(context.Background(), req("memory", "revision", "unvisited-revision")); e != dataread.ErrLimit || calls != 4 {
+	if _, e := c.Get(context.Background(), req("memory", "revision", "unvisited-revision")); !errors.Is(e, dataread.ErrLimit) || calls != 4 {
 		t.Fatal("budget exhaustion claimed absence", e, calls)
 	}
 }
@@ -285,7 +286,7 @@ func TestExactRevisionGrantDoesNotAuthorizeHistoryScan(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = h.Get(caller(), req("memory", "revision", "rev-1")); e != dataread.ErrUnsupported {
+	if _, e = h.Get(caller(), req("memory", "revision", "rev-1")); !errors.Is(e, dataread.ErrUnsupported) {
 		t.Fatal("history scan widened grant", e)
 	}
 }
@@ -310,7 +311,7 @@ func TestReadTransportBounds(t *testing.T) {
 				w.WriteHeader(tc.status)
 				fmt.Fprint(w, tc.body)
 			})
-			if _, e := c.Get(context.Background(), req("memory", "latest", "")); e != tc.want {
+			if _, e := c.Get(context.Background(), req("memory", "latest", "")); !errors.Is(e, tc.want) {
 				t.Fatal(e)
 			}
 		})

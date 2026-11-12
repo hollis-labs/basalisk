@@ -3,43 +3,46 @@ module github.com/hollis-labs/basalisk
 go 1.26.10
 
 require (
-	github.com/cyberphone/json-canonicalization v0.0.0-20261011152517-32a48195b9b2
-	github.com/fxamacker/cbor/v2 v2.9.4
-	github.com/go-webauthn/webauthn v0.18.2
-	github.com/hollis-labs/chimera v0.0.0-20261008115211-389155313ee5
-	github.com/hollis-labs/libs/security/auth v0.1.0
+	github.com/hollis-labs/libs/core/store v0.1.0
+	github.com/hollis-labs/libs/core/util v0.6.0
+	github.com/hollis-labs/libs/security/auth v0.3.0
 	github.com/hollis-labs/libs/security/pairing v0.0.0-20261018164511-e8bfb38b4f31
 	github.com/hollis-labs/libs/security/secrets v0.1.0
-	github.com/hollis-labs/libs/security/webauthn v0.1.0
-	golang.org/x/crypto v0.58.0
+	github.com/hollis-labs/substrate v0.1.1-0.20261112104853-1ceedeca2428
+	github.com/spf13/cobra v1.10.2
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.60.1
 )
 
 require (
 	github.com/adrg/xdg v0.5.3 // indirect
-	github.com/hollis-labs/libs/core/util v0.6.0
-)
-
-require (
 	github.com/danieljoos/wincred v1.2.3 // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
-	github.com/go-webauthn/x v0.3.1 // indirect
+	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
-	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hollis-labs/go-webui v0.2.0 // indirect
-	github.com/hollis-labs/libs/mesh/core v0.8.0
+	github.com/hollis-labs/libs/app/app-host v0.1.0 // indirect
+	github.com/hollis-labs/libs/core/panics v0.1.0 // indirect
+	github.com/hollis-labs/libs/security/redact v0.2.0 // indirect
+	github.com/hollis-labs/libs/ui/ui-go v0.1.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.11.0 // indirect
+	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/ncruces/go-strftime v1.0.0 // indirect
-	github.com/philhofer/fwd v1.2.0 // indirect
+	github.com/mfridman/interpolate v0.0.2 // indirect
+	github.com/ncruces/go-strftime v1.1.0 // indirect
+	github.com/pressly/goose/v3 v3.29.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/tinylib/msgp v1.6.4 // indirect
-	github.com/x448/float16 v0.8.4 // indirect
+	github.com/sethvargo/go-retry v0.5.0 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	modernc.org/libc v1.77.1 // indirect
+	golang.org/x/text v0.43.0 // indirect
+	modernc.org/libc v1.78.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )

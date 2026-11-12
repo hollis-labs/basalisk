@@ -40,7 +40,7 @@ final class OfflineObservations: URLProtocol {
     func testOriginBoundary() throws {
         try equal(try serverOrigin(" HTTP://127.0.0.1:18080/ "), "http://127.0.0.1:18080")
         try equal(try serverOrigin("https://example.test/"), "https://example.test")
-        for invalid in ["http://100.64.0.1", "https://example.test/path", "https://example.test?key=value",
+        for invalid in ["http://192.0.2.1", "https://example.test/path", "https://example.test?key=value",
                         "https://example.test#fragment", "https://user@example.test", "ftp://localhost", "http://localhost:0"] {
             try rejects { try serverOrigin(invalid) }
         }

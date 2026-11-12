@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -89,7 +90,7 @@ func (c *Client) request(ctx context.Context, path string, out any) error {
 	if err != nil {
 		return dataread.ErrUnavailable
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch resp.StatusCode {
 	case 200:
 	case 401, 403:
@@ -162,7 +163,7 @@ func (c *Client) Get(ctx context.Context, in dataread.GetRequest) (dataread.Item
 	var raw readerItem
 	err := c.request(ctx, path, &raw)
 	if err != nil {
-		if err == dataread.ErrNotFound && in.Version.Mode == "revision" {
+		if errors.Is(err, dataread.ErrNotFound) && in.Version.Mode == "revision" {
 			return dataread.Item{}, dataread.ErrVersion
 		}
 		return dataread.Item{}, err

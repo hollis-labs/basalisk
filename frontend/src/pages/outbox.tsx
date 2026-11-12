@@ -127,7 +127,7 @@ export function OutboxPage() {
     <div className="page-content">
       <div className="page-intro">
         <p className="eyebrow">CAPTURE</p>
-        <h1>Fragment outbox</h1>
+        <h2>Fragment outbox</h2>
         <p>
           Queued notes are retained here until delivery is confirmed. An active work session is
           optional.
