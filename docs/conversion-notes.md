@@ -22,8 +22,12 @@ Things Substrate did not provide, or choices that were ambiguous. Each says what
    generated config JSON before `boot.Start`. Substrate (#9) adds `boot.StartWith` with an `AfterConfig` hook, which
    runs after the `SUBSTRATE_CONFIG` override is applied; Basalisk's hook resolves the data directory and anchors the
    database path, identity key file and secrets directory in it. A path from the override that is absolute is the
-   operator's choice and is kept; a relative one (including the manifest default) is replaced with the data-dir
-   path. `effectiveDatabasePath` is gone.
+   operator's choice and is kept; a relative one (the manifest default or one from the override, such as
+   `other.db`) is joined onto the data dir, an empty one becomes the default name, and a relative one that climbs out
+   of the data dir through `..` stops startup. `appdirs.Prepare` now creates only the data directory: the database file
+   is created 0600 (`appdirs.PrivateFile`) at the final configured path, for the sqlite driver only, so an override
+   leaves no empty default `basalisk.db`; the missing directories above a relative path inside the data dir are created
+   0700, and none are created outside it. `effectiveDatabasePath` is gone.
 5. **No pre-migration hook for the legacy guard: resolved.** The database module migrates as soon as it opens the
    file, so the guard used to run in `main` before `boot.Start` and re-read the `SUBSTRATE_CONFIG` file to judge the
    file that would really be opened, duplicating the config module's merge rule. It is now `Before["database"]`, a
