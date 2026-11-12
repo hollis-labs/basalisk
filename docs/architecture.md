@@ -99,26 +99,34 @@ the operator to move the old data directory aside. There is no migration.
 ## Files
 
 Under the data directory (`$XDG_DATA_HOME/basalisk`, or `BASALISK_DATA_DIR`), mode 0700: `basalisk.db` (0600),
-`identity-signing.key` (0600, plus its public `.jwks.json`) and `secrets/` (integration credentials).
+`identity-signing.key` (0600, plus its public `.jwks.json`) and `secrets/` (integration credentials). These are the
+default names; a path from the override replaces them. Startup creates only what the final configuration uses: with
+`database.sqlite.path` pointed elsewhere there is no empty `basalisk.db`. The database file is created 0600 wherever it
+is, so an absolute path in a directory of its own choosing is still private; SQLite gives its `-wal`/`-shm` files the
+mode of the database. A relative path with a subdirectory (`db/main.db`, `keys/sign.key`) creates that directory
+(0700) inside the data directory, and only there. For an absolute path outside the data directory nothing is created
+except the database file: its directory must already exist.
 
 ## Config
 
-The manifest (`cmd/basalisk/substrate.yaml`) sets the defaults. The binary replaces the three data paths with
-absolute ones under the data directory in the `AfterConfig` boot hook (after the override is applied; an absolute path
-from the override is kept, a relative one is replaced). Any key can be overridden in a YAML file named by
-`SUBSTRATE_CONFIG`, which is deep-merged over the manifest, so overriding only `database.sqlite.path` is enough.
+The manifest (`cmd/basalisk/substrate.yaml`) sets the defaults. The binary anchors the three data paths
+(`database.sqlite.path`, `identity.key_file`, `secrets.state_dir`) in the data directory in the `AfterConfig` boot hook,
+after the override is applied: a relative path (the manifest default or one from the override) is joined onto the data
+directory (`path: other.db` becomes `<data>/other.db`), an empty one becomes the default name, and an absolute path is
+kept as is. A relative path that climbs out of the data directory through `..` stops startup. Any key can be
+overridden in a YAML file named by `SUBSTRATE_CONFIG`, which is deep-merged over the manifest, so overriding only `database.sqlite.path` is enough.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `httphost.addr` | `127.0.0.1:8085` | Listen address. Must be loopback. |
 | `auth.mode` | `enforce` | Leave it. |
-| `identity.key_file` | `<data>/identity-signing.key` | Token signing key. |
+| `identity.key_file` | `<data>/identity-signing.key` | Token signing key. Relative: joined onto `<data>`; absolute: kept. |
 | `identity.session_ttl` | `12h` | Sign-in lifetime. |
 | `identity.trusted_proxy` | `false` | Believe `X-Forwarded-Proto` from the local TLS proxy (for the Secure cookie). |
 | `identity.allowed_origins` | none | Extra origins whose cookie-authenticated writes are accepted. |
 | `identity.secure_cookies` | `auto` | `auto`, `always` or `never`. |
-| `secrets.state_dir` | `<data>/secrets` | Credential store. |
-| `database.sqlite.path` | `<data>/basalisk.db` | Database file. |
+| `secrets.state_dir` | `<data>/secrets` | Credential store. Relative: joined onto `<data>`; absolute: kept. |
+| `database.sqlite.path` | `<data>/basalisk.db` | Database file. Relative: joined onto `<data>`; absolute: kept. |
 | `basalisk.allowed_hosts` | none | Host names served besides loopback, exactly as sent (with a port if the client sends one). Needs a loopback TLS proxy sending `X-Forwarded-Proto: https`. |
 | `basalisk.fe_integration_id` | none | Integration the fragment delivery worker serves. |
 | `basalisk.public_origin` | none | Canonical `https://` origin of this Basalisk. |

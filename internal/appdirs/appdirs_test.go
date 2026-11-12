@@ -48,28 +48,93 @@ func TestExplicitDirectoryWins(t *testing.T) {
 	}
 }
 
-func TestPrepareMakesPrivateAndTightensLooseModes(t *testing.T) {
+func mode(t *testing.T, p string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
+}
+
+func TestPrepareMakesTheDirectoryPrivateAndCreatesNoFile(t *testing.T) {
 	d := Dirs{Data: filepath.Join(t.TempDir(), "data")}
 	if err := d.Prepare(); err != nil {
 		t.Fatal(err)
 	}
-	// A directory and file made too open by an earlier run are tightened, not trusted.
-	if err := os.Chmod(d.Data, 0o755); err != nil { //nolint:gosec // deliberately loose, to prove Prepare tightens it
-		t.Fatal(err)
+	if m := mode(t, d.Data); m != 0o700 {
+		t.Fatalf("data dir mode = %v", m)
 	}
-	if err := os.Chmod(d.Database(), 0o644); err != nil { //nolint:gosec // deliberately loose, to prove Prepare tightens it
+	entries, err := os.ReadDir(d.Data)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("Prepare created files: %v, %v", entries, err)
+	}
+	// A directory left too open by an earlier run is tightened, not trusted.
+	if err := os.Chmod(d.Data, 0o755); err != nil { //nolint:gosec // deliberately loose, to prove Prepare tightens it
 		t.Fatal(err)
 	}
 	if err := d.Prepare(); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{d.Data, d.Database()} {
-		info, err := os.Stat(p)
-		if err != nil {
-			t.Fatal(err)
+	if m := mode(t, d.Data); m != 0o700 {
+		t.Fatalf("loose data dir mode = %v", m)
+	}
+}
+
+func TestPrivateFileCreatesAt0600AndTightens(t *testing.T) {
+	// A permissive umask must not widen the file: the mode is 0600 whatever it is.
+	p := filepath.Join(t.TempDir(), "x.db")
+	if err := PrivateFile(p); err != nil {
+		t.Fatal(err)
+	}
+	if m := mode(t, p); m != 0o600 {
+		t.Fatalf("new file mode = %v", m)
+	}
+	if err := os.Chmod(p, 0o644); err != nil { //nolint:gosec // deliberately loose, to prove PrivateFile tightens it
+		t.Fatal(err)
+	}
+	if err := PrivateFile(p); err != nil {
+		t.Fatal(err)
+	}
+	if m := mode(t, p); m != 0o600 {
+		t.Fatalf("tightened file mode = %v", m)
+	}
+	if err := PrivateFile(filepath.Join(t.TempDir(), "missing", "x.db")); err == nil {
+		t.Fatal("a file in a directory that does not exist must fail, not create the directory")
+	}
+}
+
+func TestWithinAndEnsureParentStayInsideTheDataDirectory(t *testing.T) {
+	root := t.TempDir()
+	d := Dirs{Data: filepath.Join(root, "data")}
+	if err := d.Prepare(); err != nil {
+		t.Fatal(err)
+	}
+	for p, want := range map[string]bool{
+		d.Data:                                   true,
+		filepath.Join(d.Data, "a", "b"):          true,
+		filepath.Join(root, "data-evil", "x"):    false,
+		filepath.Join(root, "x"):                 false,
+		filepath.Join(d.Data, "..", "x"):         false,
+		filepath.Join(d.Data, "..", "data", "y"): true,
+	} {
+		if got := d.Within(p); got != want {
+			t.Errorf("Within(%q) = %v, want %v", p, got, want)
 		}
-		if info.Mode().Perm()&0o077 != 0 {
-			t.Fatalf("%s is accessible to other users: %v", p, info.Mode())
+	}
+	if err := d.EnsureParent(filepath.Join(d.Data, "db", "deep", "main.db")); err != nil {
+		t.Fatal(err)
+	}
+	for _, sub := range []string{"db", filepath.Join("db", "deep")} {
+		if m := mode(t, filepath.Join(d.Data, sub)); m != 0o700 {
+			t.Errorf("%s mode = %v, want 0700", sub, m)
 		}
+	}
+	outside := filepath.Join(root, "elsewhere", "x.db")
+	if err := d.EnsureParent(outside); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Dir(outside)); err == nil {
+		t.Fatal("EnsureParent created a directory outside the data directory")
 	}
 }

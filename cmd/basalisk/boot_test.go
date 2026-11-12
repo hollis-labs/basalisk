@@ -355,3 +355,178 @@ func createLegacy(t *testing.T, path, statement string) {
 		t.Fatal(err)
 	}
 }
+
+func TestAnchorPath(t *testing.T) {
+	data := filepath.Join(string(filepath.Separator), "data")
+	def := filepath.Join(data, "default.db")
+	abs := filepath.Join(string(filepath.Separator), "elsewhere", "x.db")
+	for _, c := range []struct{ name, in, want string }{
+		{"empty is the default", "", def},
+		{"relative is joined", "other.db", filepath.Join(data, "other.db")},
+		{"relative subdirectory is joined", "sub/other.db", filepath.Join(data, "sub", "other.db")},
+		{"dot prefix is joined", "./other.db", filepath.Join(data, "other.db")},
+		{"dotdot that stays inside is joined", "a/../other.db", filepath.Join(data, "other.db")},
+		{"a name starting with dots is not an escape", "..other.db", filepath.Join(data, "..other.db")},
+		{"absolute is kept", abs, abs},
+		{"absolute with dotdot is kept", filepath.Join(abs, "..", "y.db"), filepath.Join(abs, "..", "y.db")},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := anchorPath(data, def, c.in)
+			if err != nil || got != c.want {
+				t.Fatalf("anchorPath(%q) = %q, %v; want %q", c.in, got, err, c.want)
+			}
+		})
+	}
+	for _, in := range []string{"..", "../x.db", "a/../../x.db", "../data-evil/x.db"} {
+		if got, err := anchorPath(data, def, in); err == nil {
+			t.Errorf("anchorPath(%q) = %q, want an error", in, got)
+		}
+	}
+}
+
+func TestRelativeOverridePathsAreJoinedOntoTheDataDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "d")
+	override := filepath.Join(t.TempDir(), "o.yaml")
+	body := "database:\n  sqlite:\n    path: other.db\nidentity:\n  key_file: sign.key\nsecrets:\n  state_dir: creds\n"
+	if err := os.WriteFile(override, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"BASALISK_DATA_DIR": dir, "SUBSTRATE_CONFIG": override}
+	out, err := prepare(func(k string) string { return env[k] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg map[string]map[string]any
+	if err := json.Unmarshal([]byte(out), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg["database"]["sqlite"].(map[string]any)["path"]; got != filepath.Join(dir, "other.db") {
+		t.Errorf("database path = %v", got)
+	}
+	if got := cfg["identity"]["key_file"]; got != filepath.Join(dir, "sign.key") {
+		t.Errorf("identity key = %v", got)
+	}
+	if got := cfg["secrets"]["state_dir"]; got != filepath.Join(dir, "creds") {
+		t.Errorf("secrets dir = %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "other.db")); err != nil {
+		t.Errorf("the database was not created at the joined path: %v", err)
+	}
+}
+
+func TestRelativeOverrideThatEscapesTheDataDirectoryStopsStartup(t *testing.T) {
+	for _, body := range []string{
+		"database:\n  sqlite:\n    path: ../escape.db\n",
+		"identity:\n  key_file: ../../k\n",
+		"secrets:\n  state_dir: ../s\n",
+	} {
+		override := filepath.Join(t.TempDir(), "o.yaml")
+		if err := os.WriteFile(override, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(t.TempDir(), "d")
+		env := map[string]string{"BASALISK_DATA_DIR": dir, "SUBSTRATE_CONFIG": override}
+		if _, err := prepare(func(k string) string { return env[k] }); err == nil || !strings.Contains(err.Error(), "leaves the data directory") {
+			t.Errorf("%q: err = %v, want a leaves-the-data-directory refusal", body, err)
+		}
+	}
+}
+
+func TestLegacyGuardJudgesTheJoinedRelativePath(t *testing.T) {
+	dir := t.TempDir()
+	createLegacy(t, filepath.Join(dir, "other.db"), `CREATE TABLE owner(id INTEGER PRIMARY KEY)`)
+	override := filepath.Join(t.TempDir(), "o.yaml")
+	if err := os.WriteFile(override, []byte("database:\n  sqlite:\n    path: other.db\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"BASALISK_DATA_DIR": dir, "SUBSTRATE_CONFIG": override}
+	if _, err := prepare(func(k string) string { return env[k] }); err == nil || !strings.Contains(err.Error(), "move the old data directory aside") {
+		t.Fatalf("err = %v, want the move-aside instruction for <data>/other.db", err)
+	}
+}
+
+func overrideEnv(t *testing.T, dir, body string) func(string) string {
+	t.Helper()
+	override := filepath.Join(t.TempDir(), "o.yaml")
+	if err := os.WriteFile(override, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"BASALISK_DATA_DIR": dir, "SUBSTRATE_CONFIG": override}
+	return func(k string) string { return env[k] }
+}
+
+func TestOverriddenDatabaseLeavesNoDefaultFileAndIsPrivate(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "d")
+	if _, err := prepare(overrideEnv(t, dir, "database:\n  sqlite:\n    path: other.db\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "basalisk.db")); err == nil {
+		t.Error("the unused default basalisk.db was created")
+	}
+	if info, err := os.Stat(filepath.Join(dir, "other.db")); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("other.db: %v, %v; want 0600", info, err)
+	}
+	// Sidecars SQLite made while the app ran must not be wider than the database.
+	matches, _ := filepath.Glob(filepath.Join(dir, "other.db-*"))
+	for _, m := range matches {
+		if info, err := os.Stat(m); err == nil && info.Mode().Perm()&0o077 != 0 {
+			t.Errorf("%s is accessible to others: %v", m, info.Mode())
+		}
+	}
+}
+
+func TestAbsoluteDatabaseElsewhereIsCreatedPrivate(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "d")
+	elsewhere := t.TempDir()                           // a 0700 directory from the test harness; the file must not rely on it
+	if err := os.Chmod(elsewhere, 0o755); err != nil { //nolint:gosec // no directory cover: the file itself must be private
+		t.Fatal(err)
+	}
+	target := filepath.Join(elsewhere, "far.db")
+	if _, err := prepare(overrideEnv(t, dir, "database:\n  sqlite:\n    path: "+target+"\n")); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("%s: %v, %v; want 0600", target, info, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "basalisk.db")); err == nil {
+		t.Error("the unused default basalisk.db was created")
+	}
+}
+
+func TestAbsoluteDatabaseInAMissingDirectoryOutsideDataFails(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "d")
+	target := filepath.Join(t.TempDir(), "nope", "far.db")
+	if _, err := prepare(overrideEnv(t, dir, "database:\n  sqlite:\n    path: "+target+"\n")); err == nil {
+		t.Fatal("want an error")
+	}
+	if _, err := os.Stat(filepath.Dir(target)); err == nil {
+		t.Error("a directory outside the data directory was created")
+	}
+}
+
+func TestRelativeSubdirectoryIsCreatedPrivateInsideTheDataDirectory(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "d")
+	body := "database:\n  sqlite:\n    path: db/main.db\nidentity:\n  key_file: keys/sign.key\nsecrets:\n  state_dir: vault/creds\n"
+	if _, err := prepare(overrideEnv(t, dir, body)); err != nil {
+		t.Fatal(err)
+	}
+	for _, sub := range []string{"db", "keys", "vault"} {
+		info, err := os.Stat(filepath.Join(dir, sub))
+		if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
+			t.Errorf("%s: %v, %v; want a 0700 directory", sub, info, err)
+		}
+	}
+	if info, err := os.Stat(filepath.Join(dir, "db", "main.db")); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("db/main.db: %v, %v; want 0600", info, err)
+	}
+	// An escaping path creates nothing, inside or outside.
+	root2 := t.TempDir()
+	dir2 := filepath.Join(root2, "d")
+	if _, err := prepare(overrideEnv(t, dir2, "database:\n  sqlite:\n    path: ../out/x.db\n")); err == nil {
+		t.Fatal("want a refusal")
+	}
+	if _, err := os.Stat(filepath.Join(root2, "out")); err == nil {
+		t.Error("an escaping path created a directory outside the data directory")
+	}
+}

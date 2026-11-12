@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	paths "github.com/hollis-labs/libs/core/util/apppaths"
 )
@@ -53,17 +54,39 @@ func (d Dirs) SigningKey() string { return filepath.Join(d.Data, SigningKeyFile)
 // Secrets is the managed file store for integration credentials.
 func (d Dirs) Secrets() string { return filepath.Join(d.Data, SecretsDir) }
 
-// Prepare creates the data directory (0700) and the database file (0600) when missing and
-// tightens both when they exist, so private data is never readable by other users. The
-// signing key and the secrets store create themselves private.
+// Prepare creates the data directory (0700) when missing and tightens it when it exists, so
+// private data is never readable by other users. It creates no file: the database file, the
+// signing key and the secrets store are made private by whoever uses them, at the path the
+// configuration finally names (see PrivateFile and EnsureParent).
 func (d Dirs) Prepare() error {
 	if err := os.MkdirAll(d.Data, 0o700); err != nil {
 		return err
 	}
-	if err := os.Chmod(d.Data, 0o700); err != nil { //nolint:gosec // 0700 on a directory is the point: owner-only
-		return err
+	return os.Chmod(d.Data, 0o700) //nolint:gosec // 0700 on a directory is the point: owner-only
+}
+
+// Within reports whether path is the data directory or below it (lexically).
+func (d Dirs) Within(path string) bool {
+	rel, err := filepath.Rel(d.Data, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// EnsureParent creates the directories above path (mode 0700, before the umask) when path is
+// inside the data directory. Outside it nothing is created: an absolute path elsewhere is the
+// operator's, and its directory must already exist.
+func (d Dirs) EnsureParent(path string) error {
+	if !d.Within(path) {
+		return nil
 	}
-	f, err := os.OpenFile(d.Database(), os.O_CREATE|os.O_RDWR, 0o600)
+	return os.MkdirAll(filepath.Dir(path), 0o700)
+}
+
+// PrivateFile makes sure the file at path exists with mode 0600 and tightens an existing one.
+// A new file is created with 0600 (never wider, the umask only narrows it), so it is not
+// readable by others even for an instant. SQLite gives its -wal, -shm and -journal files the
+// mode of the database file, so a 0600 database has 0600 sidecars.
+func PrivateFile(path string) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // path is operator configuration
 	if err != nil {
 		return err
 	}
