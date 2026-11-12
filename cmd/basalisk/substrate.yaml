@@ -18,6 +18,15 @@ config:
   # trusted_proxy and allowed_origins in the SUBSTRATE_CONFIG file.
   identity: { key_file: identity-signing.key, session_ttl: 12h }
   secrets: { state_dir: secrets }
-  # The app's own `basalisk:` block (internal/settings) is not declared here: the manifest accepts
-  # config only for catalogue modules. Set it, and any other override, in the YAML file named by
-  # SUBSTRATE_CONFIG (docs/architecture.md lists every key).
+  # The app's own block (internal/settings). Delivery stays off while the five delivery keys are empty.
+  # Override any of it in the YAML file named by SUBSTRATE_CONFIG (docs/architecture.md lists every key).
+  basalisk:
+    allowed_hosts: []
+    fe_integration_id: ""
+    public_origin: ""
+    tether_issuer_url: ""
+    tether_subject: ""
+    tether_parent_ref: ""
+# The app's own pages: a ui.json-shaped file, validated and merged by `substrate frontend`.
+frontend:
+  contributions: app.ui.json

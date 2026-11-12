@@ -16,7 +16,7 @@ import (
 
 const (
 	substrateApp        = "basalisk"
-	substrateConfigJSON = "{\"auth\":{\"mode\":\"enforce\"},\"database\":{\"sqlite\":{\"path\":\"basalisk.db\"}},\"httphost\":{\"addr\":\"127.0.0.1:8085\"},\"identity\":{\"key_file\":\"identity-signing.key\",\"session_ttl\":\"12h\"},\"logging\":{\"format\":\"text\",\"level\":\"info\"},\"secrets\":{\"state_dir\":\"secrets\"}}"
+	substrateConfigJSON = "{\"auth\":{\"mode\":\"enforce\"},\"basalisk\":{\"allowed_hosts\":[],\"fe_integration_id\":\"\",\"public_origin\":\"\",\"tether_issuer_url\":\"\",\"tether_parent_ref\":\"\",\"tether_subject\":\"\"},\"database\":{\"sqlite\":{\"path\":\"basalisk.db\"}},\"httphost\":{\"addr\":\"127.0.0.1:8085\"},\"identity\":{\"key_file\":\"identity-signing.key\",\"session_ttl\":\"12h\"},\"logging\":{\"format\":\"text\",\"level\":\"info\"},\"secrets\":{\"state_dir\":\"secrets\"}}"
 )
 
 // substrateModules is the start order.

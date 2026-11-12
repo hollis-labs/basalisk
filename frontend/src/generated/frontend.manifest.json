@@ -123,9 +123,322 @@
           "scope": "{app}.admin"
         }
       ]
+    },
+    {
+      "schema_version": 0,
+      "module": "basalisk",
+      "contributions": [
+        {
+          "kind": "nav.item",
+          "key": "home",
+          "label": "Home",
+          "icon": "home",
+          "priority": 1,
+          "route": "/"
+        },
+        {
+          "kind": "surface",
+          "key": "home",
+          "label": "Home",
+          "route": "/",
+          "layout": "dashboard",
+          "title": "Workspace"
+        },
+        {
+          "kind": "nav.item",
+          "key": "sessions",
+          "label": "Work sessions",
+          "icon": "history",
+          "priority": 2,
+          "route": "/sessions"
+        },
+        {
+          "kind": "surface",
+          "key": "sessions",
+          "label": "Work sessions",
+          "route": "/sessions",
+          "layout": "list",
+          "title": "Work sessions"
+        },
+        {
+          "kind": "nav.item",
+          "key": "outbox",
+          "label": "Fragment outbox",
+          "icon": "inbox",
+          "priority": 3,
+          "route": "/outbox"
+        },
+        {
+          "kind": "surface",
+          "key": "outbox",
+          "label": "Fragment outbox",
+          "route": "/outbox",
+          "layout": "list",
+          "title": "Fragment outbox"
+        },
+        {
+          "kind": "nav.item",
+          "key": "readiness",
+          "label": "Capture readiness",
+          "icon": "cable",
+          "priority": 4,
+          "route": "/readiness"
+        },
+        {
+          "kind": "surface",
+          "key": "readiness",
+          "label": "Capture readiness",
+          "route": "/readiness",
+          "layout": "detail",
+          "title": "Capture readiness"
+        },
+        {
+          "kind": "nav.item",
+          "key": "devices",
+          "label": "Devices",
+          "icon": "laptop",
+          "priority": 5,
+          "route": "/devices"
+        },
+        {
+          "kind": "surface",
+          "key": "devices",
+          "label": "Devices",
+          "route": "/devices",
+          "layout": "list",
+          "title": "Devices"
+        },
+        {
+          "kind": "nav.item",
+          "key": "account",
+          "label": "Account \u0026 preferences",
+          "icon": "user",
+          "priority": 6,
+          "route": "/account"
+        },
+        {
+          "kind": "surface",
+          "key": "account",
+          "label": "Account \u0026 preferences",
+          "route": "/account",
+          "layout": "form",
+          "title": "Account \u0026 preferences"
+        },
+        {
+          "kind": "nav.item",
+          "key": "integrations",
+          "label": "Integrations \u0026 keys",
+          "icon": "cable",
+          "priority": 7,
+          "route": "/integrations"
+        },
+        {
+          "kind": "surface",
+          "key": "integrations",
+          "label": "Integrations \u0026 keys",
+          "route": "/integrations",
+          "layout": "list",
+          "title": "Integrations \u0026 keys"
+        },
+        {
+          "kind": "nav.item",
+          "key": "security",
+          "label": "Security",
+          "icon": "shield",
+          "priority": 8,
+          "route": "/security"
+        },
+        {
+          "kind": "surface",
+          "key": "security",
+          "label": "Security",
+          "route": "/security",
+          "layout": "form",
+          "title": "Security"
+        },
+        {
+          "kind": "nav.item",
+          "key": "sign-out",
+          "label": "Sign out",
+          "icon": "log-out",
+          "region": "nav.footer",
+          "route": "/sign-out"
+        },
+        {
+          "kind": "surface",
+          "key": "sign-out",
+          "label": "Sign out",
+          "route": "/sign-out",
+          "layout": "form",
+          "title": "Sign out"
+        }
+      ]
     }
   ],
-  "items": null,
+  "items": [
+    {
+      "kind": "nav.item",
+      "key": "home",
+      "label": "Home",
+      "icon": "home",
+      "priority": 1,
+      "route": "/",
+      "module": "basalisk"
+    },
+    {
+      "kind": "nav.item",
+      "key": "sessions",
+      "label": "Work sessions",
+      "icon": "history",
+      "priority": 2,
+      "route": "/sessions",
+      "module": "basalisk"
+    },
+    {
+      "kind": "nav.item",
+      "key": "outbox",
+      "label": "Fragment outbox",
+      "icon": "inbox",
+      "priority": 3,
+      "route": "/outbox",
+      "module": "basalisk"
+    },
+    {
+      "kind": "nav.item",
+      "key": "readiness",
+      "label": "Capture readiness",
+      "icon": "cable",
+      "priority": 4,
+      "route": "/readiness",
+      "module": "basalisk"
+    },
+    {
+      "kind": "nav.item",
+      "key": "devices",
+      "label": "Devices",
+      "icon": "laptop",
+      "priority": 5,
+      "route": "/devices",
+      "module": "basalisk"
+    },
+    {
+      "kind": "nav.item",
+      "key": "account",
+      "label": "Account \u0026 preferences",
+      "icon": "user",
+      "priority": 6,
+      "route": "/account",
+      "module": "basalisk"
+    },
+    {
+      "kind": "nav.item",
+      "key": "integrations",
+      "label": "Integrations \u0026 keys",
+      "icon": "cable",
+      "priority": 7,
+      "route": "/integrations",
+      "module": "basalisk"
+    },
+    {
+      "kind": "nav.item",
+      "key": "security",
+      "label": "Security",
+      "icon": "shield",
+      "priority": 8,
+      "route": "/security",
+      "module": "basalisk"
+    },
+    {
+      "kind": "surface",
+      "key": "account",
+      "label": "Account \u0026 preferences",
+      "route": "/account",
+      "layout": "form",
+      "title": "Account \u0026 preferences",
+      "module": "basalisk"
+    },
+    {
+      "kind": "surface",
+      "key": "devices",
+      "label": "Devices",
+      "route": "/devices",
+      "layout": "list",
+      "title": "Devices",
+      "module": "basalisk"
+    },
+    {
+      "kind": "surface",
+      "key": "home",
+      "label": "Home",
+      "route": "/",
+      "layout": "dashboard",
+      "title": "Workspace",
+      "module": "basalisk"
+    },
+    {
+      "kind": "surface",
+      "key": "integrations",
+      "label": "Integrations \u0026 keys",
+      "route": "/integrations",
+      "layout": "list",
+      "title": "Integrations \u0026 keys",
+      "module": "basalisk"
+    },
+    {
+      "kind": "surface",
+      "key": "outbox",
+      "label": "Fragment outbox",
+      "route": "/outbox",
+      "layout": "list",
+      "title": "Fragment outbox",
+      "module": "basalisk"
+    },
+    {
+      "kind": "surface",
+      "key": "readiness",
+      "label": "Capture readiness",
+      "route": "/readiness",
+      "layout": "detail",
+      "title": "Capture readiness",
+      "module": "basalisk"
+    },
+    {
+      "kind": "surface",
+      "key": "security",
+      "label": "Security",
+      "route": "/security",
+      "layout": "form",
+      "title": "Security",
+      "module": "basalisk"
+    },
+    {
+      "kind": "surface",
+      "key": "sessions",
+      "label": "Work sessions",
+      "route": "/sessions",
+      "layout": "list",
+      "title": "Work sessions",
+      "module": "basalisk"
+    },
+    {
+      "kind": "nav.item",
+      "key": "sign-out",
+      "label": "Sign out",
+      "icon": "log-out",
+      "region": "nav.footer",
+      "route": "/sign-out",
+      "module": "basalisk"
+    },
+    {
+      "kind": "surface",
+      "key": "sign-out",
+      "label": "Sign out",
+      "route": "/sign-out",
+      "layout": "form",
+      "title": "Sign out",
+      "module": "basalisk"
+    }
+  ],
   "routes": [
     {
       "method": "GET",
@@ -243,6 +556,19 @@
     }
   ],
   "regions": [],
-  "kits": [],
+  "kits": [
+    {
+      "name": "@hollis-labs/design-app-runtime",
+      "version": "0.5.0"
+    },
+    {
+      "name": "@hollis-labs/design-components",
+      "version": "0.5.1"
+    },
+    {
+      "name": "@hollis-labs/design-tokens",
+      "version": "0.5.0"
+    }
+  ],
   "bindings": []
 }

@@ -4,11 +4,11 @@ Found while moving the frontend onto app-shell 0.1.0 and the BOM-pinned kits. Ow
 
 ## Framework gaps
 
-1. **No seam for an app to contribute UI.** `substrate frontend` reads `ui.json` only from catalogue
-   modules (`catalog.Find`), and an app is not a module. Workaround: hand-written
-   `src/app.contributions.json` merged client-side in `src/manifest.ts`. A real fix is an app-level
-   contribution file named in `substrate.yaml` (e.g. `frontend.contributions: ui.json`) that the builder
-   validates and merges like a module's.
+1. **No seam for an app to contribute UI: resolved.** `substrate frontend` read `ui.json` only from catalogue
+   modules, so the first port used a hand-written `src/app.contributions.json` merged client-side in
+   `src/manifest.ts`. Substrate (#8) adds `frontend.contributions` in `substrate.yaml`; the file is now
+   `cmd/basalisk/app.ui.json`, validated and merged into the generated manifest, and `manifest.ts` imports the
+   generated manifest as is.
 2. **`substrate frontend` writes `"items": null`** when no module contributes items (its `merge`
    returns a nil slice). app-shell's `parseFrontendManifest` rejects it (`Array.isArray`), so the
    shell would show "The app cannot start". Worked around with `?? []` in `manifest.ts`. Fix in

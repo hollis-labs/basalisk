@@ -12,7 +12,7 @@ its data and its process. Basalisk is SQLite only.
 |---|---|
 | `cmd/basalisk/substrate.yaml` | The manifest: modules and their config. Edit it, then `make generate`. |
 | `cmd/basalisk/substrate_wiring.go` | Generated. Do not edit. |
-| `cmd/basalisk/main.go`, `config.go`, `serve.go` | `basalisk` / `basalisk serve` (the default), `basalisk version` (and the skeleton's `config` and `health`). `config.go` points the module config at the data directory; `serve.go` assembles the handler chain and runs the background workers. |
+| `cmd/basalisk/main.go`, `config.go`, `serve.go` | `basalisk` / `basalisk serve` (the default), `basalisk version` (and the skeleton's `config` and `health`). `config.go` holds the boot hooks (`AfterConfig` points the module config at the data directory; `Before["database"]` refuses a pre-Substrate database); `serve.go` assembles the handler chain and runs the background workers. |
 | `internal/persistence` | The one goose migration (the schema) and the startup guard for the pre-Substrate layout. `persistencetest` opens a migrated database for tests. |
 | `internal/api` | The HTTP layer and the domain it serves: owner routes (`/api/...`), companion routes (`/auth/...`, `/companion/...`), the fragment delivery worker, capture, artifacts, observations. |
 | `internal/activity` | Human work sessions: commands, journal, context. |
@@ -85,7 +85,7 @@ One goose migration, `internal/persistence/migrations/sqlite/00001_init.sql`, ap
 | `integrations` (metadata; the credential is in the secrets store, never in a response) | Basalisk |
 | `companion_observations`, `companion_artifacts`, `fragment_connections`, `fragment_submissions`, `capture_context_bindings` | Basalisk |
 | `activity_identity`, `activity_contexts`, `activity_sessions`, `activity_events`, `activity_commands` | Basalisk |
-| `identity_users`, `identity_sessions`, `identity_credentials`, `identity_pairing_codes` | identity module |
+| `identity_users` (read through `Service.User`), `identity_sessions`, `identity_credentials`, `identity_pairing_codes` | identity module |
 | `hollis_pairing_*` | libs `security/pairing` |
 
 `GET /api/account` returns `{username, displayName, email, theme, timezone, revision}`: the identity user plus the
@@ -104,9 +104,9 @@ Under the data directory (`$XDG_DATA_HOME/basalisk`, or `BASALISK_DATA_DIR`), mo
 ## Config
 
 The manifest (`cmd/basalisk/substrate.yaml`) sets the defaults. The binary replaces the three data paths with
-absolute ones under the data directory before the modules start. Any key can be overridden in a YAML file named by
-`SUBSTRATE_CONFIG` (one level deep: a module block's keys replace the manifest's, and a replaced nested block such
-as `database.sqlite` replaces the whole block).
+absolute ones under the data directory in the `AfterConfig` boot hook (after the override is applied; an absolute path
+from the override is kept, a relative one is replaced). Any key can be overridden in a YAML file named by
+`SUBSTRATE_CONFIG`, which is deep-merged over the manifest, so overriding only `database.sqlite.path` is enough.
 
 | Key | Default | Meaning |
 |---|---|---|

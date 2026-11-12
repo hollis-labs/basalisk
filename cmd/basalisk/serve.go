@@ -65,7 +65,7 @@ func (b *basalisk) serve(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	a := svc.API(api.IdentityUsers{DB: st.DB()})
+	a := svc.API(api.IdentityUsers{Svc: id})
 	a.RegisterScopes(auth.ScopeTable(app))
 
 	assets, err := webui.Assets()

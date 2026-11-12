@@ -17,11 +17,11 @@ npm run dev        # Vite; proxies /api, /auth, /companion to 127.0.0.1:8085
 
 - `npm run manifest` runs `substrate frontend` for `../cmd/basalisk/substrate.yaml` and writes
   `src/generated/frontend.manifest.json` (checked in; regenerate when modules or Substrate change).
-  It holds the routes and kits of the modules the binary links. None of them contributes a page.
-- Basalisk's own pages are declared in `src/app.contributions.json`: a `ui.json`-shaped list of
-  `nav.item` and `surface` items (validated against Substrate's `ui.Default` vocabulary).
-  `src/manifest.ts` appends them to the generated manifest (module `basalisk`), because Substrate's
-  builder only reads `ui.json` from catalogue modules.
+  It holds the routes and kits of the modules the binary links, and Basalisk's own pages.
+- Basalisk's own pages are declared in `cmd/basalisk/app.ui.json`, named by `frontend.contributions`
+  in `substrate.yaml`: a `ui.json`-shaped list of `nav.item` and `surface` items. The builder
+  validates it against Substrate's `ui.Default` vocabulary and merges it into the generated manifest
+  (module `basalisk`); `src/manifest.ts` only reads the result.
 - `src/App.tsx` boots (`GET /api/setup`, `GET /api/account`), shows sign-in or first-run setup outside
   the shell, then renders `ManifestShell` with `pages` keyed by surface key and `icons` keyed by the
   manifest's icon names. The shell owns navigation and layout; there is no router, only

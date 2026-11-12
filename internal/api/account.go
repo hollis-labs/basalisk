@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/hollis-labs/substrate/modules/identity"
 )
 
 var errNoCaller = errors.New("api: the request carries no verified caller")
@@ -28,20 +30,19 @@ type UserDirectory interface {
 	User(ctx context.Context, userID string) (User, error)
 }
 
-// IdentityUsers reads users from the identity module's table. The module exposes no
-// lookup, so this is a read-only query over its documented identity_users table (see
-// docs/conversion-notes.md, Gaps).
-type IdentityUsers struct{ DB *sql.DB }
+// IdentityUsers reads users through the identity module's lookup.
+type IdentityUsers struct{ Svc *identity.Service }
 
 // User returns the active user with the identity user id (no principal prefix).
 func (d IdentityUsers) User(ctx context.Context, userID string) (User, error) {
-	var u User
-	var disabled int
-	err := d.DB.QueryRowContext(ctx, "SELECT username,display_name,email,disabled FROM identity_users WHERE id=?", userID).Scan(&u.Username, &u.DisplayName, &u.Email, &disabled)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && disabled != 0) {
+	u, err := d.Svc.User(ctx, userID)
+	if errors.Is(err, identity.ErrNotFound) || (err == nil && u.Disabled) {
 		return User{}, ErrNoUser
 	}
-	return u, err
+	if err != nil {
+		return User{}, err
+	}
+	return User{Username: u.Username, DisplayName: u.DisplayName, Email: u.Email}, nil
 }
 
 // Profile is the account view: the sign-in identity composed with the stored preferences.

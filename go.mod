@@ -8,9 +8,8 @@ require (
 	github.com/hollis-labs/libs/security/auth v0.3.0
 	github.com/hollis-labs/libs/security/pairing v0.0.0-20261018164511-e8bfb38b4f31
 	github.com/hollis-labs/libs/security/secrets v0.1.0
-	github.com/hollis-labs/substrate v0.1.1-0.20261112104853-1ceedeca2428
+	github.com/hollis-labs/substrate v0.1.1-0.20261112131348-09c04e56e7dd
 	github.com/spf13/cobra v1.10.2
-	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.60.1
 )
 
@@ -42,6 +41,7 @@ require (
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.78.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
