@@ -8,6 +8,10 @@
 #   --install   copy the app to /Applications (replacing the one there)
 #   --open      open the app when done
 #
+# A development copy that can run beside the real app:
+#   BASALISK_BUNDLE_ID=com.hollislabs.basalisk.dev BASALISK_APP_NAME="Basalisk Dev" scripts/build-macos-app.sh
+#   open -g "build/Basalisk Dev.app" --env BASALISK_DATA_DIR=/some/scratch --env SUBSTRATE_CONFIG=/some/dev.yaml
+#
 # Signing: macOS attaches the Accessibility and Input Monitoring grants to the app's code
 # signature. An ad-hoc signature changes with every build, so each rebuild loses the grants;
 # a real identity keeps them. BASALISK_SIGN_IDENTITY names the identity to use. Without it
@@ -28,9 +32,13 @@ for arg in "$@"; do
 	esac
 done
 
-bundle_id="com.hollislabs.basalisk"
+# BASALISK_BUNDLE_ID and BASALISK_APP_NAME build a second, separate app (for instance
+# com.hollislabs.basalisk.dev, "Basalisk Dev"): its own web view storage and its own privacy
+# grants, so it can run beside the real one without sharing its sign-in.
+bundle_id="${BASALISK_BUNDLE_ID:-com.hollislabs.basalisk}"
+app_name="${BASALISK_APP_NAME:-Basalisk}"
 version="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
-app="$root/build/Basalisk.app"
+app="$root/build/$app_name.app"
 
 if [ "$ui" = 1 ]; then
 	(cd frontend && npm ci && npm run build)
@@ -52,8 +60,8 @@ cat >"$app/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key><string>Basalisk</string>
-	<key>CFBundleDisplayName</key><string>Basalisk</string>
+	<key>CFBundleName</key><string>${app_name}</string>
+	<key>CFBundleDisplayName</key><string>${app_name}</string>
 	<key>CFBundleIdentifier</key><string>${bundle_id}</string>
 	<key>CFBundleExecutable</key><string>basalisk</string>
 	<key>CFBundleIconFile</key><string>Basalisk</string>
@@ -87,9 +95,9 @@ else
 fi
 
 if [ "$install" = 1 ]; then
-	rm -rf "/Applications/Basalisk.app"
-	cp -R "$app" "/Applications/Basalisk.app"
-	app="/Applications/Basalisk.app"
+	rm -rf "/Applications/$app_name.app"
+	cp -R "$app" "/Applications/$app_name.app"
+	app="/Applications/$app_name.app"
 fi
 echo "built $app ($version)"
 if [ "$open_app" = 1 ]; then
