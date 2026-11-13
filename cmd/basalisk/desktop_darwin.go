@@ -58,16 +58,29 @@ func (b *basalisk) desktop(ctx context.Context) error {
 		return err
 	}
 
+	// BASALISK_BACKGROUND=1 runs the app where a person will not see it: no Dock icon, never
+	// brought to the front, its window off screen. It is for an agent checking the real web
+	// view (the shell's snapshot and eval routes) while the owner is using the machine. A
+	// regular app is activated when it starts, which takes the keyboard from whatever was in front.
+	background := os.Getenv("BASALISK_BACKGROUND") == "1"
+	policy := application.ActivationPolicyRegular
+	if background {
+		policy = application.ActivationPolicyAccessory
+	}
+
 	app := application.New(application.Options{
 		Name:        "Basalisk",
 		Description: "A personal operating system for your data, tools and connections",
-		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
-		Logger:      slog.Default(),
-		LogLevel:    slog.LevelWarn,
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			ActivationPolicy: policy,
+		},
+		Logger:   slog.Default(),
+		LogLevel: slog.LevelWarn,
 		// main owns SIGINT and SIGTERM (the context passed in).
 		DisableDefaultSignalHandler: true,
 	})
-	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	options := application.WebviewWindowOptions{
 		Name:             "main",
 		Title:            "Basalisk",
 		URL:              "http://" + addr.String() + "/",
@@ -77,7 +90,12 @@ func (b *basalisk) desktop(ctx context.Context) error {
 		MinHeight:        480,
 		BackgroundColour: application.NewRGB(14, 16, 20),
 		DevToolsEnabled:  true,
-	})
+	}
+	if background {
+		// Far off any display: the page still renders and can be snapshotted there.
+		options.InitialPosition, options.X, options.Y = application.WindowXY, -20000, -20000
+	}
+	win := app.Window.NewWithOptions(options)
 
 	// Shell events reach the page as a DOM event, so the UI updates without polling. The
 	// script goes through the shell's own evaluate call: Wails' ExecJS waits for a Wails

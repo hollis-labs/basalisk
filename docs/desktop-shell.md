@@ -193,6 +193,20 @@ started with `BASALISK_SHELL_DEBUG=1`, `POST /api/shell/eval` (`{"js": "..."}`) 
 the page and returns its result. Together they let an agent check a change in the real WebKit
 view without screen recording permission or a person at the keyboard.
 
+To do that while the owner is using the machine, build a separate copy and run it in the
+background, where it has no Dock icon, is never brought to the front, and keeps its window
+off screen (the page still renders and can be snapshotted):
+
+```sh
+BASALISK_BUNDLE_ID=com.hollislabs.basalisk.dev BASALISK_APP_NAME="Basalisk Dev" scripts/build-macos-app.sh --no-ui
+open -g -n "build/Basalisk Dev.app" --env BASALISK_BACKGROUND=1 --env BASALISK_SHELL_DEBUG=1 \
+  --env BASALISK_DATA_DIR=/some/scratch --env SUBSTRATE_CONFIG=/some/dev.yaml
+```
+
+Without `BASALISK_BACKGROUND=1` a regular app is activated when it starts, whatever `open -g`
+says. The separate bundle id gives the copy its own web view storage, so it does not share
+the installed app's sign-in.
+
 ## Spike findings (2026-11-12, macOS 15.7.9, Apple silicon, one built-in display with a camera housing)
 
 "Ran" means the step was executed here and the result observed. "Not yet" means the code is in
