@@ -4,6 +4,9 @@ Quick capture into the Fragments Engine (FE), native to Basalisk. ⌥⇧F (comma
 opens a capture box over the desktop (headed `FRAG // BASALISK`, so it is never mistaken for the
 standalone Frag app): text, comma-separated tags, ⌘↩ to commit, Esc to hide it. The status line
 names where a capture is: "queued in Basalisk", then "saved to Fragments Engine →" and its chip.
+⌘⇧P (or the footer switch) shows the note rendered as markdown, references live, and back; the
+choice is remembered. The rendering is only a view: what is stored and sent is exactly the text
+typed, markdown or plain, spaces and newlines included. The clip box's note works the same way.
 The draft is kept in this browser's local storage until it is committed, so hiding the box or
 reloading the page loses nothing.
 
