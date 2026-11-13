@@ -18,7 +18,7 @@ await window.webkit.messageHandlers.basaliskBrowser.postMessage({ op, id, ...fie
 | --- | --- | --- |
 | `open` | `url`, `frame?` | creates the view (once) and loads `url` |
 | `frame` | `x y w h` (CSS px), `visible` | places the view over that rect, or hides it |
-| `navigate` | `url` (http, https, about, data, file) | loads it |
+| `navigate` | `url` (http, https, about, data, file) | loads it (a file with read access to its folder) |
 | `back` `forward` `reload` `stop` | | |
 | `focus` / `blur` | | gives the keyboard to the view / back to the app |
 | `zoom` | `zoom` (0.25 to 5) | page zoom |
@@ -62,7 +62,7 @@ All but the list need the write scope. Placing and creating views stays with the
 
 `go test -tags "desktop harness" ./internal/macshell` runs the views in an off-screen window of
 an app with the prohibited activation policy: it never takes focus or shows anything. It covers
-the channel, frame placement, loading, snapshot, eval, navigation and history, the state and
+the channel, frame placement, loading, a local file, snapshot, eval, navigation and history, the state and
 open events, chord forwarding, hiding and closing.
 
 ## Shortcuts while a page has the keyboard
@@ -73,7 +73,9 @@ Keys pressed in a view go to the site, except the chords the page registered wit
 window handles its own and hands the rest to the desktop as a swallowed chord, so ⌘K, ⌃\` and
 the window chords work from inside a page. ⌘C, ⌘V and the rest stay with the site.
 
-## Not yet
+## Files and sign-in
 
-HTTP authentication challenges use the default handling. Opening local files (Files →
-browser) needs `loadFileURL` with read access and is not wired.
+In the desktop app the Browser is the file handler for `.html`, `.htm`, `.xhtml`, `.pdf` and
+`.svg`: opening one in Files (a local root) shows it here as a `file://` URL, loaded with read
+access to its own folder only. Files on a remote root keep Files' preview. HTTP basic and digest
+sign-in use a sheet; credentials last for the session.

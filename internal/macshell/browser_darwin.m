@@ -165,6 +165,16 @@ static NSURL *parseURL(id raw) {
 	return u;
 }
 
+// load opens a URL in a view; a file is given read access to its own folder (for its images
+// and styles), nothing wider.
+static void load(WKWebView *w, NSURL *u) {
+	if (u.isFileURL) {
+		[w loadFileURL:u allowingReadAccessToURL:u.URLByDeletingLastPathComponent];
+	} else {
+		[w loadRequest:[NSURLRequest requestWithURL:u]];
+	}
+}
+
 static double num(NSDictionary *m, NSString *k) {
 	id v = m[k];
 	return [v isKindOfClass:[NSNumber class]] ? [v doubleValue] : 0;
@@ -267,7 +277,7 @@ static void handle(NSDictionary *m, BSLReply reply) {
 		if (fresh) w = create(viewID);
 		if (m[@"frame"]) place(w, m[@"frame"]);
 		NSURL *u = parseURL(m[@"url"]);
-		if (fresh && u) [w loadRequest:[NSURLRequest requestWithURL:u]];
+		if (fresh && u) load(w, u);
 		return reply(stateOf(w), nil);
 	}
 	if (!w) return reply(nil, @"no such view");
@@ -279,7 +289,7 @@ static void handle(NSDictionary *m, BSLReply reply) {
 	if ([op isEqual:@"navigate"]) {
 		NSURL *u = parseURL(m[@"url"]);
 		if (!u) return reply(nil, @"not a URL this browser opens");
-		[w loadRequest:[NSURLRequest requestWithURL:u]];
+		load(w, u);
 		return reply(@YES, nil);
 	}
 	if ([op isEqual:@"back"]) {
@@ -419,6 +429,46 @@ static void failed(WKWebView *webView, NSError *error) {
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
 	failed(webView, error);
+}
+
+// HTTP basic and digest sign-in: a sheet with a user and a password. Everything else (server
+// trust, client certificates) keeps WebKit's default handling.
+- (void)webView:(WKWebView *)webView
+	didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge
+	                completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler {
+	NSString *method = challenge.protectionSpace.authenticationMethod;
+	if (!([method isEqual:NSURLAuthenticationMethodHTTPBasic] || [method isEqual:NSURLAuthenticationMethodHTTPDigest]) ||
+	    challenge.previousFailureCount > 2) {
+		completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
+		return;
+	}
+	NSAlert *a = [[NSAlert alloc] init];
+	a.messageText = [NSString stringWithFormat:@"Sign in to %@", challenge.protectionSpace.host];
+	a.informativeText = challenge.protectionSpace.realm ?: @"";
+	NSStackView *box = [[NSStackView alloc] initWithFrame:NSMakeRect(0, 0, 260, 56)];
+	box.orientation = NSUserInterfaceLayoutOrientationVertical;
+	box.spacing = 6;
+	NSTextField *user = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+	user.placeholderString = @"User name";
+	user.stringValue = challenge.proposedCredential.user ?: @"";
+	NSSecureTextField *pass = [[NSSecureTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+	pass.placeholderString = @"Password";
+	[box addArrangedSubview:user];
+	[box addArrangedSubview:pass];
+	a.accessoryView = box;
+	[a addButtonWithTitle:@"Sign In"];
+	[a addButtonWithTitle:@"Cancel"];
+	[a beginSheetModalForWindow:bWin
+		completionHandler:^(NSModalResponse r) {
+			if (r != NSAlertFirstButtonReturn) {
+				completionHandler(NSURLSessionAuthChallengeCancelAuthenticationChallenge, nil);
+				return;
+			}
+			NSURLCredential *c = [NSURLCredential credentialWithUser:user.stringValue
+			                                                password:pass.stringValue
+			                                             persistence:NSURLCredentialPersistenceForSession];
+			completionHandler(NSURLSessionAuthChallengeUseCredential, c);
+		}];
 }
 
 - (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {

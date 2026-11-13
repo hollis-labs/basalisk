@@ -101,6 +101,16 @@ func TestBrowserViews(t *testing.T) {
 	waitFor(t, "open event", func() bool {
 		return strings.Contains(HxEvalPage(`return window.__ev.filter(e=>e.kind==='open').map(e=>e.url)`), "/site2")
 	})
+	// A local file opens with read access to its folder.
+	dir := t.TempDir()
+	if err = os.WriteFile(dir+"/local.html", []byte(`<title>Local File</title>hi`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = DefaultBrowser().Command(map[string]any{"op": "navigate", "id": "w1", "url": "file://" + dir + "/local.html"}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "file", func() bool { v, _ := DefaultBrowser().List(); return len(v) == 1 && v[0].Title == "Local File" })
+
 	// Chords the page asked for come back to it while the view has the keyboard; others go
 	// to the site.
 	HxEvalPage(`return await window.webkit.messageHandlers.basaliskBrowser.postMessage({op:'chords',chords:['cmd+k','ctrl+alt+t']})`)

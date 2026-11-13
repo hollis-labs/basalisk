@@ -11,7 +11,9 @@ import {
 import { SHELL_EVENT } from "../../api/shell"
 import { useDesk } from "../../desktop/context"
 import { bindings, chordOf } from "../../desktop/keys"
+import type { FileRef } from "../../desktop/registry"
 import { useDeskSettings } from "../../desktop/settings"
+import { loadRoots } from "../files/browser"
 
 const HOME = "https://duckduckgo.com/"
 /** The window's own shortcuts, which must work while the page has the keyboard. */
@@ -36,15 +38,29 @@ function uncovered(slot: HTMLElement, r: DOMRect): boolean {
   return true
 }
 
+/** A file in a local root as a file:// URL; remote roots cannot be opened this way. */
+export async function localFileURL(ref: FileRef): Promise<string> {
+  const root = (await loadRoots()).find((r) => r.id === ref.root)
+  if (!root) throw new Error("That folder is not available.")
+  if (root.kind !== "local") throw new Error("Only files on this Mac open in the browser.")
+  const full = `${root.path.replace(/\/$/, "")}/${ref.path}`
+  return `file://${full.split("/").map(encodeURIComponent).join("/")}`
+}
+
 export function BrowserWindow({ winId, args }: { winId: string; args: Record<string, unknown> }) {
   const desk = useDesk()
   const available = nativeBrowser.available()
-  const start = typeof args.url === "string" && args.url ? args.url : HOME
+  const fileRef = args.file as FileRef | undefined
+  // Where the view starts: the url it was opened with, a file Files handed over (resolved
+  // to a file:// URL once the roots are known), or the home page.
+  const [start, setStart] = useState<string | null>(() =>
+    typeof args.url === "string" && args.url ? args.url : fileRef ? null : HOME,
+  )
   const slotRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [state, setState] = useState<BrowserState>({
     id: winId,
-    url: start,
+    url: start ?? "",
     title: "",
     loading: true,
     progress: 0,
@@ -52,7 +68,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     forward: false,
     visible: false,
   })
-  const [address, setAddress] = useState(start)
+  const [address, setAddress] = useState(start ?? "")
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
@@ -70,9 +86,19 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     window.setTimeout(() => setNotice((n) => (n === msg ? "" : n)), 3500)
   }, [])
 
+  useEffect(() => {
+    if (start !== null || !fileRef) return
+    void localFileURL(fileRef)
+      .then((u) => setStart(u))
+      .catch((e: Error) => {
+        setError(e.message)
+        setStart("about:blank")
+      })
+  }, [start, fileRef])
+
   // ---- The view lives as long as the window. ----
   useEffect(() => {
-    if (!available) return
+    if (!available || start === null) return
     void send({ op: "open", url: start }).catch((e: Error) => setError(e.message))
     return () => {
       void send({ op: "close" }).catch(() => undefined)

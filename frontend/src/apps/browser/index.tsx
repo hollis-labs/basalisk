@@ -3,8 +3,13 @@
  * places over the window's body (macshell/browser_darwin.m).
  */
 import { Globe, Search } from "lucide-react"
-import { toURL } from "../../api/browser"
-import { registerApp, registerCommands, registerProvider } from "../../desktop/registry"
+import { nativeBrowser, toURL } from "../../api/browser"
+import {
+  registerApp,
+  registerCommands,
+  registerFileHandler,
+  registerProvider,
+} from "../../desktop/registry"
 import { BrowserWindow } from "./window"
 import "./browser.css"
 
@@ -49,4 +54,10 @@ registerProvider({
       },
     ]
   },
+})
+
+// Pages and PDFs from Files open here, in the desktop app (elsewhere Files previews them).
+registerFileHandler({
+  app: "browser",
+  match: (name) => nativeBrowser.available() && /\.(html?|xhtml|pdf|svg)$/.test(name),
 })
