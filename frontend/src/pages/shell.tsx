@@ -9,19 +9,8 @@ import {
 } from "../api/shell"
 import { Notice } from "../components/forms"
 
-const DEFAULT_COMBOS = [
-  "cmd+q",
-  "cmd+h",
-  "cmd+m",
-  "cmd+tab",
-  "cmd+shift+tab",
-  "cmd+space",
-  "ctrl+up",
-  "ctrl+down",
-  "ctrl+left",
-  "ctrl+right",
-].join(", ")
-const COMBOS_KEY = "basalisk.shell.combos"
+const DEFAULT_COMBOS = ["cmd+q", "cmd+h", "cmd+m"].join(", ")
+const COMBOS_KEY = "basalisk.shell.combos.v2"
 
 const pretty = (chord: string) =>
   chord
@@ -201,8 +190,11 @@ export function ShellPage() {
       <section className="panel shell-section">
         <h2>Own the keyboard</h2>
         <p className="text-fg-muted">
-          While Basalisk is in front, these shortcuts are taken before any app or the system sees
-          them, and logged below. Needs the Accessibility permission. Force Quit (⌘ ⌥ Esc) is never
+          While this is on and Basalisk is in front, every shortcut that uses ⌘, ⌃ or ⌥ (and every
+          function key) goes to Basalisk alone: another app's global hot key (Raycast, AltTab, the
+          old Frag) and the system's (Spotlight, ⌘ Tab, Mission Control) do not fire, and you can
+          bind those keys here. The shortcuts listed below are also kept from Basalisk itself, so ⌘
+          Q does not quit it. Needs the Accessibility permission. Force Quit (⌘ ⌥ Esc) is never
           taken.
         </p>
         <textarea
@@ -216,18 +208,30 @@ export function ShellPage() {
           }}
         />
         <dl className="shell-facts">
-          <dt>Swallowing</dt>
+          <dt>Owning</dt>
           <dd>
-            <Flag on={status.swallow} yes={`on: ${status.combos.join(", ")}`} no="off" />
+            <Flag
+              on={status.swallow}
+              yes={`on; kept from Basalisk too: ${status.combos.join(", ") || "none"}`}
+              no="off"
+            />
           </dd>
           <dt>Event tap</dt>
           <dd>
-            <Flag on={status.tap_installed} yes="installed" no="not installed" />
+            {status.tap_level === "hid" ? (
+              <span className="text-success">installed, ahead of other apps' hot keys</span>
+            ) : status.tap_level === "session" ? (
+              <span className="text-danger">
+                installed behind other apps' hot keys: they will still fire
+              </span>
+            ) : (
+              <span className="text-fg-muted">not installed</span>
+            )}
           </dd>
         </dl>
         <div className="actions">
           <Button onClick={() => void run(() => shell.swallow(!status.swallow, comboList))}>
-            {status.swallow ? "Stop swallowing" : "Start swallowing"}
+            {status.swallow ? "Give the keyboard back" : "Own the keyboard"}
           </Button>
         </div>
         <div className="shell-keys">

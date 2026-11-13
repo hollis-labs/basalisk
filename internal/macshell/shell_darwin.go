@@ -163,6 +163,7 @@ func (s *Shell) Status() Status {
 		InputMonitoring: C.bslListenAccess(0) == 1,
 	}
 	st.TapInstalled = C.bslTapInstalled() == 1
+	st.TapLevel = map[C.int]string{1: "hid", 2: "session"}[C.bslTapLevel()]
 	st.Active = C.bslIsActive() == 1
 	if id := C.bslIdentityJSON(); id != nil {
 		_ = json.Unmarshal([]byte(C.GoString(id)), &st.Identity)

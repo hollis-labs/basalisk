@@ -247,6 +247,17 @@ place and the step needs a person at the keyboard.
 
 Other things learned:
 
+- **Where the tap has to sit (2026-11-13, reported at the keys).** With the tap at the
+  session level and swallowing on, another app's global hot key (Raycast on Control-Space)
+  still fired: global hot keys are matched after events enter the window server and before
+  they reach the session. The tap is now created at the HID level, falling back to the
+  session level, and the Mac shell page says which it got. Owning the keyboard also changed
+  from a list of chords to a rule: while on, any key carrying Command, Control or Option, and
+  any function key, is taken from the shared stream and posted to this process alone
+  (`CGEventPostToPid`), so no other hot key can match it and the page still receives it. The
+  list that remains names the chords also kept from the app itself (quit, hide, minimize).
+  Not yet confirmed at the keys.
+
 - **cgo in process: go.** One binary, one signature for the grants, no socket protocol. The
   Objective-C is about 550 lines beside the Go that wraps it. A Swift helper would only be
   worth it if the tap had to outlive the app.

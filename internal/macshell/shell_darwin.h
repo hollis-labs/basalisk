@@ -32,6 +32,8 @@ int bslIsActive(void);
 int bslTapStart(void);
 void bslTapStop(void);
 int bslTapInstalled(void);
+// 0 no tap, 1 at the HID level (ahead of global hot keys), 2 at the session level (behind them).
+int bslTapLevel(void);
 void bslSetSwallow(int on);
 void bslSetCombos(const uint32_t *codes, const uint64_t *mods, int n);
 

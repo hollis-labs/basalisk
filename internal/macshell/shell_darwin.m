@@ -47,6 +47,11 @@ static atomic_llong gBeat;
 
 static CFMachPortRef gTap;
 static CFRunLoopRef gTapLoop;
+// 1 when the tap sits where events enter the window server (before any app's global hot key
+// is matched), 2 when it could only be placed at the session level (after).
+static atomic_int gTapLevel;
+// Marks an event this process re-posted to itself, so the tap lets it through.
+#define BSL_REPOST_MARK 0x62736c6b
 
 static os_unfair_lock gComboLock = OS_UNFAIR_LOCK_INIT;
 static uint32_t gCodes[BSL_MAX_COMBOS];
@@ -325,6 +330,7 @@ static CGEventRef tapCallback(CGEventTapProxy proxy, CGEventType type, CGEventRe
 	if (type != kCGEventKeyDown && type != kCGEventKeyUp) return event;
 	// Scoped to this app: another app in front always gets its keys.
 	if (!atomic_load(&gActive)) return event;
+	if (CGEventGetIntegerValueField(event, kCGEventSourceUserData) == BSL_REPOST_MARK) return event;
 
 	uint32_t code = (uint32_t)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
 	uint64_t mods = CGEventGetFlags(event) & BSL_MODS;
@@ -352,19 +358,51 @@ static CGEventRef tapCallback(CGEventTapProxy proxy, CGEventType type, CGEventRe
 		}
 	}
 	os_unfair_lock_unlock(&gComboLock);
-	if (!match) return event;
-	if (type == kCGEventKeyDown && !CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat)) {
-		bslGoEvent(BSL_EV_SWALLOWED, code, mods);
+	if (match) {
+		if (type == kCGEventKeyDown && !CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat)) {
+			bslGoEvent(BSL_EV_SWALLOWED, code, mods);
+		}
+		return NULL;
 	}
-	return NULL;
+	// Owning the keyboard: a key that could be someone's shortcut (it carries Command,
+	// Control or Option, or is a function key) is taken out of the shared stream and handed
+	// to this app alone. Global hot keys of other apps and of the system are matched on the
+	// shared stream, so they never see it; this app still gets the key and can bind it.
+	// Plain typing is left on the normal path.
+	static const uint32_t functionKeys[] = {122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, // F1-F12
+	                                        105, 107, 113, 106, 64, 79, 80, 90};                   // F13-F20
+	BOOL functionKey = NO;
+	for (size_t i = 0; i < sizeof(functionKeys) / sizeof(functionKeys[0]); i++) {
+		if (functionKeys[i] == code) functionKey = YES;
+	}
+	if ((mods & (kCGEventFlagMaskCommand | kCGEventFlagMaskControl | kCGEventFlagMaskAlternate)) || functionKey) {
+		CGEventRef copy = CGEventCreateCopy(event);
+		if (copy) {
+			CGEventSetIntegerValueField(copy, kCGEventSourceUserData, BSL_REPOST_MARK);
+			CGEventPostToPid(getpid(), copy);
+			CFRelease(copy);
+			return NULL;
+		}
+	}
+	return event;
 }
 
 int bslTapStart(void) {
 	if (gTap) return 0;
 	CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp);
-	CFMachPortRef tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap, kCGEventTapOptionDefault,
+	// Global hot keys (another app's, or the system's) are matched after events enter the
+	// window server and before they reach the session, so a tap that is to keep a key from
+	// them has to sit at the first of those two places.
+	int level = 1;
+	CFMachPortRef tap = CGEventTapCreate(kCGHIDEventTap, kCGHeadInsertEventTap, kCGEventTapOptionDefault,
 		mask, tapCallback, NULL);
+	if (!tap) {
+		level = 2;
+		tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap, kCGEventTapOptionDefault,
+			mask, tapCallback, NULL);
+	}
 	if (!tap) return -1;
+	atomic_store(&gTapLevel, level);
 	gTap = tap;
 	dispatch_semaphore_t ready = dispatch_semaphore_create(0);
 	NSThread *thread = [[NSThread alloc] initWithBlock:^{
@@ -396,6 +434,7 @@ void bslTapStop(void) {
 }
 
 int bslTapInstalled(void) { return atomic_load(&gTapOn); }
+int bslTapLevel(void) { return atomic_load(&gTapOn) ? atomic_load(&gTapLevel) : 0; }
 
 void bslSetSwallow(int on) { atomic_store(&gSwallow, on ? 1 : 0); }
 

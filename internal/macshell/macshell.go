@@ -26,8 +26,11 @@ type Controller interface {
 	SetKiosk(on, blockSwitching bool) error
 	// SetMenuBar shows or hides the menu bar while in kiosk mode.
 	SetMenuBar(visible bool) error
-	// SetSwallow turns key swallowing on or off. combos are the shortcuts no other app and
-	// not the system may see while this app is frontmost, written like "cmd+q".
+	// SetSwallow turns owning the keyboard on or off. While on and this app is frontmost,
+	// every key that carries Command, Control or Option (and every function key) is delivered
+	// to this app alone, so no other app's global hot key and no system shortcut fires.
+	// combos, written like "cmd+q", are additionally kept from this app itself and reported
+	// in the log: the shortcuts that would otherwise quit, hide or minimize it.
 	SetSwallow(on bool, combos []string) error
 	// Windows lists other apps' windows (needs the Accessibility permission).
 	Windows() ([]Window, error)
@@ -58,20 +61,23 @@ const (
 
 // Status is a snapshot of the shell.
 type Status struct {
-	Available      bool        `json:"available"`
-	Active         bool        `json:"active"` // the app is frontmost
-	Kiosk          bool        `json:"kiosk"`
-	MenuBarVisible bool        `json:"menu_bar_visible"`
-	BlockSwitching bool        `json:"block_switching"`
-	Swallow        bool        `json:"swallow"`
-	Combos         []string    `json:"combos"`
-	TapInstalled   bool        `json:"tap_installed"`
-	FixMinimized   bool        `json:"fix_minimized"`
-	Permissions    Permissions `json:"permissions"`
-	Screen         Screen      `json:"screen"`
-	Identity       Identity    `json:"identity"`
-	Chords         Chords      `json:"chords"`
-	LastSeq        int64       `json:"last_seq"`
+	Available      bool     `json:"available"`
+	Active         bool     `json:"active"` // the app is frontmost
+	Kiosk          bool     `json:"kiosk"`
+	MenuBarVisible bool     `json:"menu_bar_visible"`
+	BlockSwitching bool     `json:"block_switching"`
+	Swallow        bool     `json:"swallow"`
+	Combos         []string `json:"combos"`
+	TapInstalled   bool     `json:"tap_installed"`
+	// TapLevel is "hid" when the tap sits ahead of other apps' global hot keys, "session"
+	// when it could only be placed behind them (they will still fire), "" with no tap.
+	TapLevel     string      `json:"tap_level"`
+	FixMinimized bool        `json:"fix_minimized"`
+	Permissions  Permissions `json:"permissions"`
+	Screen       Screen      `json:"screen"`
+	Identity     Identity    `json:"identity"`
+	Chords       Chords      `json:"chords"`
+	LastSeq      int64       `json:"last_seq"`
 }
 
 // Permissions are the privacy grants the native layer depends on.

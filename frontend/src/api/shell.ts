@@ -10,6 +10,7 @@ export interface ShellStatus {
   swallow: boolean
   combos: string[]
   tap_installed: boolean
+  tap_level: "" | "hid" | "session"
   fix_minimized: boolean
   permissions: { accessibility: boolean; input_monitoring: boolean }
   screen: { width: number; height: number; safe_top: number; count: number }
