@@ -103,6 +103,9 @@ export const browserData = {
     request<{ entries: Visit[] }>(`browser/history?q=${encodeURIComponent(q)}&limit=${limit}`).then(
       (r) => r.entries ?? [],
     ),
+  /** Forgets one page, or (without a url) the whole history. */
+  forget: (url?: string) =>
+    request(`browser/history${url ? `?url=${encodeURIComponent(url)}` : ""}`, "DELETE"),
   visit: (url: string, title: string) =>
     request("browser/history", "POST", { url, title }).catch(() => undefined),
 }

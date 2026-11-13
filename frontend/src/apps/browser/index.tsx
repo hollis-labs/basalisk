@@ -26,6 +26,19 @@ registerApp({
 
 registerCommands([
   {
+    id: "browser.clear-history",
+    title: "Browser: clear history",
+    section: "Browser",
+    icon: History,
+    keywords: "forget delete pages visited",
+    when: () => nativeBrowser.available(),
+    run: async () => {
+      if (!window.confirm("Clear the browser history? Every page you have visited is forgotten."))
+        return
+      await browserData.forget().catch(() => undefined)
+    },
+  },
+  {
     id: "browser.new",
     title: "Browser: new window",
     section: "Browser",

@@ -116,6 +116,8 @@ ranked by visits weighted for recency, and a host that starts with the query com
 Every page a window settles on is recorded (http and https only). Typing in the address field
 lists matching pages under it (↓ ↑ to choose, Enter to go, Esc to close the list), and the
 palette's History section finds them too (rows `browser:history:<url>`); both rank as above.
+In the list, ⇧⌫ or the × on a row forgets that page; the palette command "Browser: clear
+history" forgets everything, after a confirm.
 
 ## Links and the way out
 

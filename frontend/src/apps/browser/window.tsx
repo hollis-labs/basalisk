@@ -296,6 +296,15 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     }
   }, [editing, typed, address])
 
+  const forgetSuggestion = (url: string) => {
+    void browserData.forget(url).catch(() => undefined)
+    setSuggestions((list) => {
+      const next = list.filter((v) => v.url !== url)
+      setPick((p) => Math.min(p, next.length - 1))
+      return next
+    })
+  }
+
   // The window's args follow the page, so a restored desktop reopens it where it was.
   useEffect(() => {
     if (!state.url || state.loading || state.url === args.url) return
@@ -510,6 +519,10 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
               } else if (e.key === "ArrowUp" && suggestions.length) {
                 e.preventDefault()
                 setPick((p) => Math.max(-1, p - 1))
+              } else if (e.key === "Backspace" && e.shiftKey && pick >= 0 && suggestions[pick]) {
+                // ⇧⌫ forgets the chosen page.
+                e.preventDefault()
+                forgetSuggestion(suggestions[pick].url)
               } else if (e.key === "Enter" && pick >= 0 && suggestions[pick]) {
                 e.preventDefault()
                 navigate(suggestions[pick].url)
@@ -543,6 +556,18 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
                 >
                   <span className="browser-suggest-title">{v.title || v.url}</span>
                   <span className="browser-suggest-url">{v.url}</span>
+                  <span
+                    className="browser-suggest-forget"
+                    title="Forget this page (⇧⌫)"
+                    aria-hidden="true"
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      forgetSuggestion(v.url)
+                    }}
+                  >
+                    <X size={12} strokeWidth={1.6} />
+                  </span>
                 </button>
               ))}
             </div>
