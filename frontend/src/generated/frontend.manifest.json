@@ -146,10 +146,26 @@
         },
         {
           "kind": "nav.item",
+          "key": "terminal",
+          "label": "Terminal",
+          "icon": "terminal",
+          "priority": 2,
+          "route": "/terminal"
+        },
+        {
+          "kind": "surface",
+          "key": "terminal",
+          "label": "Terminal",
+          "route": "/terminal",
+          "layout": "detail",
+          "title": "Terminal"
+        },
+        {
+          "kind": "nav.item",
           "key": "sessions",
           "label": "Work sessions",
           "icon": "history",
-          "priority": 2,
+          "priority": 3,
           "route": "/sessions"
         },
         {
@@ -165,7 +181,7 @@
           "key": "outbox",
           "label": "Fragment outbox",
           "icon": "inbox",
-          "priority": 3,
+          "priority": 4,
           "route": "/outbox"
         },
         {
@@ -181,7 +197,7 @@
           "key": "readiness",
           "label": "Capture readiness",
           "icon": "cable",
-          "priority": 4,
+          "priority": 5,
           "route": "/readiness"
         },
         {
@@ -197,7 +213,7 @@
           "key": "devices",
           "label": "Devices",
           "icon": "laptop",
-          "priority": 5,
+          "priority": 6,
           "route": "/devices"
         },
         {
@@ -213,7 +229,7 @@
           "key": "account",
           "label": "Account \u0026 preferences",
           "icon": "user",
-          "priority": 6,
+          "priority": 7,
           "route": "/account"
         },
         {
@@ -229,7 +245,7 @@
           "key": "integrations",
           "label": "Integrations \u0026 keys",
           "icon": "cable",
-          "priority": 7,
+          "priority": 8,
           "route": "/integrations"
         },
         {
@@ -245,7 +261,7 @@
           "key": "security",
           "label": "Security",
           "icon": "shield",
-          "priority": 8,
+          "priority": 9,
           "route": "/security"
         },
         {
@@ -255,6 +271,22 @@
           "route": "/security",
           "layout": "form",
           "title": "Security"
+        },
+        {
+          "kind": "nav.item",
+          "key": "shell",
+          "label": "Mac shell",
+          "icon": "monitor",
+          "priority": 10,
+          "route": "/shell"
+        },
+        {
+          "kind": "surface",
+          "key": "shell",
+          "label": "Mac shell",
+          "route": "/shell",
+          "layout": "detail",
+          "title": "Mac shell"
         },
         {
           "kind": "nav.item",
@@ -287,10 +319,19 @@
     },
     {
       "kind": "nav.item",
+      "key": "terminal",
+      "label": "Terminal",
+      "icon": "terminal",
+      "priority": 2,
+      "route": "/terminal",
+      "module": "basalisk"
+    },
+    {
+      "kind": "nav.item",
       "key": "sessions",
       "label": "Work sessions",
       "icon": "history",
-      "priority": 2,
+      "priority": 3,
       "route": "/sessions",
       "module": "basalisk"
     },
@@ -299,7 +340,7 @@
       "key": "outbox",
       "label": "Fragment outbox",
       "icon": "inbox",
-      "priority": 3,
+      "priority": 4,
       "route": "/outbox",
       "module": "basalisk"
     },
@@ -308,7 +349,7 @@
       "key": "readiness",
       "label": "Capture readiness",
       "icon": "cable",
-      "priority": 4,
+      "priority": 5,
       "route": "/readiness",
       "module": "basalisk"
     },
@@ -317,7 +358,7 @@
       "key": "devices",
       "label": "Devices",
       "icon": "laptop",
-      "priority": 5,
+      "priority": 6,
       "route": "/devices",
       "module": "basalisk"
     },
@@ -326,7 +367,7 @@
       "key": "account",
       "label": "Account \u0026 preferences",
       "icon": "user",
-      "priority": 6,
+      "priority": 7,
       "route": "/account",
       "module": "basalisk"
     },
@@ -335,7 +376,7 @@
       "key": "integrations",
       "label": "Integrations \u0026 keys",
       "icon": "cable",
-      "priority": 7,
+      "priority": 8,
       "route": "/integrations",
       "module": "basalisk"
     },
@@ -344,7 +385,7 @@
       "key": "security",
       "label": "Security",
       "icon": "shield",
-      "priority": 8,
+      "priority": 9,
       "route": "/security",
       "module": "basalisk"
     },
@@ -422,6 +463,24 @@
     },
     {
       "kind": "nav.item",
+      "key": "shell",
+      "label": "Mac shell",
+      "icon": "monitor",
+      "priority": 10,
+      "route": "/shell",
+      "module": "basalisk"
+    },
+    {
+      "kind": "surface",
+      "key": "shell",
+      "label": "Mac shell",
+      "route": "/shell",
+      "layout": "detail",
+      "title": "Mac shell",
+      "module": "basalisk"
+    },
+    {
+      "kind": "nav.item",
       "key": "sign-out",
       "label": "Sign out",
       "icon": "log-out",
@@ -436,6 +495,15 @@
       "route": "/sign-out",
       "layout": "form",
       "title": "Sign out",
+      "module": "basalisk"
+    },
+    {
+      "kind": "surface",
+      "key": "terminal",
+      "label": "Terminal",
+      "route": "/terminal",
+      "layout": "detail",
+      "title": "Terminal",
       "module": "basalisk"
     }
   ],

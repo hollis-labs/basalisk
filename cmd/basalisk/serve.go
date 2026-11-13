@@ -19,7 +19,9 @@ import (
 
 	"github.com/hollis-labs/basalisk/internal/api"
 	"github.com/hollis-labs/basalisk/internal/hostguard"
+	"github.com/hollis-labs/basalisk/internal/macshell"
 	"github.com/hollis-labs/basalisk/internal/settings"
+	"github.com/hollis-labs/basalisk/internal/terminal"
 	"github.com/hollis-labs/basalisk/internal/webui"
 )
 
@@ -28,6 +30,10 @@ import (
 type basalisk struct {
 	app   *module.App
 	ready func(net.Addr)
+	// Set by the desktop command only: the native shell and the terminal. A plain
+	// `basalisk serve` leaves both nil and serves neither.
+	shell macshell.Controller
+	term  *terminal.Manager
 }
 
 func (b *basalisk) serveCmd(ctx context.Context) *cobra.Command {
@@ -66,6 +72,18 @@ func (b *basalisk) serve(ctx context.Context) error {
 		return err
 	}
 	a := svc.API(api.IdentityUsers{Svc: id})
+	if b.shell != nil {
+		a.EnableShell(b.shell)
+	}
+	if b.term != nil {
+		a.EnableTerminal(b.term)
+		// End the shells as soon as the server is asked to stop: that closes their sockets,
+		// so the HTTP host does not wait on an open terminal.
+		go func() {
+			<-ctx.Done()
+			b.term.CloseAll()
+		}()
+	}
 	a.RegisterScopes(auth.ScopeTable(app))
 
 	assets, err := webui.Assets()

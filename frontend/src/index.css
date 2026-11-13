@@ -3,6 +3,7 @@
 @import "@hollis-labs/design-app-runtime/shell-reset.css";
 @import "@hollis-labs/kit-account/source.css";
 @import "@hollis-labs/kit-settings/source.css";
+@import "@xterm/xterm/css/xterm.css";
 /* app-shell ships TypeScript source with Tailwind classes and no source.css of its own. */
 @source "../node_modules/@hollis-labs/app-shell/src";
 
@@ -344,4 +345,288 @@ fieldset {
   .home-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---- Terminal ---- */
+
+.terminal-parking {
+  display: none;
+}
+.terminal-root,
+.terminal-slot {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+.terminal-page {
+  display: flex;
+  min-height: 15rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+  background: var(--color-bg);
+}
+.terminal-deck {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-bg);
+}
+.terminal-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  overflow-x: auto;
+  flex: 0 0 auto;
+}
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  border-radius: 0.4rem;
+  color: var(--color-fg-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.terminal-tab[data-active="true"] {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+.terminal-tab-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.2rem 0.25rem 0.6rem;
+}
+.terminal-tab-index {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+}
+.terminal-tab-close,
+.terminal-new {
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 0.3rem;
+  color: var(--color-fg-muted);
+}
+.terminal-tab-close {
+  margin-right: 0.2rem;
+  opacity: 0;
+}
+.terminal-tab:hover .terminal-tab-close,
+.terminal-tab[data-active="true"] .terminal-tab-close {
+  opacity: 1;
+}
+.terminal-tab-close:hover,
+.terminal-new:hover {
+  background: var(--color-border);
+  color: var(--color-fg);
+}
+.terminal-hint {
+  margin-left: auto;
+  padding-left: 1rem;
+  color: var(--color-fg-muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+.terminal-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.xterm-host {
+  position: absolute;
+  inset: 0.4rem 0 0 0.6rem;
+}
+.xterm-host[data-active="false"] {
+  visibility: hidden;
+}
+.xterm-host .xterm-viewport {
+  background-color: transparent !important;
+}
+.terminal-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.75rem;
+  text-align: center;
+  color: var(--color-fg-muted);
+}
+.terminal-empty-action {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  color: var(--color-fg);
+}
+.terminal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+.terminal-overlay-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.35);
+  pointer-events: auto;
+  animation: terminal-fade 160ms ease-out both;
+}
+.terminal-overlay-panel {
+  position: absolute;
+  top: var(--shell-safe-top, 0px);
+  left: 0;
+  right: 0;
+  height: min(62dvh, 52rem);
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 1.5rem 3rem rgb(0 0 0 / 0.45);
+  pointer-events: auto;
+  animation: terminal-drop 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.terminal-overlay[data-open="false"] .terminal-overlay-scrim {
+  animation: terminal-fade 160ms ease-in reverse both;
+}
+.terminal-overlay[data-open="false"] .terminal-overlay-panel {
+  animation: terminal-lift 160ms ease-in both;
+}
+@keyframes terminal-drop {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes terminal-lift {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-105%);
+  }
+}
+@keyframes terminal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .terminal-overlay-panel,
+  .terminal-overlay-scrim {
+    animation-duration: 1ms !important;
+  }
+}
+
+/* ---- Desktop kiosk: keep the layout below the camera housing strip ---- */
+html.kiosk body {
+  padding-top: var(--shell-safe-top, 0px);
+  background: #000;
+}
+html.kiosk .h-dvh {
+  height: calc(100dvh - var(--shell-safe-top, 0px));
+}
+
+/* ---- Mac shell page ---- */
+.shell-page {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
+  align-items: start;
+}
+.shell-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.shell-section h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.shell-section h3 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-fg-secondary);
+  margin-bottom: 0.3rem;
+}
+.shell-facts {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0.3rem 1rem;
+  font-size: 0.9rem;
+}
+.shell-facts dt {
+  color: var(--color-fg-muted);
+}
+.shell-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+.shell-chords {
+  font-size: 0.8rem;
+}
+.shell-combos {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
+.shell-link {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: 0.85rem;
+}
+.shell-keys ol,
+.shell-log,
+.shell-windows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+.shell-log li,
+.shell-windows li {
+  display: grid;
+  grid-template-columns: 5rem 7rem 1fr;
+  gap: 0.6rem;
+}
+.shell-windows li {
+  grid-template-columns: 9rem 1fr auto;
+}
+.shell-windows li[data-minimized="true"] .shell-window-title {
+  color: var(--color-fg-muted);
+  font-style: italic;
+}
+.shell-window-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shell-log time,
+.shell-log-kind {
+  color: var(--color-fg-muted);
 }

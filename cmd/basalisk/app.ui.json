@@ -18,14 +18,29 @@
       "route": "/",
       "layout": "dashboard"
     },
-
+    {
+      "kind": "nav.item",
+      "key": "terminal",
+      "label": "Terminal",
+      "icon": "terminal",
+      "route": "/terminal",
+      "priority": 2
+    },
+    {
+      "kind": "surface",
+      "key": "terminal",
+      "label": "Terminal",
+      "title": "Terminal",
+      "route": "/terminal",
+      "layout": "detail"
+    },
     {
       "kind": "nav.item",
       "key": "sessions",
       "label": "Work sessions",
       "icon": "history",
       "route": "/sessions",
-      "priority": 2
+      "priority": 3
     },
     {
       "kind": "surface",
@@ -35,14 +50,13 @@
       "route": "/sessions",
       "layout": "list"
     },
-
     {
       "kind": "nav.item",
       "key": "outbox",
       "label": "Fragment outbox",
       "icon": "inbox",
       "route": "/outbox",
-      "priority": 3
+      "priority": 4
     },
     {
       "kind": "surface",
@@ -52,14 +66,13 @@
       "route": "/outbox",
       "layout": "list"
     },
-
     {
       "kind": "nav.item",
       "key": "readiness",
       "label": "Capture readiness",
       "icon": "cable",
       "route": "/readiness",
-      "priority": 4
+      "priority": 5
     },
     {
       "kind": "surface",
@@ -69,14 +82,13 @@
       "route": "/readiness",
       "layout": "detail"
     },
-
     {
       "kind": "nav.item",
       "key": "devices",
       "label": "Devices",
       "icon": "laptop",
       "route": "/devices",
-      "priority": 5
+      "priority": 6
     },
     {
       "kind": "surface",
@@ -86,14 +98,13 @@
       "route": "/devices",
       "layout": "list"
     },
-
     {
       "kind": "nav.item",
       "key": "account",
       "label": "Account & preferences",
       "icon": "user",
       "route": "/account",
-      "priority": 6
+      "priority": 7
     },
     {
       "kind": "surface",
@@ -103,14 +114,13 @@
       "route": "/account",
       "layout": "form"
     },
-
     {
       "kind": "nav.item",
       "key": "integrations",
       "label": "Integrations & keys",
       "icon": "cable",
       "route": "/integrations",
-      "priority": 7
+      "priority": 8
     },
     {
       "kind": "surface",
@@ -120,14 +130,13 @@
       "route": "/integrations",
       "layout": "list"
     },
-
     {
       "kind": "nav.item",
       "key": "security",
       "label": "Security",
       "icon": "shield",
       "route": "/security",
-      "priority": 8
+      "priority": 9
     },
     {
       "kind": "surface",
@@ -137,7 +146,22 @@
       "route": "/security",
       "layout": "form"
     },
-
+    {
+      "kind": "nav.item",
+      "key": "shell",
+      "label": "Mac shell",
+      "icon": "monitor",
+      "route": "/shell",
+      "priority": 10
+    },
+    {
+      "kind": "surface",
+      "key": "shell",
+      "label": "Mac shell",
+      "title": "Mac shell",
+      "route": "/shell",
+      "layout": "detail"
+    },
     {
       "kind": "nav.item",
       "key": "sign-out",

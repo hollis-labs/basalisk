@@ -1,4 +1,4 @@
-.PHONY: all build run install ui-build ui-dev test vet lint pins scan generate clean
+.PHONY: all build run install app ui-build ui-dev test vet lint pins scan generate clean
 
 SUBSTRATE := go run github.com/hollis-labs/substrate/cmd/substrate
 
@@ -29,6 +29,10 @@ run: build
 # basalisk on PATH that serves the real dashboard UI.
 install: ui-build
 	go install ./cmd/basalisk
+
+# Build build/Basalisk.app, the macOS desktop shell (see scripts/build-macos-app.sh).
+app:
+	scripts/build-macos-app.sh
 
 test:
 	go test -race ./cmd/... ./internal/...

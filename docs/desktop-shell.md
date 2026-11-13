@@ -1,0 +1,161 @@
+# Desktop shell (macOS)
+
+Basalisk.app is the same server `basalisk serve` runs, in one process with a native window, a
+small native macOS layer and a terminal. This page describes what exists, how to build it, and
+what the shell spike found. It is a spike: the code is meant to be changed.
+
+## Build and run
+
+```sh
+make app                                  # builds build/Basalisk.app (frontend, then the binary with -tags desktop)
+scripts/build-macos-app.sh --no-ui        # reuse the built frontend
+scripts/build-macos-app.sh --install      # also copy to /Applications
+open build/Basalisk.app
+```
+
+- The app serves on `httphost.addr` (127.0.0.1:8085 by default) and its window loads that URL. A
+  browser pointed at the same address gets the same UI.
+- Data is where the server keeps it (`$XDG_DATA_HOME/basalisk`, else `~/.local/share/basalisk`, or
+  `BASALISK_DATA_DIR`). Pass an environment variable to a bundled app with
+  `open build/Basalisk.app --env BASALISK_DATA_DIR=/some/dir`.
+- Started from the bundle, stdout and stderr go to `~/Library/Logs/Basalisk/basalisk.log`, and a
+  sign-in lasts 30 days instead of 12 hours.
+- `basalisk desktop` runs the same thing from a desktop build outside a bundle. A build without
+  the `desktop` tag (every server build) has no desktop command, no native layer and no terminal.
+
+Signing matters. macOS attaches the Accessibility and Input Monitoring grants to the code
+signature. The build script signs with `BASALISK_SIGN_IDENTITY`, else the first "Developer ID
+Application" identity in the keychain, else ad-hoc. An ad-hoc signature changes on every build
+and loses the grants each time.
+
+## Layout
+
+| Piece | Where |
+| --- | --- |
+| Desktop command: serve in-process, Wails v3 window on the loopback URL | `cmd/basalisk/desktop_darwin.go` |
+| Platform adapter interface (`Controller`) and shortcut parsing | `internal/macshell/macshell.go` |
+| macOS implementation: cgo and Objective-C | `internal/macshell/shell_darwin.{go,h,m}` |
+| Terminal sessions (PTY, replay, fan-out) | `internal/terminal` |
+| HTTP routes | `internal/api/shell.go`, `internal/api/terminal.go` |
+| Terminal UI (one deck, moved between the page and the overlay) | `frontend/src/terminal` |
+| Pages | `frontend/src/pages/terminal.tsx`, `frontend/src/pages/shell.tsx` |
+
+The window uses no Wails asset server and no Wails bindings. The page talks to the native layer
+through the ordinary API, so nothing in the frontend depends on Wails:
+
+- `GET /api/shell` and `GET /api/terminal` are always served and say whether the feature is there.
+  Everything else under them exists only in the desktop app.
+- The shell tells the page about each event with a DOM event, `basalisk:shell`.
+
+### The adapter
+
+```go
+type Controller interface {
+    Status() Status
+    SetKiosk(on, blockSwitching bool) error
+    SetMenuBar(visible bool) error
+    SetSwallow(on bool, combos []string) error
+    Windows() ([]Window, error)
+    Unminimize(pid, index int) error
+    SetFixMinimized(on bool) error
+    RequestPermission(kind string) error
+    Events(after int64) []Event
+    Snapshot() ([]byte, error)                 // the page as a PNG, no screen recording permission
+    Eval(js string) (json.RawMessage, error)   // run script in the page
+}
+```
+
+`macshell.Default()` is the macOS implementation in a desktop build and `nil` everywhere else. A
+Linux adapter would implement the same interface.
+
+### Fixed shortcuts
+
+| Keys | Effect |
+| --- | --- |
+| ⌃⌥⌘ Esc | Leave kiosk and stop key swallowing. Handled before anything else; cannot be swallowed. |
+| ⌃⌥⌘ F | Toggle kiosk. Works from any app (it brings Basalisk forward). |
+| ⌃⌥⌘ M | Show or hide the menu bar while in kiosk. |
+| ⌃ ` | Drop the terminal down over any page, or put it away. |
+
+The first three are Carbon hot keys and need no permission. Force Quit (⌘⌥ Esc) is never
+swallowed and never disabled.
+
+### Terminal
+
+Sessions live in the server, not the page: reloading, navigating or closing the overlay leaves
+the shells running, and a new attach replays the last 512 KiB of output before going live. The
+wire protocol is Tachyon's chat terminal protocol (binary frames are raw bytes both ways; text
+frames are JSON `resize` out, `state` and `exit` in). Each shell is the login shell (`$SHELL -l`)
+in the home directory with `TERM=xterm-256color`. Sessions end when the app quits.
+
+In the terminal: ⌘T new tab, ⌘W close, ⌘1-9 and ⌘⇧[ ] switch, ⌘K clear, ⌘+ ⌘- ⌘0 font size,
+⌥←/→ word, ⌘←/→ line start and end, ⌘⌫ kill line, ⇧Enter newline.
+
+Every terminal route needs the write scope, the socket included, and the socket refuses another
+origin. The terminal is a shell as the user who runs the app: anyone who can sign in to this
+Basalisk can run commands as that user.
+
+### For agents: seeing and driving the real window
+
+`GET /api/shell/snapshot` returns the page as the window shows it, as a PNG. With the app
+started with `BASALISK_SHELL_DEBUG=1`, `POST /api/shell/eval` (`{"js": "..."}`) runs script in
+the page and returns its result. Together they let an agent check a change in the real WebKit
+view without screen recording permission or a person at the keyboard.
+
+## Spike findings (2026-11-12, macOS 15.7.9, Apple silicon, one built-in display with a camera housing)
+
+"Ran" means the step was executed here and the result observed. "Not yet" means the code is in
+place and the step needs a person at the keyboard.
+
+1. **Borderless full screen with the menu bar and Dock hidden.** Ran: with
+   `HideDock | HideMenuBar` set, the window made borderless and given the screen frame, the web
+   view rendered at the full 3024 × 1964 pixels and the terminal refitted. Leaving restored the
+   previous frame and style. No separate Space and no animation, as intended.
+   `AutoHideDock` (menu bar visible) and each mode with `DisableProcessSwitching` were all
+   accepted by AppKit without an exception. Not yet: looking at it. The page is pushed below
+   the 32pt camera strip while the menu bar is hidden (`html.kiosk`); whether that looks right
+   needs eyes.
+2. **Cmd-Tab blocked while frontmost.** Not yet. `DisableProcessSwitching` is set without
+   error; whether Cmd-Tab is dead, and whether the escape chord then works, needs the keys.
+3. **Keys reach the page in kiosk; an event tap swallows chosen shortcuts.** Not yet. The
+   Wails window class answers `canBecomeKeyWindow` YES, which is what a borderless window needs,
+   and the web view is made first responder after the style change. The tap is written and
+   compiles; it could not be created here because the app has no Accessibility grant
+   (`AXIsProcessTrusted` false, `CGPreflightListenEventAccess` false on first run). The Mac
+   shell page shows the keys the page receives and the keys the tap took.
+4. **List windows and restore a minimized one.** Not yet (needs the Accessibility grant). The
+   calls are `kAXWindowsAttribute`, then `kAXMinimizedAttribute = false` and `kAXRaiseAction`.
+   AltTab (GPL-3.0) restores a minimized window with the same Accessibility call when you pick
+   it, then fronts it with a private SkyLight call. So AltTab already handles this in its own
+   switcher; what does not is the system Cmd-Tab, which activates the app and leaves every
+   window in the Dock. The shell has a switch for exactly that ("Restore a minimized window when
+   its app is activated"), which makes a fork unnecessary for this complaint.
+5. **Second display.** Not run: one display was connected.
+
+Other things learned:
+
+- **cgo in process: go.** One binary, one signature for the grants, no socket protocol. The
+  Objective-C is about 450 lines beside the Go that wraps it. A Swift helper would only be
+  worth it if the tap had to outlive the app.
+- **Wails.** v3.1.0 is the current stable release; there is no v4 module. Tangent's shell
+  (v3.0.0-beta.26) was removed from its main branch on 2026-11-12, so there is no shared shell
+  code to follow. Wails' `ExecJS` does nothing for a page loaded from the loopback server (it
+  waits for a Wails runtime the page never loads), so the shell evaluates script itself.
+- **Activation.** `activateIgnoringOtherApps` brought the app forward from the background.
+- **Fonts.** The web view can use fonts installed for the user (a Powerline font resolved).
+- **Retina and WebGL.** The xterm WebGL renderer is correct in the web view at scale 2.
+  Headless Chrome with an emulated scale factor draws it at double size; that is the emulation,
+  not the app. Check terminal rendering with `/api/shell/snapshot`, not a headless browser.
+- **Safety.** The tap runs on its own thread, acts only while the app is frontmost, stops
+  swallowing when the main thread has not answered for 3 seconds, and is removed when
+  swallowing is turned off. Presentation options are per app, so they end with the process.
+- **Sign-in.** The web view keeps its cookies across launches.
+
+## Known gaps
+
+- No app icon.
+- The terminal has no search, no split panes and no configuration; font size is the one setting
+  (kept in the web view's local storage).
+- Windows on other Spaces are not listed: the Accessibility API only returns the current Space.
+- `substrate pins check` knows nothing of the three new Go dependencies (Wails, creack/pty,
+  coder/websocket); they are not in the Substrate BOM.

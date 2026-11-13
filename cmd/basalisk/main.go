@@ -22,6 +22,7 @@ import (
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	desktopLogging()
 	if err := run(ctx, os.Getenv); err != nil {
 		fmt.Fprintln(os.Stderr, "basalisk:", err)
 		stop()
@@ -42,8 +43,16 @@ func run(ctx context.Context, getenv func(string) string) error {
 	b := &basalisk{app: started.App}
 	rootCmd := cli.Root(started.App)
 	serve := b.serveCmd(ctx)
-	// `basalisk` with no command serves, like `basalisk serve`.
-	rootCmd.RunE = func(c *cobra.Command, args []string) error { return serve.RunE(c, args) }
+	// `basalisk` with no command serves, like `basalisk serve`. A desktop build started from
+	// its app bundle opens the desktop window instead.
+	def := serve
+	if desktop := b.desktopCmd(ctx); desktop != nil {
+		rootCmd.AddCommand(desktop)
+		if inAppBundle() {
+			def = desktop
+		}
+	}
+	rootCmd.RunE = func(c *cobra.Command, args []string) error { return def.RunE(c, args) }
 	rootCmd.Args = cobra.NoArgs
 	rootCmd.AddCommand(serve)
 	return rootCmd.ExecuteContext(ctx)

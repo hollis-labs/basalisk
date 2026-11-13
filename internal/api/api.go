@@ -16,6 +16,9 @@ import (
 
 	"github.com/hollis-labs/substrate/apierr"
 	"github.com/hollis-labs/substrate/modules/httphost"
+
+	"github.com/hollis-labs/basalisk/internal/macshell"
+	"github.com/hollis-labs/basalisk/internal/terminal"
 )
 
 // API serves the owner routes and the companion routes over one Service.
@@ -28,6 +31,10 @@ type API struct {
 	mu           sync.Mutex
 	pairAttempts int
 	pairWindow   time.Time
+	// The desktop shell and the terminal are optional: nil unless EnableShell and
+	// EnableTerminal were called (the desktop app does; a server deployment does not).
+	shell macshell.Controller
+	term  *terminal.Manager
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,
@@ -77,11 +84,18 @@ func (a *API) routes() []route {
 	}
 }
 
+// allRoutes is the dashboard's routes plus the desktop shell's and the terminal's. Those two
+// always serve their state route, so the frontend can ask whether they are available, and
+// serve the rest only when enabled.
+func (a *API) allRoutes() []route {
+	return append(append(a.routes(), a.shellRoutes()...), a.terminalRoutes()...)
+}
+
 // Handler serves the owner routes; it is httphost.Options.Routes. The auth guard in front of
 // it has already verified the caller and the route's scope.
 func (a *API) Handler() *http.ServeMux {
 	m := http.NewServeMux()
-	for _, rt := range a.routes() {
+	for _, rt := range a.allRoutes() {
 		h := a.authorized(rt.Handler)
 		m.HandleFunc(rt.Method+" "+rt.Pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
@@ -98,7 +112,7 @@ func (a *API) Handler() *http.ServeMux {
 //	basalisk.read   every GET
 //	basalisk.write  every change
 func (a *API) RegisterScopes(t *libauth.ScopeTable) {
-	for _, rt := range a.routes() {
+	for _, rt := range a.allRoutes() {
 		t.Route(rt.Method, rt.Pattern, rt.Scope)
 	}
 }

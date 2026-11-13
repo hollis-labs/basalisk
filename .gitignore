@@ -47,3 +47,6 @@ Thumbs.db
 !/config/*.example.*
 *.local.json
 *.local.yaml
+
+# Desktop app bundle (scripts/build-macos-app.sh)
+/build/

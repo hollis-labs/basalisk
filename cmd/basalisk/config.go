@@ -33,6 +33,7 @@ func bootOptions(getenv func(string) string) boot.Options {
 			if err = dirs.Prepare(); err != nil {
 				return fmt.Errorf("prepare the data directory %s: %w", dirs.Data, err)
 			}
+			desktopConfig(app.Config)
 			anchor := func(def, modName, key string, nested ...string) error {
 				m, _ := app.Config[modName].(map[string]any)
 				if m == nil {

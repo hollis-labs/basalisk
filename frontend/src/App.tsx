@@ -1,8 +1,20 @@
 import { ManifestShell, type PageComponent } from "@hollis-labs/app-shell"
 import { Button } from "@hollis-labs/design-components"
-import { Cable, History, Home, Inbox, Laptop, LogOut, Shield, User } from "lucide-react"
+import {
+  Cable,
+  History,
+  Home,
+  Inbox,
+  Laptop,
+  LogOut,
+  Monitor,
+  Shield,
+  SquareTerminal,
+  User,
+} from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { ApiError, loadAccount, type Profile, request } from "./api/account"
+import { SHELL_EVENT, shell } from "./api/shell"
 import { Notice } from "./components/forms"
 import { manifest } from "./manifest"
 import { AccountPage } from "./pages/account"
@@ -14,8 +26,11 @@ import { OutboxPage } from "./pages/outbox"
 import { ReadinessPage } from "./pages/readiness"
 import { SecurityPage } from "./pages/security"
 import { SessionsPage } from "./pages/sessions"
+import { ShellPage } from "./pages/shell"
 import { SignOutPage } from "./pages/signout"
+import { TerminalPage } from "./pages/terminal"
 import { type Session, SessionContext, useSession } from "./session"
+import { TerminalHost } from "./terminal/host"
 
 // Kit icon names used by the manifest, resolved by the shell.
 const icons = {
@@ -27,6 +42,8 @@ const icons = {
   user: User,
   shield: Shield,
   "log-out": LogOut,
+  terminal: SquareTerminal,
+  monitor: Monitor,
 }
 
 // Pages that read the owner's timezone get it from the session.
@@ -46,6 +63,33 @@ function usePath() {
     setPath(to)
   }, [])
   return [path, navigate] as const
+}
+
+/**
+ * In the desktop app's kiosk mode the window covers the whole display, including the strip
+ * beside the camera housing. The layout is pushed below that strip while the menu bar is
+ * hidden (see html.kiosk in index.css).
+ */
+function useKioskChrome(signedIn: boolean) {
+  useEffect(() => {
+    if (!signedIn) return
+    const root = document.documentElement
+    const apply = async () => {
+      try {
+        const s = await shell.status()
+        const inset = s.available && s.kiosk && !s.menu_bar_visible ? s.screen.safe_top : 0
+        root.classList.toggle("kiosk", s.available && s.kiosk)
+        root.style.setProperty("--shell-safe-top", `${inset}px`)
+      } catch {
+        root.classList.remove("kiosk")
+        root.style.setProperty("--shell-safe-top", "0px")
+      }
+    }
+    void apply()
+    const onShell = () => void apply()
+    window.addEventListener(SHELL_EVENT, onShell)
+    return () => window.removeEventListener(SHELL_EVENT, onShell)
+  }, [signedIn])
 }
 
 export function App() {
@@ -91,6 +135,7 @@ export function App() {
     media.addEventListener("change", apply)
     return () => media.removeEventListener("change", apply)
   }, [profile])
+  useKioskChrome(!!profile)
   useEffect(() => {
     window.addEventListener("basalisk:unauthorized", signedOut)
     return () => window.removeEventListener("basalisk:unauthorized", signedOut)
@@ -99,6 +144,8 @@ export function App() {
   const pages = useMemo<Record<string, PageComponent>>(
     () => ({
       home: () => <HomePage onNavigate={navigate} />,
+      terminal: () => <TerminalPage />,
+      shell: () => <ShellPage />,
       sessions: withTimezone(SessionsPage),
       outbox: () => <OutboxPage />,
       readiness: withTimezone(ReadinessPage),
@@ -131,14 +178,16 @@ export function App() {
   if (!session) return <Entry setup={setup} onReady={setProfile} />
   return (
     <SessionContext.Provider value={session}>
-      <ManifestShell
-        manifest={manifest}
-        apiBase="/api"
-        path={path}
-        onNavigate={navigate}
-        pages={pages}
-        icons={icons}
-      />
+      <TerminalHost>
+        <ManifestShell
+          manifest={manifest}
+          apiBase="/api"
+          path={path}
+          onNavigate={navigate}
+          pages={pages}
+          icons={icons}
+        />
+      </TerminalHost>
     </SessionContext.Provider>
   )
 }
