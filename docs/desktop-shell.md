@@ -131,7 +131,10 @@ registerFileHandler({ app: "notes", match: name => /\.(md|txt)$/.test(name) })
 
 Inside a window, `useDesk()` gives the desktop: `open(app, { args, key, title })`,
 `openFile({ root, path })` (opens the app registered for that file), `close`, `setTitle`,
-the window manager, the palette, the terminal toggle, the shell status. For content that is
+the window manager, the palette, the terminal toggle, the shell status, and
+`confirm({ title, message, confirmLabel, danger })`, a yes/no dialog that resolves to a
+boolean. Use it instead of `window.confirm`: the desktop app's web view has no handler for
+JavaScript dialogs and answers "no" without showing anything. For content that is
 not DOM (a native web view over a window), `geometry(winId)` gives the window's rectangle on
 screen and `covered`, true while another window, the palette, the menu, the drop-down
 terminal or a preview card is over it or it is being moved; `subscribe(fn)` calls back when

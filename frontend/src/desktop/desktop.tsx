@@ -35,7 +35,15 @@ import { useTerminalHost } from "../terminal/host"
 import { DeskContext } from "./context"
 import { bindings, chordFor, chordOf, keyCapture, prettyChord } from "./keys"
 import { PaletteDialog } from "./palette"
-import { type AppDef, allApps, allCommands, appById, type DeskAPI, handlerFor } from "./registry"
+import {
+  type AppDef,
+  allApps,
+  allCommands,
+  appById,
+  type ConfirmOptions,
+  type DeskAPI,
+  handlerFor,
+} from "./registry"
 import { loadSettings, updateSettings, useDeskSettings } from "./settings"
 import { applyDeskTheme, THEMES } from "./themes"
 import {
@@ -120,6 +128,10 @@ export function Desktop() {
   const statusRef = useRef(status)
   statusRef.current = status
   const [palette, setPalette] = useState(false)
+  const [question, setQuestion] = useState<{
+    options: ConfirmOptions
+    answer: (yes: boolean) => void
+  } | null>(null)
   const settings = useDeskSettings()
 
   // What commands, apps and the palette may ask of the desktop. Stable for its lifetime.
@@ -197,6 +209,13 @@ export function Desktop() {
           covered,
         }
       },
+      confirm: (options) =>
+        new Promise<boolean>((resolve) => {
+          setQuestion((current) => {
+            current?.answer(false) // a second question replaces the first, answered "no"
+            return { options, answer: resolve }
+          })
+        }),
       subscribe(fn) {
         watchers.current.add(fn)
         return () => {
@@ -294,12 +313,12 @@ export function Desktop() {
 
   const placed = useMemo(() => place(state, area), [state, area])
   placedRef.current = placed
-  overlayRef.current = palette || menuOpen || terminal.overlayOpen || !!card
+  overlayRef.current = palette || menuOpen || terminal.overlayOpen || !!card || !!question
   // Tell whoever follows window geometry (a native view) that it may have changed.
   // biome-ignore lint/correctness/useExhaustiveDependencies: these are the things geometry() reads
   useEffect(() => {
     for (const fn of watchers.current) fn()
-  }, [placed, state.focus, palette, menuOpen, terminal.overlayOpen, card, movingTick])
+  }, [placed, state.focus, palette, menuOpen, terminal.overlayOpen, card, movingTick, question])
   const divider = dividerX(state, area)
 
   const hitTest = useCallback(
@@ -465,9 +484,67 @@ export function Desktop() {
           )}
         </div>
         {palette && <PaletteDialog desk={desk} onClose={() => setPalette(false)} />}
+        {question && (
+          <ConfirmDialog
+            options={question.options}
+            onAnswer={(yes) => {
+              question.answer(yes)
+              setQuestion(null)
+            }}
+          />
+        )}
         <CiteCardLayer />
       </div>
     </DeskContext.Provider>
+  )
+}
+
+/** A yes/no question, centred over the desktop. Enter confirms, Escape declines. */
+function ConfirmDialog({
+  options,
+  onAnswer,
+}: {
+  options: ConfirmOptions
+  onAnswer: (yes: boolean) => void
+}) {
+  return (
+    <div className="desk-palette-scrim desk-confirm-scrim" onPointerDown={() => onAnswer(false)}>
+      <div
+        className="desk-confirm"
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={options.title}
+        onPointerDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onAnswer(false)
+        }}
+      >
+        <h3>{options.title}</h3>
+        {options.message && <p>{options.message}</p>}
+        <div className="desk-confirm-actions">
+          <button
+            type="button"
+            className="desk-button"
+            // biome-ignore lint/a11y/noAutofocus: a destructive question starts on the safe answer
+            autoFocus={!!options.danger}
+            onClick={() => onAnswer(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="desk-button"
+            data-primary="true"
+            data-danger={!!options.danger}
+            // biome-ignore lint/a11y/noAutofocus: the dialog exists to be answered
+            autoFocus={!options.danger}
+            onClick={() => onAnswer(true)}
+          >
+            {options.confirmLabel ?? "OK"}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

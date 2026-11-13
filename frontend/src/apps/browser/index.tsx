@@ -32,9 +32,14 @@ registerCommands([
     icon: History,
     keywords: "forget delete pages visited",
     when: () => nativeBrowser.available(),
-    run: async () => {
-      if (!window.confirm("Clear the browser history? Every page you have visited is forgotten."))
-        return
+    run: async (desk) => {
+      const sure = await desk.confirm({
+        title: "Clear the browser history?",
+        message: "Every page you have visited is forgotten.",
+        confirmLabel: "Clear history",
+        danger: true,
+      })
+      if (!sure) return
       await browserData.forget().catch(() => undefined)
     },
   },

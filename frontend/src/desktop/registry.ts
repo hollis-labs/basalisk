@@ -70,6 +70,12 @@ export interface DeskAPI {
   setTheme(id: string): void
   signOut(): void
   /**
+   * Ask a yes/no question in a dialog on the desktop. Resolves true when confirmed. Use this
+   * instead of window.confirm, which the desktop app's web view answers "no" without showing
+   * anything.
+   */
+  confirm(question: ConfirmOptions): Promise<boolean>
+  /**
    * Where a window is on screen and whether anything is drawn over it. For content that is
    * not DOM (a native web view placed over the window): show it only while `covered` is false.
    * Null for an unknown window.
@@ -77,6 +83,15 @@ export interface DeskAPI {
   geometry(winId: string): WindowGeometry | null
   /** Calls back after anything that can change a geometry (windows, layout, overlays). Returns the unsubscribe. */
   subscribe(fn: () => void): () => void
+}
+
+export interface ConfirmOptions {
+  title: string
+  message?: string
+  /** The confirming button's label. Default "OK". */
+  confirmLabel?: string
+  /** The action destroys something: the confirming button is drawn as a warning. */
+  danger?: boolean
 }
 
 export interface WindowGeometry {

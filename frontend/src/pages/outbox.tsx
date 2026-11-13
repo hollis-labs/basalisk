@@ -2,6 +2,7 @@ import { Button } from "@hollis-labs/design-components"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { request } from "../api/account"
 import { Notice } from "../components/forms"
+import { useDesk } from "../desktop/context"
 
 type Submission = {
   sequence: number
@@ -42,6 +43,7 @@ const deliveryMessages: Record<string, string> = {
 }
 
 export function OutboxPage() {
+  const desk = useDesk()
   const [page, setPage] = useState<Page>({ items: [], nextBefore: 0 })
   const [error, setError] = useState("")
   const [message, setMessage] = useState("")
@@ -98,14 +100,17 @@ export function OutboxPage() {
     }
   }
   async function discard(item: Submission) {
-    if (
-      !window.confirm(
-        item.mayHaveSent
-          ? "Stop further delivery and discard the local note? FE may already have accepted it. This does not delete anything in FE. Copy anything you want to keep first."
-          : "Discard this pending note? It will not be sent to Fragments Engine. Copy anything you want to keep first.",
-      )
-    )
-      return
+    const sure = await desk.confirm({
+      title: item.mayHaveSent
+        ? "Stop delivery and discard the local note?"
+        : "Discard this pending note?",
+      message: item.mayHaveSent
+        ? "FE may already have accepted it. This does not delete anything in FE. Copy anything you want to keep first."
+        : "It will not be sent to Fragments Engine. Copy anything you want to keep first.",
+      confirmLabel: "Discard",
+      danger: true,
+    })
+    if (!sure) return
     setBusy(true)
     try {
       await request(`fragment-submissions/${item.sequence}`, "DELETE")

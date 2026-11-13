@@ -1278,3 +1278,48 @@ button.desk-shortcut-chord:hover {
 .notes {
   container-type: inline-size;
 }
+
+/* ---- Confirm dialog ---- */
+.desk-confirm-scrim {
+  align-items: center;
+  padding-top: 0;
+  z-index: 40000;
+}
+.desk-confirm {
+  width: min(27rem, calc(100vw - 4rem));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 18px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--desk-border);
+  background: var(--desk-panel);
+  box-shadow: 0 30px 80px rgb(0 0 0 / 0.6);
+  color: var(--desk-fg);
+}
+.desk-confirm h3 {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.desk-confirm p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--desk-fg-soft);
+}
+.desk-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.desk-button[data-primary="true"] {
+  border-color: var(--desk-accent);
+  color: var(--desk-fg);
+}
+.desk-button[data-primary="true"][data-danger="true"] {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
