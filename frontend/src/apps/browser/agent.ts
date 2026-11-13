@@ -279,6 +279,40 @@ function target(input: Record<string, unknown>, textKey: string): [string, strin
   return [selector, text]
 }
 
+// ---- One line per call, for the permission card and the call's row ----
+
+const short = (v: unknown, n = 60) => {
+  const t = typeof v === "string" ? v.replace(/\s+/g, " ").trim() : ""
+  return t.length > n ? `${t.slice(0, n - 1)}…` : t
+}
+const hostName = (url: unknown) => {
+  try {
+    return new URL(String(url)).host || short(url)
+  } catch {
+    return short(url)
+  }
+}
+/** The page a call means, by its window's title (sync and best effort: never throws). */
+function pageName(input: Record<string, unknown>): string {
+  try {
+    const desk = (globalThis as { basalisk?: { desk?: DeskAPI } }).basalisk?.desk
+    const st = desk?.wmState()
+    if (!st) return "the page"
+    const id = typeof input.window_id === "string" ? input.window_id : ""
+    const browsers = st.wins.filter((w) => w.app === "browser")
+    const w = id
+      ? st.wins.find((x) => x.id === id)
+      : (browsers.find((x) => x.id === st.focus) ?? [...browsers].sort((a, b) => b.z - a.z)[0])
+    return w?.title ? `“${short(w.title, 40)}”` : "the page"
+  } catch {
+    return "the page"
+  }
+}
+const target_ = (input: Record<string, unknown>, key: string) =>
+  typeof input[key] === "string" && input[key]
+    ? `“${short(input[key])}”`
+    : `${short(input.selector) || "?"}`
+
 registerAgentTools([
   {
     name: "browser_read",
@@ -382,6 +416,8 @@ registerAgentTools([
       },
       ["url"],
     ),
+    describe: (input) =>
+      `Go to ${hostName(input.url)}${input.new_window === true ? " in a new window" : ""}`,
     run: async (input, desk) => {
       const url = typeof input.url === "string" ? input.url.trim() : ""
       if (!/^https?:\/\/\S+$/i.test(url))
@@ -428,6 +464,7 @@ registerAgentTools([
       ),
       selector: str("A CSS selector instead of text."),
     }),
+    describe: (input) => `Click ${target_(input, "text")} on ${pageName(input)}`,
     run: async (input, desk) => {
       const [selector, text] = target(input, "text")
       const id = await browserWindow(desk, input)
@@ -467,6 +504,8 @@ registerAgentTools([
       },
       ["value"],
     ),
+    // The value is not shown: it may be a password.
+    describe: (input) => `Fill ${target_(input, "field")} on ${pageName(input)}`,
     run: async (input, desk) => {
       const [selector, field] = target(input, "field")
       if (typeof input.value !== "string") throw new Error("value must be a string.")

@@ -106,6 +106,17 @@ async function put(file: FileRef, text: string, etag?: string) {
   return showing.map(([id]) => id)
 }
 
+/** The note a call means, in a word (sync and best effort: never throws). */
+function noteLabel(input: Record<string, unknown>): string {
+  try {
+    const id = typeof input.window_id === "string" ? input.window_id : ""
+    const path = id ? (noteWindows.get(id)?.file.path ?? "") : String(input.path ?? "")
+    return path.split("/").pop() || "the note"
+  } catch {
+    return "the note"
+  }
+}
+
 registerAgentTools([
   {
     name: "notes_read",
@@ -197,6 +208,7 @@ registerAgentTools([
     description:
       "Replace a note's whole text, or create the note if it does not exist (folders too; .md is added to a name without an extension). A window showing the note shows the new text. Refused if a window has unsaved edits to it. To change part of a note, use notes_edit.",
     input_schema: object({ ...WHICH, text: str("The note's new text (markdown).") }, ["text"]),
+    describe: (input) => `Replace the text of ${noteLabel(input)} (or create it)`,
     run: async (input) => {
       if (typeof input.text !== "string") throw new Error("text must be a string.")
       const { file: asked } = await which(input)
@@ -238,6 +250,7 @@ registerAgentTools([
       },
       ["old_text", "new_text"],
     ),
+    describe: (input) => `Edit ${noteLabel(input)}: 1 passage`,
     run: async (input) => {
       const oldText = typeof input.old_text === "string" ? input.old_text : ""
       const newText = typeof input.new_text === "string" ? input.new_text : null
