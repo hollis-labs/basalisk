@@ -7,7 +7,7 @@
 import { registerAgentTools } from "../../agent/tools"
 import { ApiError } from "../../api/account"
 import { files } from "../../api/files"
-import type { FileRef } from "../../desktop/registry"
+import type { DeskAPI, FileRef } from "../../desktop/registry"
 import { changed } from "../files/ops"
 import { noteName, notesFolder } from "./notefiles"
 import { noteWindows } from "./open"
@@ -96,6 +96,40 @@ function guard(file: FileRef) {
       `The owner has unsaved edits to ${file.path} in window ${busy[0]}. Nothing was changed; ask them to save or discard their edits first.`,
     )
   return showing
+}
+
+// Agent instruction files: the owner edits them himself, whatever the place.
+const INSTRUCTION_FILES = new Set(["claude.md", "agents.md", "gemini.md", "skill.md"])
+const INSTRUCTION_DIRS = new Set([".claude", ".codex", ".gemini", ".agents"])
+
+/** In the notes folder (its root, at or under its path)? */
+export function inFolder(file: FileRef, folder: FileRef): boolean {
+  if (file.root !== folder.root) return false
+  const base = folder.path.replace(/^\/+|\/+$/g, "")
+  return !base || file.path === base || file.path.startsWith(`${base}/`)
+}
+
+/**
+ * Before any write: never an agent instruction file; outside the notes folder, the owner is
+ * asked each time (a standing grant covers the notes folder only).
+ */
+async function allowed(file: FileRef, desk: DeskAPI) {
+  const parts = file.path.toLowerCase().split("/")
+  if (INSTRUCTION_FILES.has(parts[parts.length - 1]) || parts.some((p) => INSTRUCTION_DIRS.has(p)))
+    throw new Error(
+      `${file.path} is an agent instruction file (CLAUDE.md, AGENTS.md, GEMINI.md, SKILL.md, or in .claude/.codex/.gemini/.agents). The owner edits these himself; do not try to change it.`,
+    )
+  if (inFolder(file, await notesFolder())) return
+  const yes = await desk.confirm({
+    title: "Let the agent change this file?",
+    message: `${file.root}:${file.path}\n\nIt is outside your notes folder.`,
+    confirmLabel: "Change it",
+    danger: true,
+  })
+  if (!yes)
+    throw new Error(
+      `The owner declined the change to ${file.root}:${file.path} (outside the notes folder). Do not retry it.`,
+    )
 }
 
 /** Writes and shows the new text in every window showing the file. */
@@ -206,10 +240,10 @@ registerAgentTools([
     name: "notes_write",
     level: "write",
     description:
-      "Replace a note's whole text, or create the note if it does not exist (folders too; .md is added to a name without an extension). A window showing the note shows the new text. Refused if a window has unsaved edits to it. To change part of a note, use notes_edit.",
+      "Replace a note's whole text, or create the note if it does not exist (folders too; .md is added to a name without an extension). A window showing the note shows the new text. Refused if a window has unsaved edits to it. Outside the notes folder the owner is asked each time; agent instruction files (CLAUDE.md, AGENTS.md, SKILL.md, .claude/…) are refused. To change part of a note, use notes_edit.",
     input_schema: object({ ...WHICH, text: str("The note's new text (markdown).") }, ["text"]),
     describe: (input) => `Replace the text of ${noteLabel(input)} (or create it)`,
-    run: async (input) => {
+    run: async (input, desk) => {
       if (typeof input.text !== "string") throw new Error("text must be a string.")
       const { file: asked } = await which(input)
       const dir = asked.path.includes("/") ? asked.path.slice(0, asked.path.lastIndexOf("/")) : ""
@@ -218,6 +252,7 @@ registerAgentTools([
       if (!TEXT.test(file.path))
         throw new Error("Notes are markdown or text files (.md, .txt, …); that name is not one.")
       guard(file)
+      await allowed(file, desk)
       const old = await readFile(file)
       if (!old) {
         if (dir)
@@ -241,7 +276,7 @@ registerAgentTools([
     name: "notes_edit",
     level: "write",
     description:
-      "Change one passage of a note: old_text must occur exactly once in it (include enough around it to make it unique); it is replaced by new_text. A window showing the note shows the change. Refused if a window has unsaved edits to it.",
+      "Change one passage of a note: old_text must occur exactly once in it (include enough around it to make it unique); it is replaced by new_text. A window showing the note shows the change. Refused if a window has unsaved edits to it. Outside the notes folder the owner is asked each time; agent instruction files (CLAUDE.md, AGENTS.md, SKILL.md, .claude/…) are refused.",
     input_schema: object(
       {
         ...WHICH,
@@ -251,13 +286,14 @@ registerAgentTools([
       ["old_text", "new_text"],
     ),
     describe: (input) => `Edit ${noteLabel(input)}: 1 passage`,
-    run: async (input) => {
+    run: async (input, desk) => {
       const oldText = typeof input.old_text === "string" ? input.old_text : ""
       const newText = typeof input.new_text === "string" ? input.new_text : null
       if (!oldText) throw new Error("old_text is empty: give the exact passage to replace.")
       if (newText === null) throw new Error("new_text must be a string (empty to delete).")
       const { file } = await which(input)
       guard(file)
+      await allowed(file, desk)
       const got = await readFile(file)
       if (!got)
         throw new Error(`There is no note at ${file.root}:${file.path}. notes_list lists them.`)
