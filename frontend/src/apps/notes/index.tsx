@@ -1,4 +1,17 @@
-import { Check, Code2, Copy, Eye, FileText, Pencil, RotateCw, Save, Undo2 } from "lucide-react"
+import {
+  Check,
+  Code2,
+  Copy,
+  Eye,
+  FilePlus2,
+  FileText,
+  Pencil,
+  RotateCw,
+  Save,
+  SaveAll,
+  TextCursorInput,
+  Undo2,
+} from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { type CiteRecord, kindLabel, loadRecord, type RefIdentity, refsIn } from "../../cite"
 import { CiteText, Markdown } from "../../cite/ui"
@@ -6,6 +19,7 @@ import { useDesk } from "../../desktop/context"
 import {
   type FileRef,
   registerApp,
+  registerCommands,
   registerFileHandler,
   registerProvider,
   type WindowProps,
@@ -17,6 +31,9 @@ import {
  * references live. A file can be edited in place (a record cannot): source on the left, the
  * rendered page on the right, saved with ⌘S, refused if the file changed underneath.
  */
+
+import { createNote, NameForm, notesFolder, renameNote, saveAs } from "./notefiles"
+import "./notes.css"
 
 const MARKDOWN = /\.(md|markdown|mdx)$/i
 const TEXT = /\.(md|markdown|mdx|txt|text|log|rst|org)$/i
@@ -117,6 +134,17 @@ function NotesWindow({ winId, args }: WindowProps) {
   const [notice, setNotice] = useState("")
   const [conflict, setConflict] = useState(false)
   const editor = useRef<HTMLTextAreaElement>(null)
+  // A name being asked for: a new note, a rename, a save as.
+  const [form, setForm] = useState<"rename" | "save-as" | null>(null)
+  const [folder, setFolder] = useState<FileRef | undefined>()
+  useEffect(() => {
+    if (args.new || form === "save-as")
+      void notesFolder()
+        .then(setFolder)
+        .catch(() => undefined)
+  }, [args.new, form])
+  // A note just created opens for editing.
+  const editOnLoad = useRef(!!args.edit)
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: key is the source, serialized; nonce reloads
   useEffect(() => {
@@ -136,9 +164,10 @@ function NotesWindow({ winId, args }: WindowProps) {
           setNotice("Restored your unsaved changes.")
         } else {
           setDoc(d)
-          setDraft(null)
+          setDraft(editOnLoad.current && d.file ? d.text : null)
           setNotice("")
         }
+        editOnLoad.current = false
         desk.setTitle(winId, d.title)
       })
       .catch((e) => live && setError(e instanceof Error ? e.message : "Could not be opened."))
@@ -240,9 +269,36 @@ function NotesWindow({ winId, args }: WindowProps) {
     }
   }
 
+  const openFile = (file: FileRef, edit: boolean) => {
+    editOnLoad.current = edit
+    setForm(null)
+    desk.setArgs(winId, { file, edit })
+  }
+  if (args.new && !source)
+    return (
+      <div className="notes-empty notes-new">
+        <h2>New note</h2>
+        {folder && (
+          <NameForm
+            mode="new"
+            initial="Untitled.md"
+            folder={folder}
+            onDone={async (name, where) => openFile(await createNote(where ?? folder, name), true)}
+            onCancel={() => desk.close(winId)}
+          />
+        )}
+      </div>
+    )
   if (!source)
     return (
       <div className="notes-empty">
+        <button
+          type="button"
+          className="desk-button"
+          onClick={() => desk.setArgs(winId, { new: true })}
+        >
+          New note
+        </button>
         <FileText aria-hidden="true" size={22} strokeWidth={1.4} />
         <p>Open a markdown or text file from Files, or a reference from anywhere.</p>
         <p className="notes-hint">
@@ -271,6 +327,31 @@ function NotesWindow({ winId, args }: WindowProps) {
           {doc.origin}
         </span>
         {notice && <span className="notes-notice">{notice}</span>}
+        <button
+          type="button"
+          title="New note (⌃⌥N)"
+          onClick={() => desk.open("notes", { args: { new: true } })}
+        >
+          <FilePlus2 aria-hidden="true" size={14} strokeWidth={1.6} />
+        </button>
+        {doc.file && (
+          <>
+            <button
+              type="button"
+              title="Rename"
+              onClick={() => setForm(form === "rename" ? null : "rename")}
+            >
+              <TextCursorInput aria-hidden="true" size={14} strokeWidth={1.6} />
+            </button>
+            <button
+              type="button"
+              title="Save as…"
+              onClick={() => setForm(form === "save-as" ? null : "save-as")}
+            >
+              <SaveAll aria-hidden="true" size={14} strokeWidth={1.6} />
+            </button>
+          </>
+        )}
         {doc.file && draft === null && (
           <button
             type="button"
@@ -326,6 +407,48 @@ function NotesWindow({ winId, args }: WindowProps) {
           <RotateCw aria-hidden="true" size={14} strokeWidth={1.6} />
         </button>
       </header>
+      {form && doc.file && (
+        <div className="notes-form-panel">
+          {form === "rename" ? (
+            <NameForm
+              mode="rename"
+              initial={doc.title}
+              onCancel={() => setForm(null)}
+              onDone={async (name) => {
+                const old = doc.file as FileRef
+                const next = await renameNote(old, name)
+                // An unsaved edit follows the note to its new name.
+                const kept = readDraft(old)
+                if (kept) {
+                  writeDraft(next, kept)
+                  writeDraft(old, null)
+                }
+                openFile(next, draft !== null)
+              }}
+            />
+          ) : (
+            folder && (
+              <NameForm
+                mode="save-as"
+                initial={doc.title.replace(/(\.[^.]+)?$/, " copy$1")}
+                folder={{
+                  root: doc.file.root,
+                  path: doc.file.path.includes("/")
+                    ? doc.file.path.slice(0, doc.file.path.lastIndexOf("/"))
+                    : "",
+                }}
+                onCancel={() => setForm(null)}
+                onDone={async (name, where) => {
+                  const text = draft ?? doc.text
+                  const { ref } = await saveAs(text, where ?? folder, name)
+                  if (doc.file) writeDraft(doc.file, null)
+                  openFile(ref, draft !== null)
+                }}
+              />
+            )
+          )}
+        </div>
+      )}
       {conflict && (
         <div className="notes-conflict" role="alert">
           <span>This file changed on disk after you opened it.</span>
@@ -433,3 +556,15 @@ registerProvider({
         },
       })),
 })
+
+registerCommands([
+  {
+    id: "notes.new",
+    title: "Notes: new note",
+    section: "Notes",
+    icon: FilePlus2,
+    keywords: "create write markdown",
+    keys: "ctrl+alt+n",
+    run: (desk) => desk.open("notes", { args: { new: true } }),
+  },
+])

@@ -12,6 +12,8 @@ export interface DeskSettings {
   layout: "tile" | "float"
   /** Command id to chord. "" means the command has no shortcut. Absent means the default. */
   keys: Record<string, string>
+  /** Where Notes creates new notes (apps/notes); unset means the default it proposes. */
+  notesFolder?: { root: string; path: string }
 }
 
 const CACHE = "basalisk.desk.settings"

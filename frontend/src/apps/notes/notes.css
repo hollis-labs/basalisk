@@ -1,0 +1,50 @@
+/* Notes additions (the base styles are in desktop/desktop.css): forms for new, rename, save as. */
+
+.notes-new {
+  gap: 14px;
+}
+.notes-new h2 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--desk-fg);
+}
+.notes-form-panel {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--desk-border);
+  background: var(--desk-panel);
+}
+.notes-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(34rem, 100%);
+  font-family: var(--desk-font);
+  font-size: 12.5px;
+  text-align: left;
+}
+.notes-form label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.notes-form label:not(.notes-form-check) > span:first-child {
+  flex: 0 0 3.5rem;
+  color: var(--desk-muted);
+}
+.notes-form select.desk-input {
+  flex: 0 0 auto;
+  width: auto;
+}
+.notes-form .notes-form-check {
+  padding-left: 4rem;
+  color: var(--desk-fg-soft);
+}
+.notes-form-error {
+  margin: 0;
+  color: var(--desk-accent-2);
+}
+.notes-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
