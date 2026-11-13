@@ -28,6 +28,8 @@ import { ApiError, request } from "../api/account"
 import "../apps"
 import "./commands"
 import { SHELL_EVENT, type ShellEvent, type ShellStatus, shell } from "../api/shell"
+import { initCite, setCiteOpener } from "../cite"
+import { CiteCardLayer } from "../cite/ui"
 import { useSession } from "../session"
 import { useTerminalHost } from "../terminal/host"
 import { DeskContext } from "./context"
@@ -162,6 +164,28 @@ export function Desktop() {
     }
     return api
   }, [signedOut])
+
+  // For an agent driving the app (the shell's eval endpoint, a browser console): the desktop
+  // API, so a window can be opened or a command run without synthesizing clicks.
+  useEffect(() => {
+    const host = window as unknown as { basalisk?: { desk: DeskAPI } }
+    host.basalisk = { desk }
+    return () => {
+      delete host.basalisk
+    }
+  }, [desk])
+
+  // References: learn what the server resolves, and open a record in a Notes window.
+  useEffect(() => {
+    void initCite()
+    setCiteOpener((ref) =>
+      desk.open("notes", {
+        args: { cite: { kind: ref.kind, canonical: ref.canonical } },
+        key: `${ref.kind}:${ref.canonical}`,
+        title: ref.canonical,
+      }),
+    )
+  }, [desk])
 
   // The server's copy of the desk settings wins over the cached one.
   useEffect(() => {
@@ -385,6 +409,7 @@ export function Desktop() {
           )}
         </div>
         {palette && <PaletteDialog desk={desk} onClose={() => setPalette(false)} />}
+        <CiteCardLayer />
       </div>
     </DeskContext.Provider>
   )

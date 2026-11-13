@@ -17,3 +17,5 @@ func inAppBundle() bool { return false }
 func desktopLogging() {}
 
 func desktopConfig(map[string]any) {}
+
+func desktopEnv() {}

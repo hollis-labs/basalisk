@@ -82,6 +82,36 @@ Signed in, the app is a desktop: a bar, an empty canvas, and windows (`frontend/
 - The app-shell `ManifestShell` is no longer rendered and `cmd/basalisk/app.ui.json` no longer
   drives navigation. The desktop's app registry should eventually be fed by the manifest.
 
+### Cite and Notes
+
+A reference in any text becomes a chip with a preview card: a Torque id (`CW-…`, `EP-…`,
+`PRJ-…`), a Tesseract item (`tesseract:<item_id>`, a bare item id, `tesseract:<namespace>#<key>`),
+a `[label](tach:<service>/<id>)` link, a URL. The syntax is the one the Tether skill
+`cite-references` teaches agents, so what an agent writes is what resolves here.
+
+- **Detection** is `frontend/src/cite/core`, lifted unchanged from Tachyon's console (the
+  kind registry, the scanner, the batching resolver cache). Text in code spans is left alone.
+- **Resolution** is `GET /api/cite/resolve` and `/api/cite/record` (`internal/api/cite.go`).
+  Every kind is projected onto one entity shape (title, status, a few fields, a markdown
+  body), so there is one card and one viewer. Records are read through a Tether MCP gateway
+  (`internal/tetherlink`): a child process on stdio, the same command an agent session is
+  launched with, named by `basalisk.tether_mcp` in the config file. No token is stored in
+  Basalisk. Without that setting references are still detected, with no preview.
+- **Where it shows:** `<CiteText>` and `<Markdown>` (`frontend/src/cite/ui.tsx`) for any
+  app's text, the terminal (a link provider: hover a task id in output for its card, click
+  to open it), and the palette (type or paste an id).
+- **Notes** (`frontend/src/apps/notes`) is the viewer: a markdown or text file through the
+  file API, or a cited record, rendered with its references live. It registers as the
+  handler for `.md`, `.txt`, `.log` and similar, so `desk.openFile` lands there. Reading
+  only for now.
+- The desktop app reads `$XDG_CONFIG_HOME/basalisk/basalisk.yaml` (else
+  `~/.config/basalisk/basalisk.yaml`) when `SUBSTRATE_CONFIG` is not set.
+- `window.basalisk.desk` is the desktop API, for an agent driving the app through the
+  shell's eval endpoint.
+
+To add a kind: a `RefKind` in the frontend registry (`cite/index.ts`) for detection, and an
+entry in `citeKinds` in `internal/api/cite.go` for the record behind it.
+
 #### Adding an app
 
 Put it in `frontend/src/apps/<name>/` and import it from `frontend/src/apps/index.ts`. The
@@ -208,6 +238,9 @@ Other things learned:
 ## Known gaps
 
 - No app icon.
+- Fragments Engine records are not cited yet (no id pattern or resolver), and Tether agents
+  and file paths are detected but have no preview.
+- Notes cannot edit, and has no syntax highlighting in code blocks.
 - One window per app: two terminals side by side need a second terminal window, which the
   deck does not support yet (tabs only).
 - The terminal has no search, no split panes and no configuration; font size is the one setting

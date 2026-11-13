@@ -4,6 +4,7 @@ import { WebglAddon } from "@xterm/addon-webgl"
 import { type ITheme, Terminal } from "@xterm/xterm"
 import { useEffect, useRef } from "react"
 import { terminal as api } from "../api/shell"
+import { citeLinkProvider } from "../cite/terminal"
 import { currentTheme, mix } from "../desktop/themes"
 
 /** What a terminal asks of the deck that holds it. */
@@ -93,6 +94,7 @@ export function XTermView({ id, active, epoch, fontSize, keys, onExit }: Props) 
     t.loadAddon(f)
     t.loadAddon(new WebLinksAddon((_event, uri) => window.open(uri, "_blank", "noopener")))
     t.open(el)
+    const citeLinks = t.registerLinkProvider(citeLinkProvider(t))
     try {
       const gl = new WebglAddon()
       gl.onContextLoss(() => gl.dispose())
@@ -229,6 +231,7 @@ export function XTermView({ id, active, epoch, fontSize, keys, onExit }: Props) 
       window.clearTimeout(timer)
       observer.disconnect()
       mode.disconnect()
+      citeLinks.dispose()
       onData.dispose()
       onBinary.dispose()
       onResize.dispose()

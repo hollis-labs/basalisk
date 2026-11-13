@@ -37,6 +37,8 @@ type API struct {
 	term  *terminal.Manager
 	// deskDir holds the desktop settings documents (desk.go); empty means not kept.
 	deskDir string
+	// cite resolves references through the Tether gateway (cite.go); nil when none is configured.
+	cite *citeResolver
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,
@@ -92,6 +94,7 @@ func (a *API) routes() []route {
 // serve the rest only when enabled.
 func (a *API) allRoutes() []route {
 	rts := append(a.routes(), a.deskRoutes()...)
+	rts = append(rts, a.citeRoutes()...)
 	return append(append(rts, a.shellRoutes()...), a.terminalRoutes()...)
 }
 

@@ -24,6 +24,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/macshell"
 	"github.com/hollis-labs/basalisk/internal/settings"
 	"github.com/hollis-labs/basalisk/internal/terminal"
+	"github.com/hollis-labs/basalisk/internal/tetherlink"
 	"github.com/hollis-labs/basalisk/internal/webui"
 )
 
@@ -82,6 +83,14 @@ func (b *basalisk) serve(ctx context.Context) error {
 			}
 		}
 	}
+	// References (Torque tasks, Tesseract items) resolve through the Tether gateway, when
+	// one is configured. It starts on first use and stops with the server.
+	link := tetherlink.New(cfg.TetherMCP)
+	a.EnableCite(link)
+	go func() {
+		<-ctx.Done()
+		link.Close()
+	}()
 	if b.shell != nil {
 		a.EnableShell(b.shell)
 	}

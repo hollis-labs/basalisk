@@ -23,6 +23,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	desktopLogging()
+	desktopEnv()
 	if err := run(ctx, os.Getenv); err != nil {
 		fmt.Fprintln(os.Stderr, "basalisk:", err)
 		stop()

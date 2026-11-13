@@ -9,6 +9,7 @@
 //	  tether_issuer_url: ""      # HTTPS origin of the capture credential issuer
 //	  tether_subject: ""         # principal the capture credential is minted for
 //	  tether_parent_ref: ""      # secret reference of the dedicated enrollment parent
+//	  tether_mcp: []             # command that starts a Tether MCP gateway on stdio; resolves cited records
 //
 // Delivery stays off while all five delivery keys are empty. Setting some but not all, or an
 // invalid value, is refused when the worker is built (api.Service.NewFragmentWorker).
@@ -29,7 +30,10 @@ const Key = "basalisk"
 // Settings are the parsed block.
 type Settings struct {
 	AllowedHosts []string
-	Delivery     api.DeliveryConfig
+	// TetherMCP is the command that starts a Tether MCP gateway on stdio (internal/tetherlink).
+	// Empty means references are not resolved.
+	TetherMCP []string
+	Delivery  api.DeliveryConfig
 }
 
 // Parse reads the block (nil for a missing one). An unknown key is an error, so a typo is
@@ -54,7 +58,7 @@ func Parse(raw any) (Settings, error) {
 		}
 		return strings.TrimSpace(t), nil
 	}
-	known := map[string]bool{"allowed_hosts": true, "fe_integration_id": true, "public_origin": true, "tether_issuer_url": true, "tether_subject": true, "tether_parent_ref": true}
+	known := map[string]bool{"tether_mcp": true, "allowed_hosts": true, "fe_integration_id": true, "public_origin": true, "tether_issuer_url": true, "tether_subject": true, "tether_parent_ref": true}
 	var unknown []string
 	for k := range block {
 		if !known[k] {
@@ -80,6 +84,19 @@ func Parse(raw any) (Settings, error) {
 	}
 	if s.Delivery.ParentRef, err = str("tether_parent_ref"); err != nil {
 		return s, err
+	}
+	switch argv := block["tether_mcp"].(type) {
+	case nil:
+	case []any:
+		for _, part := range argv {
+			t, ok := part.(string)
+			if !ok || t == "" {
+				return s, fmt.Errorf("basalisk.tether_mcp must be a list of non-empty strings (a command and its arguments)")
+			}
+			s.TetherMCP = append(s.TetherMCP, t)
+		}
+	default:
+		return s, fmt.Errorf("basalisk.tether_mcp must be a list of strings (a command and its arguments)")
 	}
 	switch hosts := block["allowed_hosts"].(type) {
 	case nil:

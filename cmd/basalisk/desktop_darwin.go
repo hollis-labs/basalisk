@@ -164,6 +164,28 @@ func inAppBundle() bool {
 	return strings.Contains(exe, ".app/Contents/MacOS/")
 }
 
+// desktopEnv gives the app its configuration file when nothing named one. An app started
+// from the Finder has no environment to carry SUBSTRATE_CONFIG, so the file at
+// $XDG_CONFIG_HOME/basalisk/basalisk.yaml (else ~/.config/basalisk/basalisk.yaml), the same
+// place a server deployment keeps its own, is used when it exists.
+func desktopEnv() {
+	if os.Getenv("SUBSTRATE_CONFIG") != "" {
+		return
+	}
+	dir := os.Getenv("XDG_CONFIG_HOME")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return
+		}
+		dir = filepath.Join(home, ".config")
+	}
+	path := filepath.Join(dir, "basalisk", "basalisk.yaml")
+	if st, err := os.Stat(path); err == nil && !st.IsDir() {
+		_ = os.Setenv("SUBSTRATE_CONFIG", path)
+	}
+}
+
 // desktopLogging sends stderr and stdout to ~/Library/Logs/Basalisk/basalisk.log when the
 // app was started from its bundle with no terminal attached (the Finder, `open`), where
 // both would otherwise go nowhere.
