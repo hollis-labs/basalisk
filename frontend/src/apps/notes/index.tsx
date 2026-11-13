@@ -36,8 +36,10 @@ import {
 import { continueList, EDITOR_KEYS, indent, link, wrap } from "./editor"
 import { NotesFind } from "./find"
 import { createNote, NameForm, notesFolder, renameNote, saveAs } from "./notefiles"
+import { noteWindows } from "./open"
 import { Outline, useRichPage } from "./outline"
 import { resolveRelative, scrollToAnchor } from "./rich"
+import "./agent"
 import "./notes.css"
 
 const MARKDOWN = /\.(md|markdown|mdx)$/i
@@ -218,6 +220,32 @@ function NotesWindow({ winId, args }: WindowProps) {
   useEffect(() => {
     if (title) desk.setTitle(winId, dirty ? `● ${title}` : title)
   }, [desk, winId, title, dirty])
+  // What this window shows, for the agent's tools (apps/notes/agent.ts).
+  const latest = useRef({ doc, draft })
+  latest.current = { doc, draft }
+  const fileKey = doc?.file ? `${doc.file.root}:${doc.file.path}` : ""
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fileKey is the file, serialized
+  useEffect(() => {
+    const f = latest.current.doc?.file
+    if (!f) return
+    noteWindows.set(winId, {
+      file: f,
+      saved: () => latest.current.doc?.text ?? "",
+      shown: () => latest.current.draft ?? latest.current.doc?.text ?? "",
+      dirty: () => {
+        const { doc: d, draft: t } = latest.current
+        return t !== null && d !== null && t !== d.text
+      },
+      replaced: (text, etag) => {
+        writeDraft(f, null)
+        setDoc((d) => (d ? { ...d, text, etag } : d))
+        setDraft((t) => (t === null ? null : text))
+        setConflict(false)
+        setNotice("Changed by the agent.")
+      },
+    })
+    return () => noteWindows.set(winId, null)
+  }, [winId, fileKey])
   // Unsaved changes: the desktop asks before closing this window.
   useEffect(() => {
     desk.setDirty(winId, dirty)
