@@ -99,6 +99,7 @@ func (b *basalisk) serve(ctx context.Context) error {
 			b.term.CloseAll()
 		}()
 	}
+	enableFiles(ctx, b, a) // files.go
 	a.RegisterScopes(auth.ScopeTable(app))
 
 	assets, err := webui.Assets()
