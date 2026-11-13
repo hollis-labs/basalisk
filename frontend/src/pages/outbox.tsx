@@ -163,6 +163,7 @@ export function OutboxPage() {
                       : "Needs attention"}
               </strong>
               <p className="text-fg-muted">
+                {item.deviceID.startsWith("owner:") ? "Frag · " : ""}
                 {new Date(item.createdAt).toLocaleString()} · {item.captureID}
               </p>
             </div>

@@ -27,12 +27,23 @@ type DeliveryConfig struct {
 type FragmentWorker struct {
 	svc    *Service
 	config DeliveryConfig
-	client *fecapture.Client
+	client *fecapture.Client // the issuer exchange; nil in personal mode
+	// Personal mode (no delivery configuration): the owner's own Frag captures go out with
+	// the FE integration's stored credential. Device captures never do; they need the
+	// exchange (DeliveryConfig).
+	direct *fecapture.Client
 }
+
+// personalPrincipal is FE's principal for personal-mode captures, as fe-clipper's default.
+const personalPrincipal = "local-user"
+
+// personalIssuer marks a manifest frozen in personal mode (delivery_issuer).
+const personalIssuer = "personal"
 
 func (s *Service) NewFragmentWorker(config DeliveryConfig, client *http.Client) (*FragmentWorker, error) {
 	if config == (DeliveryConfig{}) {
-		return nil, nil
+		s.setFragMode("personal")
+		return &FragmentWorker{svc: s, direct: fecapture.NewDirect(client)}, nil
 	}
 	origin, err := pairing.Origin(config.PublicOrigin)
 	if err != nil || origin != config.PublicOrigin || config.IntegrationID == "" {
@@ -43,14 +54,21 @@ func (s *Service) NewFragmentWorker(config DeliveryConfig, client *http.Client) 
 		return nil, err
 	}
 	s.setDeliveryActivity(config.IntegrationID, "configured")
-	return &FragmentWorker{s, config, c}, nil
+	s.setFragMode("exchange")
+	return &FragmentWorker{svc: s, config: config, client: c}, nil
 }
 
 // Run bounds each attempt below the durable lease lifetime. Another process or
 // restart may reclaim only an expired lease; stale workers cannot commit results.
 func (w *FragmentWorker) Run(ctx context.Context) {
-	w.svc.setDeliveryActivity(w.config.IntegrationID, "running")
-	defer w.svc.setDeliveryActivity(w.config.IntegrationID, "stopped")
+	// Device readiness reports the exchange; personal mode does not deliver for devices.
+	activity := func(state string) {
+		if !w.personal() {
+			w.svc.setDeliveryActivity(w.config.IntegrationID, state)
+		}
+	}
+	activity("running")
+	defer activity("stopped")
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -60,7 +78,7 @@ func (w *FragmentWorker) Run(ctx context.Context) {
 		if err := w.Once(ctx); err != nil {
 			log.Print("Fragment delivery storage unavailable; retrying on the next worker tick")
 		}
-		w.svc.setDeliveryActivity(w.config.IntegrationID, "running")
+		activity("running")
 		select {
 		case <-ctx.Done():
 			return
@@ -77,13 +95,25 @@ type deliveryJob struct {
 
 func (w *FragmentWorker) claim(ctx context.Context) (deliveryJob, error) {
 	var j deliveryJob
+	// Owner captures are queued with no integration ("the default one") and bound to it here.
+	// In personal mode only owner captures are delivered, and only once there is one. (Looked
+	// up before the transaction: the database may allow a single connection.)
+	which, args := `(integration_id=? OR (integration_id='' AND device_id LIKE 'owner:%'))`, []any{w.config.IntegrationID}
+	if w.personal() {
+		id, ok := w.svc.ownerIntegration(ctx, w.config.IntegrationID)
+		if !ok {
+			return j, sql.ErrNoRows
+		}
+		which, args = `device_id LIKE 'owner:%' AND integration_id IN ('',?)`, []any{id}
+	}
 	tx, err := w.svc.db.BeginTx(ctx, nil)
 	if err != nil {
 		return j, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	now := time.Now().Unix()
-	err = tx.QueryRowContext(ctx, `SELECT sequence,device_id,capture_id,integration_id,payload,manifest,delivery_origin,delivery_issuer,delivery_subject,upstream_capture_id,receipt,attempts FROM fragment_submissions WHERE integration_id=? AND state='queued' AND next_attempt<=? AND lease_until<=? ORDER BY next_attempt,sequence LIMIT 1`, w.config.IntegrationID, now, now).Scan(&j.sequence, &j.device, &j.capture, &j.integration, &j.payload, &j.manifest, &j.origin, &j.issuer, &j.subject, &j.upstream, &j.receipt, &j.attempts)
+	//nolint:gosec // which is one of two constant clauses above; values are bound as args
+	err = tx.QueryRowContext(ctx, `SELECT sequence,device_id,capture_id,integration_id,payload,manifest,delivery_origin,delivery_issuer,delivery_subject,upstream_capture_id,receipt,attempts FROM fragment_submissions WHERE `+which+` AND state='queued' AND next_attempt<=? AND lease_until<=? ORDER BY next_attempt,sequence LIMIT 1`, append(args, now, now)...).Scan(&j.sequence, &j.device, &j.capture, &j.integration, &j.payload, &j.manifest, &j.origin, &j.issuer, &j.subject, &j.upstream, &j.receipt, &j.attempts)
 	if err != nil {
 		return j, err
 	}
@@ -99,6 +129,9 @@ func (w *FragmentWorker) authorized(ctx context.Context, j deliveryJob) (string,
 	err := w.svc.db.QueryRowContext(ctx, `SELECT 1 FROM fragment_submissions WHERE sequence=? AND state='queued' AND lease_token=? AND lease_until>?`, j.sequence, j.lease, time.Now().Unix()).Scan(&current)
 	if err != nil {
 		return "", err
+	}
+	if isOwnerCapture(j.device) {
+		return w.ownerAuthorized(ctx, j)
 	}
 	// The connection names the owner of the device: the person who bound it to the integration.
 	var bound, provider, origin, owner string
@@ -141,15 +174,18 @@ func (w *FragmentWorker) freeze(ctx context.Context, j *deliveryJob, origin stri
 	}
 	j.upstream = "basalisk-" + token()
 	j.origin = origin
-	j.issuer = w.config.IssuerURL
-	j.subject = w.config.Subject
+	j.issuer, j.subject = w.issuer(), w.subject()
 	noteURL := w.config.PublicOrigin + "/api/fragment-submissions/" + strconv.FormatInt(j.sequence, 10)
 	tags := in.Tags
 	if tags == nil {
 		tags = []string{}
 	}
 	title := "Frag note"
-	provenance := map[string]any{"capture_id": in.CaptureID, "device_id": j.device, "draft_at": in.DraftAt, "submitted_at": in.SubmittedAt, "draft": in.Draft, "save_context": in.SaveContext}
+	device := j.device
+	if isOwnerCapture(device) {
+		device = "owner" // the owner's own capture in Basalisk; no device, no context sent
+	}
+	provenance := map[string]any{"capture_id": in.CaptureID, "device_id": device, "draft_at": in.DraftAt, "submitted_at": in.SubmittedAt, "draft": in.Draft, "save_context": in.SaveContext}
 	if in.ContextBindingID != "" {
 		provenance["capture_context_binding_id"] = in.ContextBindingID
 	}
@@ -225,6 +261,9 @@ func (w *FragmentWorker) Once(ctx context.Context) error {
 	return nil
 }
 func (w *FragmentWorker) deliver(ctx context.Context, j *deliveryJob) error {
+	if err := w.bindOwner(ctx, j); err != nil {
+		return err
+	}
 	origin, err := w.authorized(ctx, *j)
 	if err != nil {
 		return err
@@ -232,9 +271,13 @@ func (w *FragmentWorker) deliver(ctx context.Context, j *deliveryJob) error {
 	if err = w.freeze(ctx, j, origin); err != nil {
 		return err
 	}
-	bearer, err := w.client.Exchange(ctx)
+	bearer, err := w.bearer(ctx, *j)
 	if err != nil {
 		return err
+	}
+	client := w.client
+	if w.personal() {
+		client = w.direct
 	}
 	if _, err = w.authorized(ctx, *j); err != nil {
 		return err
@@ -245,7 +288,7 @@ func (w *FragmentWorker) deliver(ctx context.Context, j *deliveryJob) error {
 		if err = w.update(ctx, *j, `may_have_sent=1`); err != nil {
 			return err
 		}
-		receipt, err = w.client.Accept(ctx, j.origin, bearer, j.upstream, []byte(j.manifest))
+		receipt, err = client.Accept(ctx, j.origin, bearer, j.upstream, []byte(j.manifest))
 		if err != nil {
 			return err
 		}
@@ -260,7 +303,7 @@ func (w *FragmentWorker) deliver(ctx context.Context, j *deliveryJob) error {
 	if _, err = w.authorized(ctx, *j); err != nil {
 		return err
 	}
-	confirmed, err := w.client.Complete(ctx, j.origin, bearer, receipt)
+	confirmed, err := client.Complete(ctx, j.origin, bearer, receipt)
 	if err != nil {
 		return err
 	}

@@ -101,7 +101,8 @@ func (a *API) allRoutes() []route {
 	rts = append(rts, a.shellRoutes()...)
 	rts = append(rts, a.terminalRoutes()...)
 	rts = append(rts, a.filesRoutes()...)
-	return append(rts, a.browserRoutes()...)
+	rts = append(rts, a.browserRoutes()...)
+	return append(rts, a.fragRoutes()...) // frag.go
 }
 
 // Handler serves the owner routes; it is httphost.Options.Routes. The auth guard in front of

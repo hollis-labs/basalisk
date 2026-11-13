@@ -29,6 +29,7 @@ type Service struct {
 	pairing    *pairing.Store
 	deliveryMu sync.RWMutex
 	delivery   deliveryActivity
+	fragMode   string // how owner captures are delivered (frag.go)
 }
 
 // New builds the Service over a migrated database. Companion devices keep their own tables,

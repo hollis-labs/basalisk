@@ -1,0 +1,229 @@
+/* Frag: Frag's character (corner brackets, live stamp, pulsing dot, grid and scanlines),
+ * drawn in the desk theme: --desk-accent for its cyan, --desk-accent-2 for its magenta. */
+
+.frag-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+}
+.frag-scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--desk-bg) 55%, transparent);
+  animation: frag-fade 120ms ease-out both;
+}
+.frag {
+  position: relative;
+  width: min(40rem, calc(100vw - 3rem));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--desk-accent) 35%, var(--desk-border));
+  background: var(--desk-panel);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--desk-accent) 10%, transparent),
+    0 30px 80px rgb(0 0 0 / 0.55);
+  font-family: var(--desk-font);
+  color: var(--desk-fg);
+  overflow: hidden;
+  animation: frag-rise 140ms ease-out both;
+}
+/* A faint grid, and scanlines over it. */
+.frag-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--desk-fg) 3%, transparent) 0 1px,
+      transparent 1px 3px
+    ),
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--desk-accent) 8%, transparent) 1px,
+      transparent 1px
+    )
+    0 0 / 32px 32px,
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--desk-accent) 8%, transparent) 1px,
+      transparent 1px
+    )
+    0 0 / 32px 32px;
+  mask-image: radial-gradient(ellipse at center, #000 40%, transparent 100%);
+}
+.frag > :not(.frag-grid) {
+  position: relative;
+}
+
+.frag-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+.frag-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--desk-accent-2);
+  box-shadow: 0 0 8px var(--desk-accent-2);
+  animation: frag-pulse 1.6s ease-in-out infinite;
+}
+.frag-brand {
+  color: var(--desk-accent);
+  font-weight: 600;
+}
+.frag-sep,
+.frag-time {
+  color: var(--desk-muted);
+}
+.frag-what {
+  color: var(--desk-fg-soft);
+}
+.frag-time {
+  margin-left: auto;
+  letter-spacing: 0.04em;
+}
+
+/* Fields with corner brackets. */
+.frag-field {
+  --bracket: var(--desk-accent);
+  --b: 10px;
+  position: relative;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--bracket) 22%, transparent);
+  border-radius: 4px;
+  background:
+    linear-gradient(var(--bracket), var(--bracket)) top left / var(--b) 2px no-repeat,
+    linear-gradient(var(--bracket), var(--bracket)) top left / 2px var(--b) no-repeat,
+    linear-gradient(var(--bracket), var(--bracket)) top right / var(--b) 2px no-repeat,
+    linear-gradient(var(--bracket), var(--bracket)) top right / 2px var(--b) no-repeat,
+    linear-gradient(var(--bracket), var(--bracket)) bottom left / var(--b) 2px no-repeat,
+    linear-gradient(var(--bracket), var(--bracket)) bottom left / 2px var(--b) no-repeat,
+    linear-gradient(var(--bracket), var(--bracket)) bottom right / var(--b) 2px no-repeat,
+    linear-gradient(var(--bracket), var(--bracket)) bottom right / 2px var(--b) no-repeat,
+    color-mix(in srgb, var(--desk-bg) 70%, transparent);
+  transition: box-shadow 160ms ease-out;
+}
+.frag-field:focus-within {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--bracket) 22%, transparent);
+}
+/* Each keystroke brightens the field a moment, as Frag's text does. */
+.frag-text[data-pulse="1"] {
+  animation: frag-key-a 260ms ease-out;
+}
+.frag-text[data-pulse="0"] {
+  animation: frag-key-b 260ms ease-out;
+}
+.frag-text textarea {
+  display: block;
+  width: 100%;
+  min-height: 9.5rem;
+  max-height: 40vh;
+  resize: vertical;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--desk-fg);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.frag-tags {
+  --bracket: var(--desk-accent-2);
+  --b: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+}
+.frag-tags-label {
+  color: var(--desk-accent-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.frag-tags input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--desk-fg-soft);
+  font-family: inherit;
+  font-size: 13px;
+}
+.frag textarea::placeholder,
+.frag input::placeholder {
+  color: var(--desk-muted);
+}
+
+.frag-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11.5px;
+  color: var(--desk-muted);
+}
+.frag-status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.frag-status[data-tone="ok"] {
+  color: var(--desk-accent);
+}
+.frag-status[data-tone="busy"] {
+  color: var(--desk-fg-soft);
+}
+.frag-status[data-tone="error"] {
+  color: var(--desk-accent-2);
+}
+.frag-hint {
+  white-space: nowrap;
+}
+
+@keyframes frag-pulse {
+  50% {
+    opacity: 0.35;
+    box-shadow: 0 0 2px var(--desk-accent-2);
+  }
+}
+@keyframes frag-key-a {
+  from {
+    box-shadow: 0 0 18px color-mix(in srgb, var(--desk-accent) 30%, transparent);
+  }
+}
+@keyframes frag-key-b {
+  from {
+    box-shadow: 0 0 18px color-mix(in srgb, var(--desk-accent) 30%, transparent);
+  }
+}
+@keyframes frag-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes frag-rise {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .frag,
+  .frag-scrim,
+  .frag-dot,
+  .frag-text {
+    animation: none;
+  }
+}
