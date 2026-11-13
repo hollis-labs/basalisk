@@ -19,6 +19,7 @@
   border-bottom: 1px solid var(--desk-border);
 }
 .browser-address {
+  position: relative;
   flex: 1 1 auto;
   display: flex;
   align-items: center;
@@ -146,5 +147,52 @@
   border-radius: 10px;
   background: var(--desk-accent-soft);
   color: var(--desk-accent);
+  font-size: 11.5px;
+}
+
+/* ---- Address suggestions ---- */
+.browser-suggest {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: -1px;
+  right: -1px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--desk-border);
+  border-radius: 6px;
+  background: var(--desk-panel);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.45);
+}
+.browser-suggest button {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 5px;
+  text-align: left;
+  color: var(--desk-fg-soft);
+}
+.browser-suggest button:hover,
+.browser-suggest button[data-selected="true"] {
+  background: var(--desk-accent-soft);
+  color: var(--desk-fg);
+}
+.browser-suggest-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-suggest-url {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--desk-muted);
   font-size: 11.5px;
 }

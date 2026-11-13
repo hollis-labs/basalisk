@@ -9,6 +9,7 @@ import {
   hostOf,
   nativeBrowser,
   toURL,
+  type Visit,
 } from "../../api/browser"
 import { SHELL_EVENT } from "../../api/shell"
 import { useDesk } from "../../desktop/context"
@@ -87,6 +88,10 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   })
   const [address, setAddress] = useState(start ?? "")
   const [editing, setEditing] = useState(false)
+  // Suggestions from history while the address is being typed.
+  const [typed, setTyped] = useState(false)
+  const [suggestions, setSuggestions] = useState<Visit[]>([])
+  const [pick, setPick] = useState(-1)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [finding, setFinding] = useState(false)
@@ -253,6 +258,39 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
         : ([...ZOOMS].reverse().find((z) => z < zoom - 0.001) ?? ZOOMS[0])
     zoomTo(next)
   }
+
+  // Every page the window settles on goes in the history (the server drops what is not http).
+  const lastVisit = useRef("")
+  useEffect(() => {
+    if (!available || state.loading || !state.url) return
+    const key = `${state.url}\u0000${state.title}`
+    if (key === lastVisit.current) return
+    lastVisit.current = key
+    void browserData.visit(state.url, state.title)
+  }, [available, state.url, state.title, state.loading])
+
+  useEffect(() => {
+    if (!editing || !typed || !address.trim()) {
+      setSuggestions([])
+      setPick(-1)
+      return
+    }
+    let live = true
+    const timer = window.setTimeout(() => {
+      void browserData
+        .history(address.trim(), 8)
+        .then((list) => {
+          if (!live) return
+          setSuggestions(list)
+          setPick(-1)
+        })
+        .catch(() => undefined)
+    }, 80)
+    return () => {
+      live = false
+      window.clearTimeout(timer)
+    }
+  }, [editing, typed, address])
 
   // The window's args follow the page, so a restored desktop reopens it where it was.
   useEffect(() => {
@@ -449,20 +487,62 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
             autoCorrect="off"
             aria-label="Address"
             placeholder="Search or enter an address"
+            aria-autocomplete="list"
+            aria-controls={suggestions.length ? `${winId}-suggest` : undefined}
             onFocus={(e) => {
               setEditing(true)
+              setTyped(false)
               e.currentTarget.select()
             }}
             onBlur={() => setEditing(false)}
-            onChange={(e) => setAddress(e.target.value)}
+            onChange={(e) => {
+              setAddress(e.target.value)
+              setTyped(true)
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Escape") {
+              if (e.key === "ArrowDown" && suggestions.length) {
+                e.preventDefault()
+                setPick((p) => Math.min(suggestions.length - 1, p + 1))
+              } else if (e.key === "ArrowUp" && suggestions.length) {
+                e.preventDefault()
+                setPick((p) => Math.max(-1, p - 1))
+              } else if (e.key === "Enter" && pick >= 0 && suggestions[pick]) {
+                e.preventDefault()
+                navigate(suggestions[pick].url)
+              } else if (e.key === "Escape") {
+                if (suggestions.length) {
+                  setSuggestions([])
+                  setTyped(false)
+                  return
+                }
                 setAddress(state.url)
                 e.currentTarget.blur()
                 void send({ op: "focus" })
               }
             }}
           />
+          {editing && suggestions.length > 0 && (
+            <div className="browser-suggest" id={`${winId}-suggest`} role="listbox">
+              {suggestions.map((v, i) => (
+                <button
+                  key={v.url}
+                  type="button"
+                  role="option"
+                  aria-selected={i === pick}
+                  data-selected={i === pick}
+                  tabIndex={-1}
+                  // Before the field blurs, so the click is not lost.
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    navigate(v.url)
+                  }}
+                >
+                  <span className="browser-suggest-title">{v.title || v.url}</span>
+                  <span className="browser-suggest-url">{v.url}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </form>
         {zoom !== 1 && (
           <button

@@ -72,7 +72,8 @@ func readBrowserData(path string) (browserData, error) {
 		return d, err
 	}
 	if err = json.Unmarshal(b, &d); err != nil {
-		return browserData{Zoom: map[string]float64{}, History: []visit{}}, nil // start over
+		// A damaged file starts over rather than locking the person out of the browser.
+		return browserData{Zoom: map[string]float64{}, History: []visit{}}, nil //nolint:nilerr // see above
 	}
 	if d.Zoom == nil {
 		d.Zoom = map[string]float64{}
@@ -85,15 +86,16 @@ func writeBrowserData(path string, d browserData) error {
 	if err != nil {
 		return err
 	}
-	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	// path is derived from the verified caller's subject (deskFile), never from the request.
+	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil { //nolint:gosec // see above
 		return err
 	}
 	tmp := path + ".tmp-" + rand.Text()[:8]
-	if err = os.WriteFile(tmp, b, 0o600); err != nil {
+	if err = os.WriteFile(tmp, b, 0o600); err != nil { //nolint:gosec // see above
 		return err
 	}
-	if err = os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	if err = os.Rename(tmp, path); err != nil { //nolint:gosec // see above
+		_ = os.Remove(tmp) //nolint:gosec // see above
 		return err
 	}
 	return nil

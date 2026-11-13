@@ -2,8 +2,8 @@
  * Browser: real web pages in a desktop window, drawn by a native WebKit view the desktop app
  * places over the window's body (macshell/browser_darwin.m).
  */
-import { Globe, Search } from "lucide-react"
-import { nativeBrowser, toURL } from "../../api/browser"
+import { Globe, History, Search } from "lucide-react"
+import { browserData, nativeBrowser, toURL } from "../../api/browser"
 import {
   registerApp,
   registerCommands,
@@ -60,4 +60,22 @@ registerProvider({
 registerFileHandler({
   app: "browser",
   match: (name) => nativeBrowser.available() && /\.(html?|xhtml|pdf|svg)$/.test(name),
+})
+
+// ⌘K finds a page you were on.
+registerProvider({
+  id: "browser-history",
+  async search(query) {
+    const q = query.trim()
+    if (q.length < 2 || !nativeBrowser.available()) return []
+    const pages = await browserData.history(q, 6).catch(() => [])
+    return pages.map((v) => ({
+      id: `browser:history:${v.url}`,
+      title: v.title || v.url,
+      subtitle: v.url,
+      section: "History",
+      icon: History,
+      run: (desk) => desk.open("browser", { args: { url: v.url } }),
+    }))
+  },
 })

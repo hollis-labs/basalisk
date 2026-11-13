@@ -110,6 +110,12 @@ History keeps the 5000 most recent pages. A visit to the same page within a minu
 title without counting again. With a query, pages whose address or title hold every word are
 ranked by visits weighted for recency, and a host that starts with the query comes first.
 
+## History
+
+Every page a window settles on is recorded (http and https only). Typing in the address field
+lists matching pages under it (↓ ↑ to choose, Enter to go, Esc to close the list), and the
+palette's History section finds them too (rows `browser:history:<url>`); both rank as above.
+
 ## Links stay in the desktop
 
 In the desktop app, web links open in a Browser window: cite URL chips, links in rendered

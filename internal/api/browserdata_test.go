@@ -34,7 +34,7 @@ func TestBrowserHistory(t *testing.T) {
 	c.call("POST", "/api/browser/history", map[string]string{"url": "https://news.example.com/a#top", "title": "A story"}, 204)
 	c.call("POST", "/api/browser/history", map[string]string{"url": "https://docs.example.org/guide", "title": "Guide"}, 204)
 	c.call("POST", "/api/browser/history", map[string]string{"url": "file:///etc/hosts", "title": "no"}, 204)
-	c.call("POST", "/api/browser/history", map[string]string{"url": "https://u:p@example.com/", "title": "no"}, 204)
+	c.call("POST", "/api/browser/history", map[string]string{"url": "https://someone@example.com/", "title": "no"}, 204)
 	// The same page again within a minute updates its title but is one visit.
 	c.call("POST", "/api/browser/history", map[string]string{"url": "https://news.example.com/a", "title": "A story, updated"}, 204)
 
@@ -87,7 +87,7 @@ func TestBrowserZoom(t *testing.T) {
 func TestRankHistory(t *testing.T) {
 	now := time.Now()
 	all := []visit{
-		{URL: "https://old.example.com/", Title: "Old favourite", Last: now.Add(-60 * 24 * time.Hour), Count: 40},
+		{URL: "https://old.example.com/", Title: "Old favorite", Last: now.Add(-60 * 24 * time.Hour), Count: 40},
 		{URL: "https://github.com/x/y", Title: "Repo", Last: now.Add(-time.Hour), Count: 2},
 		{URL: "https://example.com/github-notes", Title: "Notes on github", Last: now.Add(-time.Minute), Count: 1},
 	}
