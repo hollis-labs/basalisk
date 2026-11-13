@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -119,4 +120,53 @@ func TestCiteWithoutGatewayListsFragmentsOnly(t *testing.T) {
 		t.Fatal(body)
 	}
 	c.call("GET", "/api/cite/resolve?kind=torque.task&ids=CW-20261113-0001", nil, 400)
+}
+
+// The chip's projection against FE's own reader-item fixtures (testdata, from FE at
+// FE_COMMIT): the title, summary and body come from where FE puts them.
+func TestFragmentCiteReadsFEReaderFixtures(t *testing.T) {
+	for _, tc := range []struct{ file, title, summary string }{
+		{"valid-reader-video.json", "Contract fixture video", "A captured browser observation."},
+		{"valid-reader-non-web.json", "Local work note", ""},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			raw, err := os.ReadFile("testdata/fe-capture-schema/" + tc.file) //nolint:gosec // fixed test data
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Only the id changes: FE's real fragment ids are 64 hex characters.
+			var item map[string]any
+			if err = json.Unmarshal(raw, &item); err != nil {
+				t.Fatal(err)
+			}
+			item["fragment_id"] = fragID
+			served, _ := json.Marshal(item)
+			if err = validateFE("reader-item", served); err != nil {
+				t.Fatalf("the served fixture is not a valid reader item: %v", err)
+			}
+			key := "personal-owner-token-0123456789abcdef"
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Authorization") != "Bearer "+key || r.URL.Path != "/v1/reader/items/"+fragID {
+					http.NotFound(w, r)
+					return
+				}
+				_, _ = w.Write(served)
+			}))
+			defer srv.Close()
+			s, c := newStore(t)
+			c.signIn()
+			if _, err = s.NewFragmentWorker(DeliveryConfig{}, srv.Client()); err != nil {
+				t.Fatal(err)
+			}
+			c.call("POST", "/api/integrations", map[string]any{"name": "FE", "provider": "fragments-engine", "baseUrl": srv.URL, "credential": key}, 201)
+			e, err := fragmentCite(context.Background(), nil, fragID, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			article, _ := item["article"].(map[string]any)
+			if e.Title != tc.title || (tc.summary != "" && e.Description != tc.summary) || e.Body != article["preview_markdown"] {
+				t.Fatalf("%+v", e)
+			}
+		})
+	}
 }

@@ -51,7 +51,7 @@ func loadFESchema(file string) (*jsonschema.Schema, error) {
 func validateFE(name string, raw []byte) error {
 	feSchemasOnce.Do(func() {
 		feSchemas = map[string]*jsonschema.Resolved{}
-		for _, n := range []string{"capture-envelope", "capture-completion"} {
+		for _, n := range []string{"capture-envelope", "capture-completion", "reader-item"} {
 			s, err := loadFESchema(n + ".schema.json")
 			if err == nil {
 				var r *jsonschema.Resolved
