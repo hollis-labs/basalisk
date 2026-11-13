@@ -315,9 +315,6 @@ func (s *Shell) RequestPermission(kind string) error {
 // Events implements Controller.
 func (s *Shell) Events(after int64) []Event { return s.log.after(after) }
 
-// Note implements Controller.
-func (s *Shell) Note(kind, detail string) { s.log.add(kind, detail) }
-
 // Snapshot implements Controller.
 func (s *Shell) Snapshot() ([]byte, error) {
 	if err := s.ready(); err != nil {

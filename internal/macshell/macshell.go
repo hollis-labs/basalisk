@@ -39,9 +39,6 @@ type Controller interface {
 	RequestPermission(kind string) error
 	// Events returns the log entries after the given sequence number.
 	Events(after int64) []Event
-	// Note adds an entry to the log on behalf of another part of the app (the browser API
-	// records what an agent did in a page this way).
-	Note(kind, detail string)
 	// Snapshot renders the page as the window shows it, as a PNG. It needs no screen
 	// recording permission, which makes it the way an agent checks the real app.
 	Snapshot() ([]byte, error)

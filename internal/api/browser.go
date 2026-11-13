@@ -81,31 +81,5 @@ func (a *API) browserCommand(w http.ResponseWriter, r *http.Request) {
 		fail(w, status, err.Error())
 		return
 	}
-	a.noteBrowser(op, in)
 	reply(w, 200, map[string]any{"result": out})
-}
-
-// noteBrowser records what an API client did to a page in the shell log. These views hold
-// the owner's signed-in sessions, so anything that navigates one or runs script in it is
-// written down where the owner can read it (Settings, Mac shell, Shell log).
-func (a *API) noteBrowser(op string, in map[string]any) {
-	if a.shell == nil {
-		return
-	}
-	id, _ := in["id"].(string)
-	detail := ""
-	switch op {
-	case "navigate":
-		detail, _ = in["url"].(string)
-	case "eval":
-		detail, _ = in["js"].(string)
-		detail = strings.Join(strings.Fields(detail), " ")
-	case "back", "forward", "reload", "stop":
-	default:
-		return // reading state, focusing and zooming change nothing worth recording
-	}
-	if len(detail) > 160 {
-		detail = detail[:160] + "…"
-	}
-	a.shell.Note("browser", strings.TrimSpace("api "+op+" "+id+" "+detail))
 }
