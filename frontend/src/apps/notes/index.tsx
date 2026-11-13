@@ -38,6 +38,7 @@ import { NotesFind } from "./find"
 import { createNote, NameForm, notesFolder, renameNote, saveAs } from "./notefiles"
 import { noteWindows } from "./open"
 import { Outline, useRichPage } from "./outline"
+import { linkersBefore, planRelink, RelinkPanel, type RelinkPlan } from "./relink"
 import { resolveRelative, scrollToAnchor } from "./rich"
 import { complete, linkName, useBacklinks, useNoteIndex } from "./wiki"
 import "./agent"
@@ -163,6 +164,8 @@ function NotesWindow({ winId, args }: WindowProps) {
     })
   // A name being asked for: a new note, a rename, a save as.
   const [form, setForm] = useState<"rename" | "save-as" | null>(null)
+  // After a rename: the links to the old name, offered for updating.
+  const [relink, setRelink] = useState<RelinkPlan | null>(null)
   const [folder, setFolder] = useState<FileRef | undefined>()
   useEffect(() => {
     if (args.new || form === "save-as")
@@ -567,6 +570,8 @@ function NotesWindow({ winId, args }: WindowProps) {
               onCancel={() => setForm(null)}
               onDone={async (name) => {
                 const old = doc.file as FileRef
+                // Found before the rename, while the old name still resolves.
+                const linkers = await linkersBefore(old).catch(() => null)
                 const next = await renameNote(old, name)
                 // An unsaved edit follows the note to its new name.
                 const kept = readDraft(old)
@@ -575,6 +580,10 @@ function NotesWindow({ winId, args }: WindowProps) {
                   writeDraft(old, null)
                 }
                 openFile(next, draft !== null)
+                if (linkers)
+                  void planRelink(old.root, old.path, next.path, linkers)
+                    .then((p) => p.files.length > 0 && setRelink(p))
+                    .catch(() => undefined)
               }}
             />
           ) : (
@@ -600,6 +609,7 @@ function NotesWindow({ winId, args }: WindowProps) {
           )}
         </div>
       )}
+      {relink && <RelinkPanel plan={relink} onClose={() => setRelink(null)} />}
       {conflict && (
         <div className="notes-conflict" role="alert">
           <span>This file changed on disk after you opened it.</span>

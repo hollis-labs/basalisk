@@ -230,3 +230,55 @@
   font-size: 10.5px;
   opacity: 0.8;
 }
+
+/* After a rename: the links to update (relink.tsx). */
+.notes-relink {
+  flex: 0 1 auto;
+  max-height: 45%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--desk-border);
+  background: var(--desk-panel);
+  font-family: var(--desk-font);
+  font-size: 12px;
+}
+.notes-relink p {
+  margin: 0;
+}
+.notes-relink-list {
+  overflow-y: auto;
+  min-height: 0;
+}
+.notes-relink-file + .notes-relink-file {
+  margin-top: 8px;
+}
+.notes-relink-path {
+  color: var(--desk-fg);
+  font-weight: 600;
+}
+.notes-relink-line {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.notes-relink-no {
+  flex: 0 0 2.5em;
+  text-align: right;
+  color: var(--desk-muted);
+}
+.notes-relink-line [data-was="true"] {
+  color: var(--desk-muted);
+  text-decoration: line-through;
+}
+.notes-relink-line [data-now="true"] {
+  color: var(--desk-fg);
+}
+.notes-relink-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

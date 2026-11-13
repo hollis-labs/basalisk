@@ -19,7 +19,7 @@ export interface NoteIndex {
 }
 
 const EXT = /\.(md|markdown|mdx|txt)$/i
-const dirOf = (p: string) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "")
+export const dirOf = (p: string) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "")
 const stem = (p: string) => (p.split("/").pop() ?? p).replace(EXT, "")
 
 // One index per notes folder, until a file under it changes.
@@ -154,7 +154,7 @@ interface GrepMatch {
   text: string
 }
 
-function joinPath(dir: string, rel: string): string | null {
+export function joinPath(dir: string, rel: string): string | null {
   const out = dir ? dir.split("/") : []
   for (const part of rel.split("/")) {
     if (part === "" || part === ".") continue
