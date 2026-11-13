@@ -397,7 +397,9 @@ export function Desktop() {
     target.focus({ preventScroll: true })
   }, [state.focus, palette, overlays.length])
 
-  const placed = useMemo(() => place(state, area), [state, area])
+  // The room an open side panel takes, so floating windows keep clear of it (wm.ts, place).
+  const reserved = panel ? Math.min(panelById(panel)?.width ?? 0, window.innerWidth / 2) : 0
+  const placed = useMemo(() => place(state, area, reserved), [state, area, reserved])
   placedRef.current = placed
   overlayRef.current =
     palette || menuOpen || terminal.overlayOpen || !!card || !!question || overlays.length > 0

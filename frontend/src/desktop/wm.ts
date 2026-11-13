@@ -230,7 +230,7 @@ export const isTiled = (s: WMState, w: Win) =>
   s.layout === "tile" && !w.floating && !w.maximized && !w.minimized
 
 /** Where every visible window goes, for a canvas of the given size. */
-export function place(s: WMState, area: Rect): Map<string, Placed> {
+export function place(s: WMState, area: Rect, reserved = 0): Map<string, Placed> {
   const out = new Map<string, Placed>()
   const full: Rect = {
     x: GAP,
@@ -265,11 +265,17 @@ export function place(s: WMState, area: Rect): Map<string, Placed> {
     }
     const width = Math.min(Math.max(w.w, MIN_W), full.w)
     const height = Math.min(Math.max(w.h, MIN_H), full.h)
+    // `reserved` is room a side panel has taken from the right of the screen. A window that
+    // sat wholly on the screen before the panel opened is kept clear of the panel, where it
+    // was otherwise (its stored place is untouched, so it goes back when the panel closes).
+    // One already hanging off the screen's right edge is left to hang.
+    const onScreen = reserved > 0 && w.x + width <= area.w + reserved
+    const x = onScreen ? Math.max(GAP, Math.min(w.x, area.w - GAP - width)) : w.x
     out.set(w.id, {
       w: width,
       h: height,
       // Keep the title bar reachable.
-      x: Math.min(Math.max(w.x, 60 - width), area.w - 60),
+      x: Math.min(Math.max(x, 60 - width), area.w - 60),
       y: Math.min(Math.max(w.y, 0), area.h - 32),
       tiled: false,
       z: 100 + w.z,
