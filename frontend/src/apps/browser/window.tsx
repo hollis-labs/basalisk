@@ -14,10 +14,11 @@ import { bindings, chordOf } from "../../desktop/keys"
 import type { FileRef } from "../../desktop/registry"
 import { useDeskSettings } from "../../desktop/settings"
 import { loadRoots } from "../files/browser"
+import { FindBar } from "./find"
 
 const HOME = "https://duckduckgo.com/"
 /** The window's own shortcuts, which must work while the page has the keyboard. */
-const LOCAL_CHORDS = ["cmd+l", "cmd+[", "cmd+]", "cmd+r"]
+const LOCAL_CHORDS = ["cmd+l", "cmd+[", "cmd+]", "cmd+r", "cmd+f", "cmd+g", "shift+cmd+g"]
 /** How often a visible view refreshes the picture shown while something covers it. */
 const SNAPSHOT_MS = 3000
 
@@ -72,6 +73,10 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
+  const [finding, setFinding] = useState(false)
+  // Bumped to ask for the find field to take the keyboard, once it is on screen.
+  const [findFocus, setFindFocus] = useState(0)
+  const findRef = useRef<HTMLInputElement>(null)
   const [shot, setShot] = useState("")
   const [covered, setCovered] = useState(false)
   const lastFrame = useRef("")
@@ -247,11 +252,57 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
       .catch((e: Error) => setError(e.message))
   }
 
+  // A DOM field takes the keyboard only once the native view gives it back.
+  const focusField = (ref: { current: HTMLInputElement | null }) => {
+    void send({ op: "blur" })
+      .catch(() => undefined)
+      .finally(() => {
+        ref.current?.focus()
+        ref.current?.select()
+      })
+  }
+  const find = useCallback(
+    (query: string, backwards: boolean) =>
+      send({ op: "find", query, backwards })
+        .then((r) => !!(r as { found?: boolean })?.found)
+        .catch(() => false),
+    [send],
+  )
+  const closeFind = () => {
+    setFinding(false)
+    void send({ op: "find-clear" })
+      .then(() => send({ op: "focus" }))
+      .catch(() => undefined)
+  }
+  const findStep = (backwards: boolean) => {
+    const q = findRef.current?.value
+    if (!finding || !q) {
+      setFinding(true)
+      setFindFocus((n) => n + 1)
+      return
+    }
+    void find(q, backwards)
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when focus is asked for
+  useEffect(() => {
+    if (finding && findFocus) focusField(findRef)
+  }, [findFocus])
+
   runLocalRef.current = (chord: string) => {
     switch (chord) {
       case "cmd+l":
-        inputRef.current?.focus()
-        inputRef.current?.select()
+        focusField(inputRef)
+        return true
+      case "cmd+f":
+        setFinding(true)
+        setFindFocus((n) => n + 1)
+        return true
+      case "cmd+g":
+        findStep(false)
+        return true
+      case "shift+cmd+g":
+        findStep(true)
         return true
       case "cmd+[":
         void send({ op: "back" })
@@ -359,6 +410,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
         </form>
         {notice && <span className="browser-notice">{notice}</span>}
       </div>
+      {finding && <FindBar inputRef={findRef} find={find} onClose={closeFind} />}
       <div
         className="browser-progress"
         data-on={state.loading}

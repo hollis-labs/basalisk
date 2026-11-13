@@ -110,6 +110,18 @@ func TestBrowserViews(t *testing.T) {
 		t.Error("the agent's eval is not in the shell log")
 	}
 
+	// Find in page: a word on the page is found, a missing one is not.
+	found, err := DefaultBrowser().Command(map[string]any{"op": "find", "id": "w1", "query": "next"})
+	if err != nil || string(found) != `{"found":true}` {
+		t.Errorf("find next = %s %v", found, err)
+	}
+	if found, _ = DefaultBrowser().Command(map[string]any{"op": "find", "id": "w1", "query": "zzqx"}); string(found) != `{"found":false}` {
+		t.Errorf("find zzqx = %s", found)
+	}
+	if _, err = DefaultBrowser().Command(map[string]any{"op": "find-clear", "id": "w1"}); err != nil {
+		t.Error(err)
+	}
+
 	// A local file opens with read access to its folder.
 	dir := t.TempDir()
 	if err = os.WriteFile(dir+"/local.html", []byte(`<title>Local File</title>hi`), 0o600); err != nil {

@@ -22,6 +22,8 @@ await window.webkit.messageHandlers.basaliskBrowser.postMessage({ op, id, ...fie
 | `back` `forward` `reload` `stop` | | |
 | `focus` / `blur` | | gives the keyboard to the view / back to the app |
 | `zoom` | `zoom` (0.25 to 5) | page zoom |
+| `find` | `query`, `backwards?`, `caseSensitive?` | finds and selects the next match (wraps); returns `{found}` |
+| `find-clear` | | clears the selection |
 | `state` | | returns `{id,url,title,loading,progress,back,forward,visible}` |
 | `snapshot` | | returns a JPEG data URL of the view |
 | `eval` | `js` | runs script in the view, returns its result |
@@ -74,8 +76,16 @@ open events, chord forwarding, hiding and closing.
 Keys pressed in a view go to the site, except the chords the page registered with
 `{op:"chords", chords:[...]}`: every bound desktop shortcut plus the window's own (⌘L address,
 ⌘[ ⌘] history, ⌘R reload). The native layer swallows those and sends a `chord` event; the
-window handles its own and hands the rest to the desktop as a swallowed chord, so ⌘K, ⌃\` and
+window handles its own (⌘L, ⌘F, ⌘G, ⇧⌘G, ⌘[ ⌘], ⌘R) and hands the rest to the desktop as a swallowed chord, so ⌘K, ⌃\` and
 the window chords work from inside a page. ⌘C, ⌘V and the rest stay with the site.
+
+## Find in page
+
+⌘F opens a find bar under the address field; it searches as you type. Enter or ⌘G finds the
+next match, ⇧Enter or ⇧⌘G the previous one (wrapping), Esc closes the bar, clears the selection
+and gives the keyboard back to the page. A field in the chrome (address, find) takes the
+keyboard by first asking the view to give it up (`blur`), since DOM focus alone leaves keys
+going to the native view.
 
 ## Links stay in the desktop
 

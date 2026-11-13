@@ -321,6 +321,25 @@ static void handle(NSDictionary *m, BSLReply reply) {
 		[bWin makeFirstResponder:bPage];
 		return reply(@YES, nil);
 	}
+	if ([op isEqual:@"find"]) {
+		NSString *q = [m[@"query"] isKindOfClass:[NSString class]] ? m[@"query"] : @"";
+		if (!q.length) return reply(@{@"found" : @NO}, nil);
+		if (@available(macOS 13.0, *)) {
+			WKFindConfiguration *fc = [[WKFindConfiguration alloc] init];
+			fc.backwards = [m[@"backwards"] boolValue];
+			fc.caseSensitive = [m[@"caseSensitive"] boolValue];
+			fc.wraps = YES;
+			[w findString:q
+				withConfiguration:fc
+				completionHandler:^(WKFindResult *result) { reply(@{@"found" : @(result.matchFound)}, nil); }];
+			return;
+		}
+		return reply(nil, @"find needs macOS 13");
+	}
+	if ([op isEqual:@"find-clear"]) {
+		[w evaluateJavaScript:@"window.getSelection()&&window.getSelection().removeAllRanges();0" completionHandler:nil];
+		return reply(@YES, nil);
+	}
 	if ([op isEqual:@"state"]) return reply(stateOf(w), nil);
 	if ([op isEqual:@"close"]) {
 		destroy(w);
