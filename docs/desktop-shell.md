@@ -149,6 +149,15 @@ terminal or a preview card is over it or it is being moved; `subscribe(fn)` call
 any of that may have changed. Backend routes go in
 their own file in `internal/api` and are added to `allRoutes` in `api.go`.
 
+The desktop's shortcuts run before the window sees the key (a capture listener on the
+window). An element can keep chords for itself with `data-keys-own="cmd+k cmd+b"`: while focus
+is inside it, the desktop leaves those chords alone and the element's own `onKeyDown` gets
+them. Chords are spelled as `chordOf` makes them (`ctrl`, `alt`, `shift`, `cmd`, then the key, e.g.
+`shift+cmd+g`). Notes' editor uses it to keep ⌘B, ⌘I, ⌘K, ⌘F and ⌘S. Two rules keep it
+predictable: an element keeps only chords it actually handles, and only a text editor may
+keep the palette toggle. Chords posted from the native event tap ("Own the keyboard") arrive
+as ordinary key events, so the attribute applies to them too.
+
 ### The adapter
 
 ```go
