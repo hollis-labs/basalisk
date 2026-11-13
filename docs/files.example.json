@@ -1,0 +1,5 @@
+{
+  "remotes": [
+    { "id": "box-dev", "label": "box ~/dev", "host": "box", "path": "~/dev" }
+  ]
+}

@@ -11,6 +11,7 @@ require (
 	github.com/hollis-labs/libs/security/pairing v0.0.0-20261018164511-e8bfb38b4f31
 	github.com/hollis-labs/libs/security/secrets v0.1.0
 	github.com/hollis-labs/substrate v0.1.1-0.20261112131348-09c04e56e7dd
+	github.com/pkg/sftp v1.13.12
 	github.com/spf13/cobra v1.10.2
 	github.com/wailsapp/wails/v3 v3.1.0
 	modernc.org/sqlite v1.60.1
@@ -33,6 +34,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.11.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.3 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect

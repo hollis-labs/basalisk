@@ -17,6 +17,7 @@ import (
 	"github.com/hollis-labs/substrate/apierr"
 	"github.com/hollis-labs/substrate/modules/httphost"
 
+	"github.com/hollis-labs/basalisk/internal/files"
 	"github.com/hollis-labs/basalisk/internal/macshell"
 	"github.com/hollis-labs/basalisk/internal/terminal"
 )
@@ -35,6 +36,7 @@ type API struct {
 	// EnableTerminal were called (the desktop app does; a server deployment does not).
 	shell macshell.Controller
 	term  *terminal.Manager
+	files *files.Manager // EnableFiles (files.go)
 	// deskDir holds the desktop settings documents (desk.go); empty means not kept.
 	deskDir string
 	// cite resolves references through the Tether gateway (cite.go); nil when none is configured.
@@ -95,7 +97,9 @@ func (a *API) routes() []route {
 func (a *API) allRoutes() []route {
 	rts := append(a.routes(), a.deskRoutes()...)
 	rts = append(rts, a.citeRoutes()...)
-	return append(append(rts, a.shellRoutes()...), a.terminalRoutes()...)
+	rts = append(rts, a.shellRoutes()...)
+	rts = append(rts, a.terminalRoutes()...)
+	return append(rts, a.filesRoutes()...)
 }
 
 // Handler serves the owner routes; it is httphost.Options.Routes. The auth guard in front of
