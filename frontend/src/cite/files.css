@@ -1,0 +1,38 @@
+/* File references (cite/files.tsx): a link that opens the file, and the notice when it is not there. */
+.cite-file {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--desk-accent);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--desk-accent) 40%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+  word-break: break-all;
+}
+.cite-file svg {
+  flex: 0 0 auto;
+  align-self: center;
+}
+.cite-file:hover {
+  text-decoration-color: var(--desk-accent);
+}
+.cite-file-notice {
+  position: fixed;
+  z-index: 10000;
+  max-width: 300px;
+  padding: 5px 9px;
+  border: 1px solid var(--desk-border);
+  border-radius: 5px;
+  background: var(--desk-panel);
+  color: var(--desk-fg);
+  font-family: var(--desk-font);
+  font-size: 11.5px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+  pointer-events: none;
+}

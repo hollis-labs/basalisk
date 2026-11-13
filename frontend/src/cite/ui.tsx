@@ -26,6 +26,7 @@ import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { openLink } from "../api/browser"
 import { parseTachHref } from "./core/tach"
+import { CodeRef, FileLink, placeOf, splitFiles, usePlaces } from "./files"
 import { parseFragmentHref } from "./fragment"
 import {
   canResolve,
@@ -118,21 +119,44 @@ export function CiteChip({
   )
 }
 
-/** Plain text with its references turned into chips. */
+/** Plain text with its references turned into chips (file references into links: files.tsx). */
 export function CiteText({ text }: { text: string }) {
+  const places = usePlaces()
   return (
     <>
-      {segments(text).map((s) =>
-        s.type === "text" ? (
+      {splitFiles(text, places).map((part, i) =>
+        typeof part === "string" ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the runs of one text, in order
+          <CiteSegments key={`t:${i}`} text={part} places={places} />
+        ) : (
+          <FileLink key={`f:${part.start}`} fileRef={part.ref}>
+            {part.raw}
+          </FileLink>
+        ),
+      )}
+    </>
+  )
+}
+
+function CiteSegments({ text, places }: { text: string; places: ReturnType<typeof usePlaces> }) {
+  return (
+    <>
+      {segments(text).map((s) => {
+        const file = s.type !== "text" && s.kind === "path" ? placeOf(s.canonical, places) : null
+        return s.type === "text" ? (
           s.text
+        ) : file ? (
+          <FileLink key={`${s.start}:${s.canonical}`} fileRef={file}>
+            {s.raw}
+          </FileLink>
         ) : (
           <CiteChip
             key={`${s.start}:${s.canonical}`}
             refId={{ kind: s.kind, canonical: s.canonical, meta: s.meta }}
             raw={s.raw}
           />
-        ),
-      )}
+        )
+      })}
     </>
   )
 }
@@ -174,6 +198,8 @@ const MARKDOWN: Components = {
   em: wrap("em"),
   del: wrap("del"),
   blockquote: wrap("blockquote"),
+  // Inline code that is a file reference opens it (files.tsx); fenced code is left alone.
+  code: ({ node: _node, ...props }) => <CodeRef {...props} />,
   // [label](tach:service/id) is a reference with the author's label; other links open outside.
   a({ href, children }) {
     const ref = parseTachHref(href) ?? parseFragmentHref(href)
