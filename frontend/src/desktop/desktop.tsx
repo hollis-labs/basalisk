@@ -28,7 +28,7 @@ import { ApiError, request } from "../api/account"
 import "../apps"
 import "./commands"
 import { SHELL_EVENT, type ShellEvent, type ShellStatus, shell } from "../api/shell"
-import { initCite, setCiteOpener } from "../cite"
+import { initCite, setCiteOpener, useCard } from "../cite"
 import { CiteCardLayer } from "../cite/ui"
 import { useSession } from "../session"
 import { useTerminalHost } from "../terminal/host"
@@ -99,6 +99,20 @@ export function Desktop() {
     }
   }, [])
 
+  // For geometry(): where the windows are, whether a DOM overlay is up, what is being moved.
+  const placedRef = useRef(new Map<string, Placed>())
+  const overlayRef = useRef(false)
+  const movingRef = useRef(new Set<string>())
+  const watchers = useRef(new Set<() => void>())
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [movingTick, setMovingTick] = useState(0)
+  const card = useCard()
+  const onMoving = useCallback((id: string, moving: boolean) => {
+    if (moving) movingRef.current.add(id)
+    else movingRef.current.delete(id)
+    setMovingTick((t) => t + 1)
+  }, [])
+
   const { signedOut } = useSession()
   const terminal = useTerminalHost()
   const terminalRef = useRef(terminal)
@@ -155,6 +169,38 @@ export function Desktop() {
         if (!theme) return
         applyDeskTheme(theme)
         updateSettings({ theme: id })
+      },
+      geometry(id) {
+        const win = stateRef.current.wins.find((w) => w.id === id)
+        if (!win) return null
+        const box = canvas.current?.getBoundingClientRect()
+        const p = placedRef.current.get(id)
+        const focused = stateRef.current.focus === id
+        if (!p || !box) {
+          return { rect: { x: 0, y: 0, w: 0, h: 0 }, visible: false, focused, covered: true }
+        }
+        // Stacking as the windows are drawn: a focused floating window is one above its z.
+        const zOf = (wid: string, q: { z: number; tiled: boolean }) =>
+          q.z + (stateRef.current.focus === wid && !q.tiled ? 1 : 0)
+        const mine = zOf(id, p)
+        let covered = overlayRef.current || movingRef.current.size > 0
+        for (const [other, q] of placedRef.current) {
+          if (covered) break
+          if (other === id || zOf(other, q) <= mine) continue
+          covered = q.x < p.x + p.w && q.x + q.w > p.x && q.y < p.y + p.h && q.y + q.h > p.y
+        }
+        return {
+          rect: { x: box.left + p.x, y: box.top + p.y, w: p.w, h: p.h },
+          visible: true,
+          focused,
+          covered,
+        }
+      },
+      subscribe(fn) {
+        watchers.current.add(fn)
+        return () => {
+          watchers.current.delete(fn)
+        }
       },
       signOut() {
         void request("logout", "POST", {})
@@ -246,6 +292,13 @@ export function Desktop() {
   }, [state.focus, palette])
 
   const placed = useMemo(() => place(state, area), [state, area])
+  placedRef.current = placed
+  overlayRef.current = palette || menuOpen || terminal.overlayOpen || !!card
+  // Tell whoever follows window geometry (a native view) that it may have changed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these are the things geometry() reads
+  useEffect(() => {
+    for (const fn of watchers.current) fn()
+  }, [placed, state.focus, palette, menuOpen, terminal.overlayOpen, card, movingTick])
   const divider = dividerX(state, area)
 
   const hitTest = useCallback(
@@ -300,6 +353,7 @@ export function Desktop() {
               onOpen={(id) => desk.open(id)}
               onLayout={() => dispatch({ type: "layout" })}
               onKiosk={() => status && void shell.kiosk(!status.kiosk, false).then(setStatus)}
+              onOpenChange={setMenuOpen}
             />
             <div className="desk-tasks">
               {state.wins.map((w) => {
@@ -395,6 +449,7 @@ export function Desktop() {
                 dispatch={dispatch}
                 hitTest={hitTest}
                 onDropTarget={setDropTarget}
+                onMoving={onMoving}
               />
             )
           })}
@@ -440,6 +495,7 @@ function WindowFrame({
   dispatch,
   hitTest,
   onDropTarget,
+  onMoving,
 }: {
   win: Win
   app: AppDef
@@ -450,6 +506,7 @@ function WindowFrame({
   dispatch: Dispatch<WMAction>
   hitTest: (x: number, y: number, self: string) => string | null
   onDropTarget: (id: string | null) => void
+  onMoving: (id: string, moving: boolean) => void
 }) {
   const drag = useRef<{ px: number; py: number; x: number; y: number; moved: boolean } | null>(null)
   const resize = useRef<{ dir: string; px: number; py: number; start: Rect } | null>(null)
@@ -469,6 +526,7 @@ function WindowFrame({
     const dx = e.clientX - d.px
     const dy = e.clientY - d.py
     if (!d.moved && Math.hypot(dx, dy) < 4) return
+    if (!d.moved) onMoving(win.id, true)
     d.moved = true
     if (tiled) {
       // A tiled window is dragged onto another to trade places.
@@ -485,6 +543,7 @@ function WindowFrame({
   const onTitleUp = (e: ReactPointerEvent<HTMLElement>) => {
     const d = drag.current
     drag.current = null
+    if (d?.moved) onMoving(win.id, false)
     if (!d?.moved || !tiled) return
     const target = hitTest(e.clientX, e.clientY, win.id)
     if (target) dispatch({ type: "swap", a: win.id, b: target })
@@ -496,6 +555,7 @@ function WindowFrame({
     if (!rect) return
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
+    onMoving(win.id, true)
     resize.current = {
       dir,
       px: e.clientX,
@@ -524,6 +584,7 @@ function WindowFrame({
     dispatch({ type: "rect", id: win.id, rect: { x, y, w, h } })
   }
   const onEdgeUp = () => {
+    if (resize.current) onMoving(win.id, false)
     resize.current = null
   }
 
@@ -630,15 +691,18 @@ function DeskMenu({
   onOpen,
   onLayout,
   onKiosk,
+  onOpenChange,
 }: {
   layout: Layout
   status: ShellStatus | null
   onOpen: (app: string) => void
   onLayout: () => void
   onKiosk: () => void
+  onOpenChange: (open: boolean) => void
 }) {
   const { signedOut } = useSession()
   const [open, setOpen] = useState(false)
+  useEffect(() => onOpenChange(open), [open, onOpenChange])
   const [apps, setApps] = useState(false)
   const root = useRef<HTMLDivElement>(null)
 

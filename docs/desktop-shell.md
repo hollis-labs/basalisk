@@ -128,7 +128,11 @@ registerFileHandler({ app: "notes", match: name => /\.(md|txt)$/.test(name) })
 
 Inside a window, `useDesk()` gives the desktop: `open(app, { args, key, title })`,
 `openFile({ root, path })` (opens the app registered for that file), `close`, `setTitle`,
-the window manager, the palette, the terminal toggle, the shell status. Backend routes go in
+the window manager, the palette, the terminal toggle, the shell status. For content that is
+not DOM (a native web view over a window), `geometry(winId)` gives the window's rectangle on
+screen and `covered`, true while another window, the palette, the menu, the drop-down
+terminal or a preview card is over it or it is being moved; `subscribe(fn)` calls back when
+any of that may have changed. Backend routes go in
 their own file in `internal/api` and are added to `allRoutes` in `api.go`.
 
 ### The adapter

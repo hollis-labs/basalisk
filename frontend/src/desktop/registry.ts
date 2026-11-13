@@ -64,6 +64,28 @@ export interface DeskAPI {
   setKiosk(on: boolean): void
   setTheme(id: string): void
   signOut(): void
+  /**
+   * Where a window is on screen and whether anything is drawn over it. For content that is
+   * not DOM (a native web view placed over the window): show it only while `covered` is false.
+   * Null for an unknown window.
+   */
+  geometry(winId: string): WindowGeometry | null
+  /** Calls back after anything that can change a geometry (windows, layout, overlays). Returns the unsubscribe. */
+  subscribe(fn: () => void): () => void
+}
+
+export interface WindowGeometry {
+  /** The window frame, title bar included, in viewport CSS pixels. */
+  rect: { x: number; y: number; w: number; h: number }
+  /** False while the window is hidden (minimized). */
+  visible: boolean
+  focused: boolean
+  /**
+   * Something is, or may be, drawn over the window: another window overlaps it from above,
+   * the palette, the menu, the drop-down terminal or a preview card is up, or the window is
+   * being moved or resized.
+   */
+  covered: boolean
 }
 
 /** An action with a name: it shows in the palette and can be given a shortcut. */
