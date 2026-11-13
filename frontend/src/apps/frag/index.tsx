@@ -8,6 +8,7 @@ import { registerCommands, registerOverlay } from "../../desktop/registry"
 import { Capture } from "./capture"
 import { CLIP_EVENT, takePendingClip } from "./clip"
 import { ClipBox } from "./clipbox"
+import "./agent"
 import "./frag.css"
 
 /** The box: a clip when a Browser window just handed one over, else a note. */
