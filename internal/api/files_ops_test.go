@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hollis-labs/basalisk/internal/files"
@@ -77,6 +78,19 @@ func TestFilesOpsRoutes(t *testing.T) {
 		t.Fatalf("grep: %+v", grep)
 	}
 	c.call("GET", "/api/files/grep?root=dev&path=../&q=x", nil, 403)
+	var idx files.NoteIndex
+	_ = json.Unmarshal(c.call("GET", "/api/files/notes-index?root=dev&path=", nil, 200).Body.Bytes(), &idx)
+	has := false
+	for _, n := range idx.Notes {
+		has = has || n.Path == "notes/a.md"
+		if !strings.HasSuffix(n.Path, ".md") && !strings.HasSuffix(n.Path, ".txt") {
+			t.Fatalf("notes index has %s", n.Path)
+		}
+	}
+	if !has || idx.Truncated {
+		t.Fatalf("notes index: %+v", idx)
+	}
+	c.call("GET", "/api/files/notes-index?root=dev&path=../", nil, 403)
 
 	// Places: a remote is added and kept, then removed; a local place cannot be removed.
 	c.call("GET", "/api/files/hosts", nil, 200)

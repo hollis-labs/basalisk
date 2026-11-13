@@ -175,3 +175,58 @@
 ::highlight(hl-variable) {
   color: var(--desk-info-soft, #9fc6d8);
 }
+
+/* [[wiki links]]: one to a note not made yet; the completion strip; backlinks. */
+.notes-page a[data-missing="true"] {
+  color: var(--desk-muted);
+  text-decoration-style: dashed;
+}
+.notes-complete {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 14px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--desk-border);
+  background: var(--desk-panel);
+  font-family: var(--desk-font);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.notes-complete > span,
+.notes-complete small {
+  color: var(--desk-muted);
+}
+.notes-complete small {
+  margin-left: auto;
+}
+.notes-complete button {
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--desk-fg-soft, var(--desk-fg));
+}
+.notes-complete button[data-on="true"] {
+  background: var(--desk-accent-soft);
+  color: var(--desk-fg);
+}
+.notes-outline h3 {
+  margin: 14px 10px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--desk-muted);
+}
+.notes-outline .notes-backlink {
+  display: flex;
+  flex-direction: column;
+  white-space: normal;
+}
+.notes-outline .notes-backlink small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  opacity: 0.8;
+}

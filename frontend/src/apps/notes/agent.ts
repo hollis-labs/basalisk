@@ -9,7 +9,7 @@ import { ApiError } from "../../api/account"
 import { files } from "../../api/files"
 import type { DeskAPI, FileRef } from "../../desktop/registry"
 import { changed } from "../files/ops"
-import { noteName, notesFolder } from "./notefiles"
+import { inFolder, noteName, notesFolder } from "./notefiles"
 import { noteWindows } from "./open"
 
 const TEXT = /\.(md|markdown|mdx|txt|text|log|rst|org)$/i
@@ -101,13 +101,6 @@ function guard(file: FileRef) {
 // Agent instruction files: the owner edits them himself, whatever the place.
 const INSTRUCTION_FILES = new Set(["claude.md", "agents.md", "gemini.md", "skill.md"])
 const INSTRUCTION_DIRS = new Set([".claude", ".codex", ".gemini", ".agents"])
-
-/** In the notes folder (its root, at or under its path)? */
-export function inFolder(file: FileRef, folder: FileRef): boolean {
-  if (file.root !== folder.root) return false
-  const base = folder.path.replace(/^\/+|\/+$/g, "")
-  return !base || file.path === base || file.path.startsWith(`${base}/`)
-}
 
 /**
  * Before any write: never an agent instruction file; outside the notes folder, the owner is

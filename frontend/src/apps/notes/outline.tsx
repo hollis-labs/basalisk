@@ -8,6 +8,7 @@ import {
   parseFileLink,
   scrollToAnchor,
 } from "./rich"
+import type { Backlink } from "./wiki"
 
 /**
  * After each render of a note's page: heading ids, code colour, and the page's own links
@@ -18,6 +19,7 @@ export function useRichPage(
   text: string,
   openFile: (file: FileRef, anchor: string) => void,
   live: boolean,
+  onMissing?: (name: string) => void,
 ): Heading[] {
   const [headings, setHeadings] = useState<Heading[]>([])
   // biome-ignore lint/correctness/useExhaustiveDependencies: text is what the page rendered
@@ -32,6 +34,16 @@ export function useRichPage(
         : next,
     )
     colourCode(el)
+    // Say where a note link goes (React does not own the title).
+    for (const a of el.querySelectorAll<HTMLAnchorElement>('a[href^="#notes-"]')) {
+      const href = a.getAttribute("href") ?? ""
+      const link = parseFileLink(href)
+      if (link) a.title = `${link.file.path}${link.anchor ? `#${link.anchor}` : ""}`
+      else if (href.startsWith("#notes-new:")) {
+        a.title = `No note named “${decodeURIComponent(href.slice(11))}” yet: click to create it`
+        a.dataset.missing = "true"
+      }
+    }
   }, [page, text, live])
 
   useEffect(() => {
@@ -45,6 +57,7 @@ export function useRichPage(
       e.stopPropagation()
       const link = parseFileLink(href)
       if (link) openFile(link.file, link.anchor)
+      else if (href.startsWith("#notes-new:")) onMissing?.(decodeURIComponent(href.slice(11)))
       else scrollToAnchor(el, href.slice(1))
     }
     el.addEventListener("click", onClick, true)
@@ -52,7 +65,7 @@ export function useRichPage(
       el.removeEventListener("click", onClick, true)
       forgetPage(el)
     }
-  }, [page, openFile, live])
+  }, [page, openFile, live, onMissing])
   return headings
 }
 
@@ -60,9 +73,16 @@ export function useRichPage(
 export function Outline({
   headings,
   page,
+  backlinks,
+  root,
+  onOpen,
 }: {
   headings: Heading[]
   page: RefObject<HTMLElement | null>
+  /** Notes linking here: undefined when not in the notes folder, null while looking. */
+  backlinks?: Backlink[] | null
+  root?: string
+  onOpen?: (file: FileRef) => void
 }) {
   const top = Math.min(...headings.map((h) => h.level))
   return (
@@ -81,6 +101,31 @@ export function Outline({
         ))
       ) : (
         <p>No headings.</p>
+      )}
+      {backlinks !== undefined && (
+        <>
+          <h3>Linked from</h3>
+          {backlinks === null ? (
+            <p>Looking…</p>
+          ) : backlinks.length ? (
+            backlinks.map((b) => (
+              <button
+                key={b.path}
+                type="button"
+                className="notes-backlink"
+                title={b.lines.map((l) => `${l.line}: ${l.text}`).join("\n")}
+                onClick={() => root && onOpen?.({ root, path: b.path })}
+              >
+                <span>
+                  {(b.path.split("/").pop() ?? b.path).replace(/\.(md|markdown|mdx|txt)$/i, "")}
+                </span>
+                <small>{b.lines[0]?.text}</small>
+              </button>
+            ))
+          ) : (
+            <p>No notes link here.</p>
+          )}
+        </>
       )}
     </nav>
   )

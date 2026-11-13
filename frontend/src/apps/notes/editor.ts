@@ -5,7 +5,7 @@
  */
 
 /** Replaces [start, end) with text, then selects [a, b), keeping undo. */
-function replace(
+export function replace(
   el: HTMLTextAreaElement,
   start: number,
   end: number,

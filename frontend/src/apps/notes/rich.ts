@@ -21,6 +21,7 @@ import typescript from "highlight.js/lib/languages/typescript"
 import xml from "highlight.js/lib/languages/xml"
 import yaml from "highlight.js/lib/languages/yaml"
 import type { FileRef } from "../../desktop/registry"
+import { type NoteIndex, rewriteWiki } from "./wiki"
 
 for (const [name, lang] of Object.entries({
   bash,
@@ -85,20 +86,24 @@ function resolveDest(dest: string, file: FileRef, image: boolean): string | null
   const path = joinPath(dir, decoded)
   if (path === null) return null
   if (image || (IMAGE.test(path) && !hash)) return `<${contentURL(file.root, path)}>`
-  return `<${FILE_LINK}${encodeURIComponent(file.root)}:${encodeURIComponent(path)}${hash ? `#${encodeURIComponent(hash)}` : ""}>`
+  return fileLinkDest(file.root, path, hash)
 }
+
+/** A link destination Notes opens: <#notes-file:root:path#anchor>. */
+const fileLinkDest = (root: string, path: string, anchor: string) =>
+  `<${FILE_LINK}${encodeURIComponent(root)}:${encodeURIComponent(path)}${anchor ? `#${encodeURIComponent(anchor)}` : ""}>`
 
 const INLINE = /(!?)\[((?:[^[\]\n]|\[[^\]\n]*\])*)\]\(\s*(<[^>\n]*>|[^)\s]+)/g
 const DEFINITION = /^( {0,3}\[[^\]\n]+\]:[ \t]*)(<[^>\n]*>|\S+)/gm
 
-function rewriteProse(text: string, file: FileRef): string {
+function rewriteProse(text: string, file: FileRef, wiki?: NoteIndex | null): string {
   // Inline code spans are left as written.
   return text
     .split(/(`[^`\n]*`)/)
     .map((part, i) =>
       i % 2
         ? part
-        : part
+        : (wiki ? rewriteWiki(part, file, wiki, fileLinkDest) : part)
             .replace(INLINE, (all, bang: string, label: string, dest: string) => {
               const to = resolveDest(dest, file, bang === "!")
               return to ? `${bang}[${label}](${to}` : all
@@ -112,14 +117,18 @@ function rewriteProse(text: string, file: FileRef): string {
 }
 
 /** The markdown with relative links and images pointed at the file API; fenced code untouched. */
-export function resolveRelative(source: string, file: FileRef | undefined): string {
+export function resolveRelative(
+  source: string,
+  file: FileRef | undefined,
+  wiki?: NoteIndex | null,
+): string {
   if (!file) return source
   const lines = source.split("\n")
   const out: string[] = []
   let prose: string[] = []
   let fence: string | null = null
   const flush = () => {
-    if (prose.length) out.push(rewriteProse(prose.join("\n"), file))
+    if (prose.length) out.push(rewriteProse(prose.join("\n"), file, wiki))
     prose = []
   }
   for (const line of lines) {

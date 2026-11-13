@@ -33,12 +33,13 @@ import {
  * rendered page on the right, saved with ⌘S, refused if the file changed underneath.
  */
 
-import { continueList, EDITOR_KEYS, indent, link, wrap } from "./editor"
+import { continueList, EDITOR_KEYS, indent, link, replace, wrap } from "./editor"
 import { NotesFind } from "./find"
 import { createNote, NameForm, notesFolder, renameNote, saveAs } from "./notefiles"
 import { noteWindows } from "./open"
 import { Outline, useRichPage } from "./outline"
 import { resolveRelative, scrollToAnchor } from "./rich"
+import { complete, linkName, useBacklinks, useNoteIndex } from "./wiki"
 import "./agent"
 import "./notes.css"
 
@@ -315,9 +316,51 @@ function NotesWindow({ winId, args }: WindowProps) {
       setFinding(true)
     }
   }
+  // [[ in the editor offers the notes to link to.
+  const wiki = useNoteIndex(doc?.file)
+  const [completing, setCompleting] = useState<{ query: string; start: number; at: number } | null>(
+    null,
+  )
+  const picks =
+    completing && wiki && doc?.file ? complete(completing.query, doc.file.path, wiki) : []
+  const noteCompletion = (el: HTMLTextAreaElement) => {
+    const caret = el.selectionStart
+    if (!wiki || el.selectionEnd !== caret) return setCompleting(null)
+    const m = /\[\[([^[\]\n|#]*)$/.exec(el.value.slice(Math.max(0, caret - 120), caret))
+    setCompleting((c) =>
+      m ? { query: m[1], start: caret - m[1].length, at: c?.query === m[1] ? c.at : 0 } : null,
+    )
+  }
+  const pick = (path: string) => {
+    const el = editor.current
+    if (!el || !completing || !wiki) return
+    const name = linkName(path, wiki)
+    const caret = el.selectionStart
+    const closed = el.value.slice(caret, caret + 2) === "]]"
+    const after = completing.start + name.length + 2
+    replace(el, completing.start, caret, closed ? name : `${name}]]`, after, after)
+    setCompleting(null)
+  }
   // Markdown keys in the editor; each edit goes through the textarea, so ⌘Z undoes it.
   const onEditorKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget
+    if (completing) {
+      const n = picks.length
+      let used = true
+      if (e.key === "Escape") setCompleting(null)
+      else if (n && e.key === "ArrowDown")
+        setCompleting({ ...completing, at: (completing.at + 1) % n })
+      else if (n && e.key === "ArrowUp")
+        setCompleting({ ...completing, at: (completing.at - 1 + n) % n })
+      else if (n && (e.key === "Enter" || e.key === "Tab") && !e.shiftKey)
+        pick(picks[completing.at] ?? picks[0])
+      else used = false
+      if (used) {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
+    }
     const cmd = e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey
     let handled = true
     if (e.key === "Tab" && !e.metaKey && !e.ctrlKey && !e.altKey) indent(el, e.shiftKey)
@@ -344,10 +387,23 @@ function NotesWindow({ winId, args }: WindowProps) {
     [desk, here],
   )
   const rendered = !!doc?.markdown && !raw && draft === null
-  const viewText = doc ? resolveRelative(doc.text, doc.file) : ""
-  const previewText = draft !== null && doc?.markdown ? resolveRelative(draft, doc.file) : ""
-  const headings = useRichPage(view, viewText, openLinked, rendered)
-  useRichPage(preview, previewText, openLinked, draft !== null && !!doc?.markdown)
+  const viewText = doc ? resolveRelative(doc.text, doc.file, doc.markdown ? wiki : null) : ""
+  const previewText = draft !== null && doc?.markdown ? resolveRelative(draft, doc.file, wiki) : ""
+  // A [[link]] to a note that does not exist yet makes it, in the notes folder, for editing.
+  const createMissing = useCallback(
+    async (name: string) => {
+      try {
+        const ref = await createNote(await notesFolder(), name)
+        desk.open("notes", { args: { file: ref, edit: true } })
+      } catch (e) {
+        setNotice(e instanceof Error ? e.message : "The note could not be made.")
+      }
+    },
+    [desk],
+  )
+  const headings = useRichPage(view, viewText, openLinked, rendered, createMissing)
+  useRichPage(preview, previewText, openLinked, draft !== null && !!doc?.markdown, createMissing)
+  const linkedFrom = useBacklinks(doc?.file, wiki, rendered && outline)
   // Opened at an anchor (a link from another note): scroll there once it is drawn.
   const anchor = typeof args.anchor === "string" ? args.anchor : ""
   useEffect(() => {
@@ -570,6 +626,28 @@ function NotesWindow({ winId, args }: WindowProps) {
           onClose={() => setFinding(false)}
         />
       )}
+      {draft !== null && completing && picks.length > 0 && (
+        <div className="notes-complete" role="listbox" aria-label="Link to a note">
+          <span>Link to</span>
+          {picks.map((p, i) => (
+            <button
+              key={p}
+              type="button"
+              role="option"
+              aria-selected={i === completing.at}
+              data-on={i === completing.at}
+              title={p}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                pick(p)
+              }}
+            >
+              {wiki ? linkName(p, wiki) : p}
+            </button>
+          ))}
+          <small>↑↓ · ↵ or ⇥ to link · esc</small>
+        </div>
+      )}
       {draft !== null ? (
         <div className="notes-edit" data-preview={doc.markdown}>
           <textarea
@@ -577,7 +655,12 @@ function NotesWindow({ winId, args }: WindowProps) {
             className="notes-editor"
             value={draft}
             spellCheck={false}
-            onChange={(e) => edit(e.target.value)}
+            onChange={(e) => {
+              edit(e.target.value)
+              noteCompletion(e.target)
+            }}
+            onSelect={(e) => noteCompletion(e.currentTarget)}
+            onBlur={() => setCompleting(null)}
             onKeyDown={onEditorKey}
             data-keys-own={EDITOR_KEYS}
             aria-label={`Edit ${doc.title}`}
@@ -592,7 +675,15 @@ function NotesWindow({ winId, args }: WindowProps) {
         </div>
       ) : (
         <div className="notes-body">
-          {rendered && outline && <Outline headings={headings} page={view} />}
+          {rendered && outline && (
+            <Outline
+              headings={headings}
+              page={view}
+              backlinks={linkedFrom}
+              root={wiki?.root}
+              onOpen={(f) => openLinked(f, "")}
+            />
+          )}
           {/* biome-ignore lint/a11y/noNoninteractiveTabindex: the page scrolls and takes ⌘F */}
           <div className="notes-scroll" tabIndex={0}>
             <article className="notes-page" ref={view}>

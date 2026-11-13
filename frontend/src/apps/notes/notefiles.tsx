@@ -23,6 +23,13 @@ export async function notesFolder(): Promise<FileRef> {
   return { root: pick?.id ?? "home", path: "Notes" }
 }
 
+/** In the notes folder (its root, at or under its path)? */
+export function inFolder(file: FileRef, folder: FileRef): boolean {
+  if (file.root !== folder.root) return false
+  const base = folder.path.replace(/^\/+|\/+$/g, "")
+  return !base || file.path === base || file.path.startsWith(`${base}/`)
+}
+
 /** "My idea" becomes "My idea.md"; a name with an extension keeps it. */
 export const noteName = (name: string) => {
   const n = name.trim().replace(/[/\\]/g, "-")
