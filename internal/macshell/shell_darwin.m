@@ -414,13 +414,26 @@ void bslSetCombos(const uint32_t *codes, const uint64_t *mods, int n) {
 
 int bslAXTrusted(int prompt) {
 	if (!prompt) return AXIsProcessTrusted() ? 1 : 0;
-	NSDictionary *opts = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt : @YES};
-	return AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts) ? 1 : 0;
+	onMainSync(^{
+		NSDictionary *opts = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt : @YES};
+		AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts);
+	});
+	return AXIsProcessTrusted() ? 1 : 0;
 }
 
 int bslListenAccess(int request) {
-	if (request) return CGRequestListenEventAccess() ? 1 : 0;
+	if (!request) return CGPreflightListenEventAccess() ? 1 : 0;
+	onMainSync(^{ CGRequestListenEventAccess(); });
 	return CGPreflightListenEventAccess() ? 1 : 0;
+}
+
+// The system prompts appear at most once, and not at all once the user has answered, so a
+// request also opens the matching pane of System Settings: that always works.
+void bslOpenPrivacyPane(const char *anchor) {
+	NSString *url = [NSString stringWithFormat:@"x-apple.systempreferences:com.apple.preference.security?%s", anchor];
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:url]];
+	});
 }
 
 // ---- Other apps' windows ----

@@ -292,13 +292,20 @@ func (s *Shell) SetFixMinimized(on bool) error {
 
 // RequestPermission implements Controller.
 func (s *Shell) RequestPermission(kind string) error {
+	var granted bool
+	var pane string
 	switch kind {
 	case "accessibility":
-		C.bslAXTrusted(1)
+		granted, pane = C.bslAXTrusted(1) == 1, "Privacy_Accessibility"
 	case "input-monitoring":
-		C.bslListenAccess(1)
+		granted, pane = C.bslListenAccess(1) == 1, "Privacy_ListenEvent"
 	default:
 		return fmt.Errorf("unknown permission %q", kind)
+	}
+	if !granted {
+		anchor := C.CString(pane)
+		defer C.free(unsafe.Pointer(anchor))
+		C.bslOpenPrivacyPane(anchor)
 	}
 	s.log.add("permission", "requested "+kind)
 	return nil

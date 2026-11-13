@@ -4,6 +4,7 @@
 @import "@hollis-labs/kit-account/source.css";
 @import "@hollis-labs/kit-settings/source.css";
 @import "@xterm/xterm/css/xterm.css";
+@import "./desktop/desktop.css";
 /* app-shell ships TypeScript source with Tailwind classes and no source.css of its own. */
 @source "../node_modules/@hollis-labs/app-shell/src";
 
@@ -532,20 +533,12 @@ fieldset {
   }
 }
 
-/* ---- Desktop kiosk: keep the layout below the camera housing strip ---- */
-html.kiosk body {
-  padding-top: var(--shell-safe-top, 0px);
-  background: #000;
-}
-html.kiosk .h-dvh {
-  height: calc(100dvh - var(--shell-safe-top, 0px));
-}
-
 /* ---- Mac shell page ---- */
 .shell-page {
+  padding: 0.25rem;
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
   align-items: start;
 }
 .shell-section {

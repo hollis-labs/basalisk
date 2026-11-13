@@ -4,6 +4,7 @@ import { WebglAddon } from "@xterm/addon-webgl"
 import { type ITheme, Terminal } from "@xterm/xterm"
 import { useEffect, useRef } from "react"
 import { terminal as api } from "../api/shell"
+import { currentTheme, mix } from "../desktop/themes"
 
 /** What a terminal asks of the deck that holds it. */
 export interface DeckKeys {
@@ -17,81 +18,34 @@ export interface DeckKeys {
 const FONT_FAMILY =
   '"Meslo LG L DZ for Powerline", "MesloLGS NF", "Hack Nerd Font Mono", "JetBrainsMono Nerd Font", ui-monospace, SFMono-Regular, Menlo, monospace'
 
-/** Any CSS colour (the tokens are oklch) as #rrggbb, which is what xterm parses reliably. */
-function toHex(css: string, fallback: string): string {
-  try {
-    const canvas = document.createElement("canvas")
-    canvas.width = canvas.height = 1
-    const ctx = canvas.getContext("2d", { willReadFrequently: true })
-    if (!ctx) return fallback
-    ctx.fillStyle = fallback
-    ctx.fillStyle = css
-    ctx.fillRect(0, 0, 1, 1)
-    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
-    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`
-  } catch {
-    return fallback
-  }
-}
-
-function token(name: string, fallback: string): string {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  return value ? toHex(value, fallback) : fallback
-}
-
-/** The terminal palette: the app's own background and text, with a fixed ANSI set per mode. */
+/** The terminal palette: the active desktop theme's. */
 export function terminalTheme(): ITheme {
-  const background = token("--color-bg", "#0e1014")
-  const foreground = token("--color-fg", "#e6e8ec")
-  const dark =
-    Number.parseInt(background.slice(1, 3), 16) +
-      Number.parseInt(background.slice(3, 5), 16) +
-      Number.parseInt(background.slice(5, 7), 16) <
-    384
-  const accent = token("--color-primary", dark ? "#7aa2f7" : "#2e5cc5")
-  const ansi = dark
-    ? {
-        black: "#1b1f27",
-        red: "#f7768e",
-        green: "#9ece6a",
-        yellow: "#e0af68",
-        blue: "#7aa2f7",
-        magenta: "#bb9af7",
-        cyan: "#7dcfff",
-        white: "#c0caf5",
-        brightBlack: "#565f89",
-        brightRed: "#ff899d",
-        brightGreen: "#b9f27c",
-        brightYellow: "#ffc777",
-        brightBlue: "#8db0ff",
-        brightMagenta: "#c7a9ff",
-        brightCyan: "#a4daff",
-        brightWhite: "#ffffff",
-      }
-    : {
-        black: "#1f2328",
-        red: "#c4222f",
-        green: "#1f7a36",
-        yellow: "#8f5e00",
-        blue: "#2459c9",
-        magenta: "#8250df",
-        cyan: "#0f7a8a",
-        white: "#6e7781",
-        brightBlack: "#57606a",
-        brightRed: "#a40e26",
-        brightGreen: "#1a7f37",
-        brightYellow: "#633c01",
-        brightBlue: "#1d4fb8",
-        brightMagenta: "#6639ba",
-        brightCyan: "#0b6777",
-        brightWhite: "#24292f",
-      }
+  const t = currentTheme()
+  const names = [
+    "black",
+    "red",
+    "green",
+    "yellow",
+    "blue",
+    "magenta",
+    "cyan",
+    "white",
+    "brightBlack",
+    "brightRed",
+    "brightGreen",
+    "brightYellow",
+    "brightBlue",
+    "brightMagenta",
+    "brightCyan",
+    "brightWhite",
+  ] as const
+  const ansi = Object.fromEntries(names.map((name, i) => [name, t.ansi[i]]))
   return {
-    background,
-    foreground,
-    cursor: accent,
-    cursorAccent: background,
-    selectionBackground: dark ? "#3b4a70" : "#b6ccf5",
+    background: t.bg,
+    foreground: t.fg,
+    cursor: t.accent,
+    cursorAccent: t.bg,
+    selectionBackground: mix(t.selection, t.accent, 0.25),
     ...ansi,
   }
 }
@@ -267,7 +221,7 @@ export function XTermView({ id, active, epoch, fontSize, keys, onExit }: Props) 
     })
     mode.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-mode", "data-theme", "class"],
+      attributeFilter: ["data-desk-theme"],
     })
 
     return () => {

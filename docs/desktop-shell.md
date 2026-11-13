@@ -47,6 +47,29 @@ through the ordinary API, so nothing in the frontend depends on Wails:
   Everything else under them exists only in the desktop app.
 - The shell tells the page about each event with a DOM event, `basalisk:shell`.
 
+### The desktop
+
+Signed in, the app is a desktop: a bar, an empty canvas, and windows (`frontend/src/desktop`).
+
+- **Bar.** Menu (Apps, Settings, layout, full screen, sign out), one chip per open window, the
+  layout toggle, full screen, the clock. In full screen on a display with a camera housing the
+  bar sits in the strip beside it and keeps its middle empty.
+- **Window manager** (`wm.ts`, a reducer and a pure layout function; no library). Two layouts:
+  *tile* arranges windows as a master on the left and a stack on the right, with a draggable
+  divider, and a window can be floated out of it; *float* leaves every window where you put
+  it. Drag a tiled window onto another to trade places. Keys, all with ⌃⌥: `T` layout,
+  `J`/`K` next/previous, `Enter` maximize, `F` float or re-tile, `M` make master, `H` hide,
+  `W` close, `←`/`→` resize the master (tile) or snap to a half (float), `↑` fill, `↓` centre.
+- **Apps** (`apps.tsx`) are entries in a registry: id, title, icon, default size, a render
+  function. One window per app for now. Settings is an app with sections (Appearance,
+  Account, Security, Integrations, Devices, Mac shell).
+- **Themes** (`themes.ts`). Palettes taken from four Omarchy themes (Aura, the default;
+  Moodpeak; Cyberphunk; Blade Rainner), applied by overriding the design tokens' base
+  variables, so kit components and the terminal follow. Chosen in Settings, Appearance.
+- The desktop starts empty every launch; only the layout and the theme are remembered.
+- The app-shell `ManifestShell` is no longer rendered and `cmd/basalisk/app.ui.json` no longer
+  drives navigation. The desktop's app registry should eventually be fed by the manifest.
+
 ### The adapter
 
 ```go
@@ -154,6 +177,8 @@ Other things learned:
 ## Known gaps
 
 - No app icon.
+- One window per app: two terminals side by side need a second terminal window, which the
+  deck does not support yet (tabs only).
 - The terminal has no search, no split panes and no configuration; font size is the one setting
   (kept in the web view's local storage).
 - Windows on other Spaces are not listed: the Accessibility API only returns the current Space.

@@ -1,0 +1,531 @@
+/* The desktop: bar, canvas, windows, menu. Colours come from the active theme
+ * (desktop/themes.ts sets --desk-* and the design tokens' base variables). */
+
+:root {
+  --desk-bar-h: 32px;
+  --desk-radius: 6px;
+  --desk-font:
+    "JetBrainsMono Nerd Font", "Hack Nerd Font Mono", "Hack Nerd Font", "Fira Code", ui-monospace,
+    "SF Mono", Menlo, monospace;
+}
+
+.desk {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--desk-bg);
+  color: var(--desk-fg);
+  overflow: hidden;
+}
+
+/* ---- Bar ---- */
+.desk-bar {
+  flex: 0 0 var(--desk-bar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 10px;
+  font-family: var(--desk-font);
+  font-size: 12px;
+  color: var(--desk-fg-soft);
+  background: color-mix(in srgb, var(--desk-bg) 82%, transparent);
+  border-bottom: 1px solid var(--desk-border);
+  position: relative;
+  z-index: 30;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.desk-bar-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+}
+.desk-bar-end {
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+/* In full screen on a display with a camera housing, the bar sits in the strip beside it:
+ * each side stops short of the middle. */
+.desk-bar[data-notch="true"] .desk-bar-side {
+  max-width: calc(50% - 124px);
+}
+.desk-menu-root {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.desk-menu-button,
+.desk-bar-button,
+.desk-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: var(--desk-fg-soft);
+  white-space: nowrap;
+}
+.desk-menu-button {
+  color: var(--desk-accent);
+  padding: 0 6px;
+}
+.desk-menu-button:hover,
+.desk-menu-button[data-open="true"],
+.desk-bar-button:hover,
+.desk-task:hover {
+  background: var(--desk-accent-soft);
+  color: var(--desk-fg);
+}
+.desk-tasks {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  margin-left: 4px;
+}
+.desk-task {
+  min-width: 0;
+  position: relative;
+}
+.desk-task span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.desk-task[data-active="true"] {
+  color: var(--desk-fg);
+}
+.desk-task[data-active="true"]::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -5px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--desk-accent);
+}
+.desk-task[data-minimized="true"] {
+  opacity: 0.5;
+}
+.desk-clock {
+  display: flex;
+  gap: 10px;
+  padding: 0 4px 0 8px;
+  color: var(--desk-fg);
+  font-variant-numeric: tabular-nums;
+}
+.desk-clock span {
+  color: var(--desk-muted);
+}
+
+/* ---- Menu ---- */
+.desk-menu {
+  position: absolute;
+  top: calc(100% + 9px);
+  left: 0;
+  min-width: 15rem;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  background: var(--desk-panel);
+  border: 1px solid var(--desk-border);
+  border-radius: var(--desk-radius);
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.35),
+    0 18px 40px rgb(0 0 0 / 0.5);
+  font-family: var(--desk-font);
+  font-size: 12.5px;
+  z-index: 10000;
+}
+.desk-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 4px;
+  color: var(--desk-fg-soft);
+  text-align: left;
+}
+.desk-menu button > span {
+  flex: 1;
+}
+.desk-menu button:hover,
+.desk-menu button[aria-expanded="true"] {
+  background: var(--desk-accent-soft);
+  color: var(--desk-fg);
+}
+.desk-menu button svg {
+  color: var(--desk-accent);
+  flex: 0 0 auto;
+}
+.desk-menu-hint {
+  color: var(--desk-muted) !important;
+  font-family: inherit;
+  font-size: 11px;
+}
+.desk-menu hr {
+  border: 0;
+  border-top: 1px solid var(--desk-border);
+  margin: 5px 2px;
+}
+.desk-menu-sub {
+  position: relative;
+}
+.desk-menu-fly {
+  top: -5px;
+  left: calc(100% + 2px);
+}
+
+/* ---- Canvas ---- */
+.desk-canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(60rem 36rem at 0% 0%, var(--desk-accent-glow), transparent 70%),
+    radial-gradient(52rem 32rem at 100% 100%, var(--desk-accent-2-glow), transparent 70%),
+    radial-gradient(circle at 1px 1px, rgb(255 255 255 / 0.035) 1px, transparent 1.5px) 0 0 / 28px
+    28px,
+    var(--desk-bg);
+}
+.desk-empty {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 9%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--desk-font);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--desk-muted);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.desk-empty-mark {
+  letter-spacing: 0.5em;
+  text-transform: uppercase;
+  color: var(--desk-fg-soft);
+}
+.desk-divider {
+  position: absolute;
+  cursor: col-resize;
+  z-index: 50;
+}
+.desk-divider::after {
+  content: "";
+  position: absolute;
+  inset: 30% 4px;
+  border-radius: 2px;
+  background: var(--desk-accent);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.desk-divider:hover::after {
+  opacity: 0.6;
+}
+
+/* ---- Windows ---- */
+.desk-window {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  background: var(--desk-panel);
+  border-radius: var(--desk-radius);
+  border: 1px solid var(--desk-border);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+  outline: none;
+  transition:
+    left 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 120ms;
+}
+/* A floating window follows the pointer exactly. */
+.desk-window[data-tiled="false"] {
+  transition: border-color 120ms;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.5);
+}
+.desk-window[hidden] {
+  display: none;
+}
+/* The focused window's border runs from one accent to the other, as a tiling compositor
+ * draws its active border. */
+.desk-window[data-focused="true"] {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--desk-panel), var(--desk-panel)) padding-box,
+    linear-gradient(135deg, var(--desk-accent), var(--desk-accent-2)) border-box;
+}
+.desk-window[data-dragging="true"] {
+  opacity: 0.8;
+  transition: none;
+  cursor: grabbing;
+}
+.desk-window[data-drop="true"] {
+  border-color: var(--desk-accent-2);
+  box-shadow: 0 0 0 2px var(--desk-accent-2);
+}
+.desk-titlebar {
+  flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 0 10px;
+  font-family: var(--desk-font);
+  font-size: 12px;
+  color: var(--desk-muted);
+  border-bottom: 1px solid var(--desk-border);
+  border-radius: var(--desk-radius) var(--desk-radius) 0 0;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.desk-window[data-focused="true"] .desk-titlebar {
+  color: var(--desk-fg);
+}
+.desk-window[data-focused="true"] .desk-titlebar > svg {
+  color: var(--desk-accent);
+}
+.desk-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.desk-window-actions {
+  display: flex;
+  gap: 1px;
+}
+.desk-window-actions button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 20px;
+  border-radius: 4px;
+  color: var(--desk-muted);
+}
+.desk-window-actions button:hover {
+  background: var(--desk-surface);
+  color: var(--desk-fg);
+}
+.desk-window-actions .desk-close:hover {
+  background: color-mix(in srgb, var(--color-danger) 22%, transparent);
+  color: var(--color-danger);
+}
+.desk-window-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border-radius: 0 0 var(--desk-radius) var(--desk-radius);
+  padding: 4px;
+}
+.desk-window-body[data-bare="true"] {
+  display: flex;
+  overflow: hidden;
+  padding: 0;
+}
+/* Pages written for the old page frame: tighter inside a window. */
+.desk-window-body .page-content {
+  padding: 1.5rem 1.75rem 2rem;
+  max-width: 68rem;
+}
+.desk-window-body .page-intro {
+  margin-bottom: 1.5rem;
+}
+.desk-window-body .page-intro h2 {
+  font-size: 1.5rem;
+}
+.desk-note {
+  margin: auto;
+  padding: 2rem;
+  max-width: 28rem;
+  text-align: center;
+  color: var(--desk-muted);
+}
+.desk-edge {
+  position: absolute;
+  z-index: 5;
+  touch-action: none;
+}
+.desk-edge[data-dir="n"] {
+  top: -4px;
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.desk-edge[data-dir="s"] {
+  bottom: -4px;
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.desk-edge[data-dir="e"] {
+  right: -4px;
+  top: 10px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.desk-edge[data-dir="w"] {
+  left: -4px;
+  top: 10px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.desk-edge[data-dir="ne"] {
+  top: -4px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+.desk-edge[data-dir="sw"] {
+  bottom: -4px;
+  left: -4px;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+.desk-edge[data-dir="nw"] {
+  top: -4px;
+  left: -4px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+.desk-edge[data-dir="se"] {
+  bottom: -4px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+
+/* ---- Settings ---- */
+.desk-settings {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+.desk-settings-nav {
+  flex: 0 0 12.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--desk-border);
+  font-family: var(--desk-font);
+  font-size: 12.5px;
+  overflow-y: auto;
+}
+.desk-settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 4px;
+  color: var(--desk-fg-soft);
+  text-align: left;
+}
+.desk-settings-nav button svg {
+  color: var(--desk-muted);
+}
+.desk-settings-nav button:hover {
+  background: var(--desk-surface);
+}
+.desk-settings-nav button[data-active="true"] {
+  background: var(--desk-accent-soft);
+  color: var(--desk-fg);
+}
+.desk-settings-nav button[data-active="true"] svg {
+  color: var(--desk-accent);
+}
+.desk-settings-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem 2rem;
+}
+.desk-settings-body .page-content {
+  padding: 0;
+  margin: 0;
+}
+.desk-settings-title {
+  font-family: var(--desk-font);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--desk-muted);
+  margin-bottom: 1.1rem;
+}
+.desk-themes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 14px;
+}
+.desk-theme {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--desk-border);
+  border-radius: var(--desk-radius);
+  text-align: left;
+  font-family: var(--desk-font);
+  font-size: 12px;
+  color: var(--desk-fg-soft);
+}
+.desk-theme:hover {
+  border-color: var(--desk-muted);
+}
+.desk-theme[data-active="true"] {
+  border-color: var(--desk-accent);
+  color: var(--desk-fg);
+}
+.desk-theme-preview {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  height: 6.5rem;
+  padding: 10px;
+  border-radius: 4px;
+}
+.desk-theme-window {
+  padding: 6px 8px;
+  border: 1px solid;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.desk-theme-swatches {
+  display: flex;
+  gap: 5px;
+}
+.desk-theme-swatches span {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+/* The drop-down terminal sits under the bar. */
+.terminal-overlay-panel {
+  top: var(--desk-bar-h) !important;
+}

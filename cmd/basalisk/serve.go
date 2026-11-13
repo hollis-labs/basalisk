@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -74,6 +75,11 @@ func (b *basalisk) serve(ctx context.Context) error {
 	a := svc.API(api.IdentityUsers{Svc: id})
 	if b.shell != nil {
 		a.EnableShell(b.shell)
+	}
+	// BASALISK_TERMINAL=1 turns the terminal on for a plain `basalisk serve` as well: a shell
+	// on the machine that serves, for whoever can sign in. Off unless asked for.
+	if b.term == nil && os.Getenv("BASALISK_TERMINAL") == "1" {
+		b.term = terminal.NewManager()
 	}
 	if b.term != nil {
 		a.EnableTerminal(b.term)

@@ -9,7 +9,7 @@ import {
   useState,
 } from "react"
 import { createPortal } from "react-dom"
-import { terminal as api } from "../api/shell"
+import { terminal as api, TERMINAL_FOCUS_EVENT } from "../api/shell"
 import { TerminalDeck } from "./deck"
 
 /**
@@ -78,15 +78,18 @@ export function TerminalHost({ children }: { children: ReactNode }) {
   )
 
   // Ctrl+` from anywhere: drop the terminal down, or put it away. On the Terminal page the
-  // deck is already showing, so the key is left alone there.
+  // deck is already showing in a window, so the key brings that window forward.
   useEffect(() => {
     if (!enabled) return
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "`" || e.code === "Backquote")))
         return
-      if (owners.current.has("page")) return
       e.preventDefault()
       e.stopPropagation()
+      if (owners.current.has("page")) {
+        window.dispatchEvent(new Event(TERMINAL_FOCUS_EVENT))
+        return
+      }
       setOverlayOpen((open) => !open)
     }
     window.addEventListener("keydown", onKey, true)

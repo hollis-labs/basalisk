@@ -38,6 +38,8 @@ void bslSetCombos(const uint32_t *codes, const uint64_t *mods, int n);
 // Privacy grants. prompt/request non-zero shows the system prompt.
 int bslAXTrusted(int prompt);
 int bslListenAccess(int request);
+// Opens a Privacy & Security pane: "Privacy_Accessibility" or "Privacy_ListenEvent".
+void bslOpenPrivacyPane(const char *anchor);
 
 // Other apps' windows, as a JSON array. The caller frees the string. NULL without the
 // Accessibility permission.
