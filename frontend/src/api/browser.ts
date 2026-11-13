@@ -57,6 +57,22 @@ export const nativeBrowser = {
   },
 }
 
+/**
+ * Opens a web link: in a Browser window in the desktop app, so links stay in the desktop;
+ * in a new tab anywhere else.
+ */
+export function openLink(url: string) {
+  const host = window as unknown as {
+    basalisk?: { desk?: { open: (app: string, opts?: { args?: Record<string, unknown> }) => void } }
+  }
+  const desk = host.basalisk?.desk
+  if (desk && nativeBrowser.available() && /^https?:/i.test(url)) {
+    desk.open("browser", { args: { url } })
+    return
+  }
+  window.open(url, "_blank", "noopener")
+}
+
 const SEARCH = "https://duckduckgo.com/?q="
 
 /** What the address field means: a URL as typed, a host, or a search. */

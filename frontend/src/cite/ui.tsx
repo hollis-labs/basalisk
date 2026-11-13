@@ -23,6 +23,7 @@ import {
 } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { openLink } from "../api/browser"
 import { parseTachHref } from "./core/tach"
 import {
   canResolve,
@@ -180,7 +181,7 @@ const MARKDOWN: Components = {
         href={href}
         onClick={(e) => {
           e.preventDefault()
-          if (href && /^https?:/i.test(href)) window.open(href, "_blank", "noopener")
+          if (href && /^https?:/i.test(href)) openLink(href)
         }}
       >
         {children}

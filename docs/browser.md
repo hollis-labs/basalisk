@@ -77,6 +77,13 @@ Keys pressed in a view go to the site, except the chords the page registered wit
 window handles its own and hands the rest to the desktop as a swallowed chord, so ⌘K, ⌃\` and
 the window chords work from inside a page. ⌘C, ⌘V and the rest stay with the site.
 
+## Links stay in the desktop
+
+In the desktop app, web links open in a Browser window: cite URL chips, links in rendered
+Markdown, the palette's "Open <url>", and URLs clicked in the terminal (`openLink` in
+`api/browser.ts`; a new tab anywhere else). A Browser window keeps its `args.url` on the page it
+shows (`desk.setArgs`), so a restored desktop can reopen it there.
+
 ## Files and sign-in
 
 In the desktop app the Browser is the file handler for `.html`, `.htm`, `.xhtml`, `.pdf` and

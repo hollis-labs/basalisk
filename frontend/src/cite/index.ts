@@ -8,6 +8,7 @@
  */
 import { useSyncExternalStore } from "react"
 import { request } from "../api/account"
+import { openLink } from "../api/browser"
 import { detect, detectRefs } from "./core/detect"
 import { createPathKind } from "./core/kinds/path"
 import { createTesseractKinds } from "./core/kinds/tesseract"
@@ -133,7 +134,7 @@ export function setCiteOpener(fn: (ref: RefIdentity) => void) {
 export function openCite(ref: RefIdentity) {
   hideCard(true)
   if (ref.kind === "url") {
-    window.open(ref.canonical, "_blank", "noopener")
+    openLink(ref.canonical)
     return
   }
   if (canResolve(ref.kind)) {

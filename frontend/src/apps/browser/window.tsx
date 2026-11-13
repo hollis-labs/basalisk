@@ -203,6 +203,12 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     return () => window.removeEventListener(BROWSER_EVENT, on)
   }, [desk, flash, winId])
 
+  // The window's args follow the page, so a restored desktop reopens it where it was.
+  useEffect(() => {
+    if (!state.url || state.loading || state.url === args.url) return
+    desk.setArgs(winId, { url: state.url })
+  }, [desk, winId, state.url, state.loading, args.url])
+
   // The address field shows where the page is, unless the user is typing.
   useEffect(() => {
     if (!editing && state.url) setAddress(state.url)

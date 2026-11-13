@@ -3,6 +3,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import { type ITheme, Terminal } from "@xterm/xterm"
 import { useEffect, useRef } from "react"
+import { openLink } from "../api/browser"
 import { terminal as api } from "../api/shell"
 import { citeLinkProvider } from "../cite/terminal"
 import { currentTheme, mix } from "../desktop/themes"
@@ -92,7 +93,7 @@ export function XTermView({ id, active, epoch, fontSize, keys, onExit }: Props) 
     })
     const f = new FitAddon()
     t.loadAddon(f)
-    t.loadAddon(new WebLinksAddon((_event, uri) => window.open(uri, "_blank", "noopener")))
+    t.loadAddon(new WebLinksAddon((_event, uri) => openLink(uri)))
     t.open(el)
     const citeLinks = t.registerLinkProvider(citeLinkProvider(t))
     try {
