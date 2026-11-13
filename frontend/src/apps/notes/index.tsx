@@ -32,6 +32,8 @@ import {
  * rendered page on the right, saved with ⌘S, refused if the file changed underneath.
  */
 
+import { continueList, EDITOR_KEYS, indent, link, wrap } from "./editor"
+import { NotesFind } from "./find"
 import { createNote, NameForm, notesFolder, renameNote, saveAs } from "./notefiles"
 import "./notes.css"
 
@@ -134,6 +136,8 @@ function NotesWindow({ winId, args }: WindowProps) {
   const [notice, setNotice] = useState("")
   const [conflict, setConflict] = useState(false)
   const editor = useRef<HTMLTextAreaElement>(null)
+  const view = useRef<HTMLElement>(null)
+  const [finding, setFinding] = useState(false)
   // A name being asked for: a new note, a rename, a save as.
   const [form, setForm] = useState<"rename" | "save-as" | null>(null)
   const [folder, setFolder] = useState<FileRef | undefined>()
@@ -252,21 +256,30 @@ function NotesWindow({ winId, args }: WindowProps) {
     }
   }
   // ⌘S saves from anywhere in the window, not only with the cursor in the editor.
+  // ⌘F finds in the note, in the editor or the rendered page.
   const onWindowKey = (e: React.KeyboardEvent) => {
-    if (draft !== null && e.metaKey && !e.altKey && !e.ctrlKey && e.key === "s") {
+    const cmd = e.metaKey && !e.altKey && !e.ctrlKey
+    if (draft !== null && cmd && !e.shiftKey && e.code === "KeyS") {
       e.preventDefault()
       void save()
+    } else if (cmd && !e.shiftKey && e.code === "KeyF") {
+      e.preventDefault()
+      setFinding(true)
     }
   }
+  // Markdown keys in the editor; each edit goes through the textarea, so ⌘Z undoes it.
   const onEditorKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Tab" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      // Tab indents instead of leaving the editor.
-      e.preventDefault()
-      const el = e.currentTarget
-      const { selectionStart: a, selectionEnd: b, value } = el
-      edit(`${value.slice(0, a)}  ${value.slice(b)}`)
-      window.requestAnimationFrame(() => el.setSelectionRange(a + 2, a + 2))
-    }
+    const el = e.currentTarget
+    const cmd = e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey
+    let handled = true
+    if (e.key === "Tab" && !e.metaKey && !e.ctrlKey && !e.altKey) indent(el, e.shiftKey)
+    else if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey)
+      handled = continueList(el)
+    else if (cmd && e.code === "KeyB") wrap(el, "**")
+    else if (cmd && e.code === "KeyI") wrap(el, "_")
+    else if (cmd && e.code === "KeyK") link(el)
+    else handled = false
+    if (handled) e.preventDefault()
   }
 
   const openFile = (file: FileRef, edit: boolean) => {
@@ -320,7 +333,7 @@ function NotesWindow({ winId, args }: WindowProps) {
   const record = doc.record
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a key handler for the whole window, not a control
-    <div className="notes" onKeyDown={onWindowKey}>
+    <div className="notes" onKeyDown={onWindowKey} data-keys-own="cmd+f cmd+s cmd+g shift+cmd+g">
       <header className="notes-bar">
         <span className="notes-origin" title={doc.origin}>
           {"cite" in source ? `${kindLabel(source.cite.kind)} · ` : ""}
@@ -467,6 +480,14 @@ function NotesWindow({ winId, args }: WindowProps) {
           </button>
         </div>
       )}
+      {finding && (
+        <NotesFind
+          key={draft !== null ? "edit" : raw ? "raw" : "view"}
+          editor={draft !== null ? editor : undefined}
+          view={draft !== null ? undefined : view}
+          onClose={() => setFinding(false)}
+        />
+      )}
       {draft !== null ? (
         <div className="notes-edit" data-preview={doc.markdown}>
           <textarea
@@ -476,6 +497,7 @@ function NotesWindow({ winId, args }: WindowProps) {
             spellCheck={false}
             onChange={(e) => edit(e.target.value)}
             onKeyDown={onEditorKey}
+            data-keys-own={EDITOR_KEYS}
             aria-label={`Edit ${doc.title}`}
           />
           {doc.markdown && (
@@ -487,8 +509,9 @@ function NotesWindow({ winId, args }: WindowProps) {
           )}
         </div>
       ) : (
-        <div className="notes-scroll">
-          <article className="notes-page">
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: the page scrolls and takes ⌘F
+        <div className="notes-scroll" tabIndex={0}>
+          <article className="notes-page" ref={view}>
             {record && (
               <div className="notes-record">
                 <h1>{record.title}</h1>

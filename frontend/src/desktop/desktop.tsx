@@ -343,6 +343,16 @@ export function Desktop() {
     const onKey = (e: KeyboardEvent) => {
       if (keyCapture.active) return
       const chord = chordOf(e)
+      // An element may keep chords for itself: data-keys-own="cmd+k cmd+b" (Notes' editor).
+      if (
+        chord &&
+        (e.target as Element | null)
+          ?.closest?.("[data-keys-own]")
+          ?.getAttribute("data-keys-own")
+          ?.split(" ")
+          .includes(chord)
+      )
+        return
       if (!chord || !runChord(chord)) return
       e.preventDefault()
       e.stopPropagation()
