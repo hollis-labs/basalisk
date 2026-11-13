@@ -6,6 +6,9 @@
  */
 
 import { registerAgentTools } from "../../agent/tools"
+
+const STOPPED = "The run was stopped; nothing was changed."
+
 import { ApiError, request } from "../../api/account"
 import type { BrowserState } from "../../api/browser"
 import type { DeskAPI } from "../../desktop/registry"
@@ -465,10 +468,11 @@ registerAgentTools([
       selector: str("A CSS selector instead of text."),
     }),
     describe: (input) => `Click ${target_(input, "text")} on ${pageName(input)}`,
-    run: async (input, desk) => {
+    run: async (input, desk, ctx) => {
       const [selector, text] = target(input, "text")
       const id = await browserWindow(desk, input)
       const before = await state(id)
+      if (ctx.signal.aborted) throw new Error(STOPPED)
       const r = await script<{ error?: string; clicked?: string; others?: number }>(
         id,
         "browser_click",
@@ -506,10 +510,11 @@ registerAgentTools([
     ),
     // The value is not shown: it may be a password.
     describe: (input) => `Fill ${target_(input, "field")} on ${pageName(input)}`,
-    run: async (input, desk) => {
+    run: async (input, desk, ctx) => {
       const [selector, field] = target(input, "field")
       if (typeof input.value !== "string") throw new Error("value must be a string.")
       const id = await browserWindow(desk, input)
+      if (ctx.signal.aborted) throw new Error(STOPPED)
       const r = await script<{ error?: string; filled?: string; value?: string; others?: number }>(
         id,
         "browser_fill",

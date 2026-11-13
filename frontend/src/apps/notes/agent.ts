@@ -4,7 +4,7 @@
  * to it is shown there at once; a window with unsaved edits is never written under: the tool
  * refuses and says so, and the owner's edit stays as it is.
  */
-import { registerAgentTools } from "../../agent/tools"
+import { registerAgentTools, type ToolContext } from "../../agent/tools"
 import { ApiError } from "../../api/account"
 import { files } from "../../api/files"
 import type { DeskAPI, FileRef } from "../../desktop/registry"
@@ -125,6 +125,11 @@ async function allowed(file: FileRef, desk: DeskAPI) {
     )
 }
 
+/** A run that stopped waiting for this call must not see it change anything. */
+function stopIfAborted(ctx: ToolContext) {
+  if (ctx.signal.aborted) throw new Error("The run was stopped; nothing was changed.")
+}
+
 /** Writes and shows the new text in every window showing the file. */
 async function put(file: FileRef, text: string, etag?: string) {
   const showing = guard(file)
@@ -236,7 +241,7 @@ registerAgentTools([
       "Replace a note's whole text, or create the note if it does not exist (folders too; .md is added to a name without an extension). A window showing the note shows the new text. Refused if a window has unsaved edits to it. Outside the notes folder the owner is asked each time; agent instruction files (CLAUDE.md, AGENTS.md, SKILL.md, .claude/…) are refused. To change part of a note, use notes_edit.",
     input_schema: object({ ...WHICH, text: str("The note's new text (markdown).") }, ["text"]),
     describe: (input) => `Replace the text of ${noteLabel(input)} (or create it)`,
-    run: async (input, desk) => {
+    run: async (input, desk, ctx) => {
       if (typeof input.text !== "string") throw new Error("text must be a string.")
       const { file: asked } = await which(input)
       const dir = asked.path.includes("/") ? asked.path.slice(0, asked.path.lastIndexOf("/")) : ""
@@ -246,6 +251,7 @@ registerAgentTools([
         throw new Error("Notes are markdown or text files (.md, .txt, …); that name is not one.")
       guard(file)
       await allowed(file, desk)
+      stopIfAborted(ctx)
       const old = await readFile(file)
       if (!old) {
         if (dir)
@@ -255,6 +261,7 @@ registerAgentTools([
         await files.create(file.root, file.path)
         changed(file.root, [dir])
       }
+      stopIfAborted(ctx)
       const shown = await put(file, input.text, old?.etag)
       return {
         root: file.root,
@@ -279,7 +286,7 @@ registerAgentTools([
       ["old_text", "new_text"],
     ),
     describe: (input) => `Edit ${noteLabel(input)}: 1 passage`,
-    run: async (input, desk) => {
+    run: async (input, desk, ctx) => {
       const oldText = typeof input.old_text === "string" ? input.old_text : ""
       const newText = typeof input.new_text === "string" ? input.new_text : null
       if (!oldText) throw new Error("old_text is empty: give the exact passage to replace.")
@@ -287,6 +294,7 @@ registerAgentTools([
       const { file } = await which(input)
       guard(file)
       await allowed(file, desk)
+      stopIfAborted(ctx)
       const got = await readFile(file)
       if (!got)
         throw new Error(`There is no note at ${file.root}:${file.path}. notes_list lists them.`)
@@ -301,6 +309,7 @@ registerAgentTools([
           `old_text occurs ${count} times. Include more of the text around it so it occurs once.`,
         )
       const text = got.text.slice(0, at) + newText + got.text.slice(at + oldText.length)
+      stopIfAborted(ctx)
       const shown = await put(file, text, got.etag)
       const line = got.text.slice(0, at).split("\n").length
       return {
