@@ -56,7 +56,11 @@ POST /api/browser/{id}/{op}         -> {result}; op is navigate, back, forward, 
                                        eval, state, focus or zoom; the body carries its fields
 ```
 
-All but the list need the write scope. Placing and creating views stays with the page.
+All but the list need the write scope, and the routes exist only in the desktop app (never on
+a plain `basalisk serve`). Placing and creating views stays with the page. Every command an API
+client runs (navigate with its URL, eval with the first 200 characters of its script, and the
+rest) is written to the shell event log, so what an agent did in pages you are signed in to is
+visible in Settings, Mac shell.
 
 ## Testing
 

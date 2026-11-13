@@ -101,6 +101,15 @@ func TestBrowserViews(t *testing.T) {
 	waitFor(t, "open event", func() bool {
 		return strings.Contains(HxEvalPage(`return window.__ev.filter(e=>e.kind==='open').map(e=>e.url)`), "/site2")
 	})
+	// Agent commands are logged where the desktop shows them.
+	var logged bool
+	for _, e := range shell.Events(0) {
+		logged = logged || (e.Kind == "browser" && strings.Contains(e.Detail, "agent eval w1: getComputedStyle"))
+	}
+	if !logged {
+		t.Error("the agent's eval is not in the shell log")
+	}
+
 	// A local file opens with read access to its folder.
 	dir := t.TempDir()
 	if err = os.WriteFile(dir+"/local.html", []byte(`<title>Local File</title>hi`), 0o600); err != nil {

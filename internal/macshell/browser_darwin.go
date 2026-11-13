@@ -12,6 +12,7 @@ import "C"
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"unsafe"
 )
 
@@ -44,6 +45,11 @@ func (browser) List() ([]BrowserView, error) {
 }
 
 func (browser) Command(msg map[string]any) (json.RawMessage, error) {
+	// What an agent does to a page Chrispian may be signed in to goes in the shell log, where
+	// the desktop shows it.
+	if op, _ := msg["op"].(string); op != "state" {
+		shell.log.add("browser", describeCommand(msg))
+	}
 	in, err := json.Marshal(msg)
 	if err != nil {
 		return nil, err
@@ -73,4 +79,25 @@ func (browser) Snapshot(id string) ([]byte, error) {
 	}
 	defer C.free(unsafe.Pointer(buf))
 	return C.GoBytes(unsafe.Pointer(buf), C.int(n)), nil
+}
+
+// describeCommand is a log line for one agent command: the op, the view and its argument.
+func describeCommand(msg map[string]any) string {
+	op, _ := msg["op"].(string)
+	id, _ := msg["id"].(string)
+	line := fmt.Sprintf("agent %s %s", op, id)
+	switch op {
+	case "navigate":
+		u, _ := msg["url"].(string)
+		line += " " + u
+	case "eval":
+		js, _ := msg["js"].(string)
+		if r := []rune(js); len(r) > 200 {
+			js = string(r[:200]) + "…"
+		}
+		line += ": " + js
+	case "zoom":
+		line += fmt.Sprintf(" %v", msg["zoom"])
+	}
+	return line
 }
