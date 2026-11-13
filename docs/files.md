@@ -46,6 +46,7 @@ POST   /api/files/move    {from: {root, path}, to: {...}}   -> Entry       renam
 POST   /api/files/copy    {from, to}                        -> 201 Entry   folders with their contents
 POST   /api/files/delete  {root, path}                      -> {trashed}   local: to the Trash; remote: for good
 GET    /api/files/search?root=&path=&q=                     -> {entries, truncated}
+GET    /api/files/grep?root=&path=&q=                       -> {matches: [{path, line, text}], truncated, engine}
 GET    /api/files/hosts                                     -> {hosts}     concrete Host names in ~/.ssh/config
 POST   /api/files/roots   {host, path, label?}              -> 201 Root    add a remote place (kept in files.json)
 DELETE /api/files/roots/{id}                                -> 204         remove a remote place (its files untouched)
@@ -87,6 +88,14 @@ everything; ⌘-click and ⇧-click or ⇧↑↓ select several. A right-click g
 Rows drag onto a folder or a place to move them (⌥ to copy). A name that is taken is never
 replaced: Files asks, and "keep both" gives the new one a free name. Every window showing a
 changed folder reloads it. ⌘O, ⌘↓, → (folders) or a double-click opens.
+
+Searching: ⌘F in a Files window searches under the folder it shows, by name or (Tab) by
+contents, and the results replace the listing until Esc; Enter opens one. Content search runs
+ripgrep where the place has it (on this machine, or on the remote host over ssh, every argument
+quoted for the remote shell); without it a local place is scanned here (text files up to 2 MiB,
+.git and node_modules skipped) and a remote one says ripgrep is missing. It is literal and
+case-insensitive, 5 lines per file and 200 in all, 8 seconds at most. ⌘K finds files by name in
+the place last open in Files.
 
 Opening a file calls `desk.openFile`; when no app handles that file the preview shows it. The
 palette finds places and recently opened files, and ⌃⌥E opens Files. The last folder, the

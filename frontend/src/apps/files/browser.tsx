@@ -50,6 +50,7 @@ import {
 } from "./model"
 import { CHANGED_EVENT, CLIP_EVENT, DRAG_TYPE, dragItems, getClip } from "./ops"
 import { Preview } from "./preview"
+import { SearchPane } from "./search"
 
 const ROW_H = 26
 const OVERSCAN = 12
@@ -110,6 +111,7 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
   const [menu, setMenu] = useState<{ x: number; y: number; on: FileEntry | null } | null>(null)
   const [dropOn, setDropOn] = useState<string | null>(null)
   const [, setClipTick] = useState(0)
+  const [searching, setSearching] = useState(false)
   const [notice, setNotice] = useState("")
   const [reload, setReload] = useState(0)
   const [hasTerminal, setHasTerminal] = useState(false)
@@ -508,7 +510,8 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
       setSel(shown[i].path)
     }
     const one = targets().length === 1 ? targets()[0] : null
-    if (e.metaKey && e.key === "Backspace") run((c) => act.remove(c, targets()))
+    if (e.metaKey && !e.shiftKey && e.code === "KeyF") setSearching(true)
+    else if (e.metaKey && e.key === "Backspace") run((c) => act.remove(c, targets()))
     else if (e.metaKey && e.shiftKey && e.code === "KeyN") setEditing({ mode: "folder" })
     else if (e.metaKey && !e.shiftKey && e.code === "KeyN") setEditing({ mode: "file" })
     else if (e.metaKey && e.code === "KeyD") run((c) => act.duplicate(c, targets()))
@@ -724,177 +727,201 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
           </button>
         </div>
 
-        <div className="files-head" aria-hidden="true">
-          <span>Name</span>
-          <span>Size</span>
-          <span>Modified</span>
-        </div>
-        <div
-          ref={listRef}
-          className="files-list"
-          role="listbox"
-          tabIndex={0}
-          aria-label={loc?.path || root?.label || "Files"}
-          aria-activedescendant={selected ? `${winId}-row-${index}` : undefined}
-          onKeyDown={onKey}
-          onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-          onContextMenu={(ev) => {
-            ev.preventDefault()
-            setMenu({ x: ev.clientX, y: ev.clientY, on: null })
-          }}
-          onDragOver={(ev) => {
-            if (ev.dataTransfer.types.includes(DRAG_TYPE) && !dropOn) {
-              ev.preventDefault()
-              ev.dataTransfer.dropEffect = ev.altKey ? "copy" : "move"
-            }
-          }}
-          onDrop={(ev) => {
-            if (!loc || !ev.dataTransfer.types.includes(DRAG_TYPE)) return
-            ev.preventDefault()
-            void dropTo(
-              ev.dataTransfer.getData(DRAG_TYPE),
-              { root: loc.root, path: loc.path },
-              ev.altKey,
-            )
-          }}
-        >
-          {(editing?.mode === "folder" || editing?.mode === "file") && (
-            <div className="files-new" style={{ top: 0 }}>
-              <span className="files-name">
-                {editing.mode === "folder" ? "New folder:" : "New file:"}
-                <NameEditor
-                  initial={editing.mode === "folder" ? "untitled folder" : "untitled.md"}
-                  onCommit={(n) => {
-                    const kind = editing.mode === "folder" ? "folder" : "file"
-                    setEditing(null)
-                    run((c) => act.newItem(c, kind, n))
-                    listRef.current?.focus({ preventScroll: true })
-                  }}
-                  onCancel={() => {
-                    setEditing(null)
-                    listRef.current?.focus({ preventScroll: true })
-                  }}
-                />
-              </span>
+        {searching && root && loc ? (
+          <SearchPane
+            root={root}
+            folder={loc.path}
+            onClose={() => {
+              setSearching(false)
+              window.setTimeout(() => listRef.current?.focus({ preventScroll: true }), 0)
+            }}
+            onOpen={(hit) => {
+              const p = hit.kind === "name" ? hit.entry.path : hit.match.path
+              setSearching(false)
+              if (hit.kind === "name" && hit.entry.dir) go({ root: root.id, path: p })
+              else if (!desk.openFile({ root: root.id, path: p }))
+                go({ root: root.id, path: parentOf(p) }, { select: p })
+            }}
+          />
+        ) : (
+          <>
+            <div className="files-head" aria-hidden="true">
+              <span>Name</span>
+              <span>Size</span>
+              <span>Modified</span>
             </div>
-          )}
-          <div style={{ height: shown.length * ROW_H, position: "relative" }}>
-            {shown.slice(first, last).map((e, k) => {
-              const i = first + k
-              const Icon = e.broken ? Link2Off : iconOf(e)
-              return (
-                // biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles the keyboard
-                <div
-                  key={e.path}
-                  id={`${winId}-row-${i}`}
-                  role="option"
-                  aria-selected={e.path === sel}
-                  tabIndex={-1}
-                  className="files-row"
-                  data-selected={e.path === sel}
-                  data-picked={picked.has(e.path)}
-                  data-drop={dropOn === e.path}
-                  data-cut={
-                    getClip()?.mode === "cut" &&
-                    getClip()?.items.some((x) => x.root === loc?.root && x.path === e.path)
-                  }
-                  draggable={!editing}
-                  onDragStart={(ev) => {
-                    const items = picked.has(e.path) ? targets() : [e]
-                    ev.dataTransfer.setData(DRAG_TYPE, dragItems(items, loc?.root ?? ""))
-                    ev.dataTransfer.effectAllowed = "copyMove"
-                  }}
-                  onDragOver={(ev) => {
-                    if (e.dir && ev.dataTransfer.types.includes(DRAG_TYPE)) {
-                      ev.preventDefault()
-                      ev.dataTransfer.dropEffect = ev.altKey ? "copy" : "move"
-                      setDropOn(e.path)
-                    }
-                  }}
-                  onDragLeave={() => setDropOn((d) => (d === e.path ? null : d))}
-                  onDrop={(ev) => {
-                    setDropOn(null)
-                    if (!e.dir || !loc) return
-                    ev.preventDefault()
-                    void dropTo(
-                      ev.dataTransfer.getData(DRAG_TYPE),
-                      { root: loc.root, path: e.path },
-                      ev.altKey,
-                    )
-                  }}
-                  onContextMenu={(ev) => {
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    if (!picked.has(e.path)) pick(e, { metaKey: false, shiftKey: false })
-                    setMenu({ x: ev.clientX, y: ev.clientY, on: e })
-                  }}
-                  data-dir={e.dir}
-                  data-dim={e.name.startsWith(".") || e.broken}
-                  style={{ top: i * ROW_H }}
-                  onClick={(ev) => {
-                    pick(e, ev)
-                    listRef.current?.focus({ preventScroll: true })
-                  }}
-                  onDoubleClick={() => open(e)}
-                >
+            <div
+              ref={listRef}
+              className="files-list"
+              role="listbox"
+              tabIndex={0}
+              aria-label={loc?.path || root?.label || "Files"}
+              aria-activedescendant={selected ? `${winId}-row-${index}` : undefined}
+              onKeyDown={onKey}
+              onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+              onContextMenu={(ev) => {
+                ev.preventDefault()
+                setMenu({ x: ev.clientX, y: ev.clientY, on: null })
+              }}
+              onDragOver={(ev) => {
+                if (ev.dataTransfer.types.includes(DRAG_TYPE) && !dropOn) {
+                  ev.preventDefault()
+                  ev.dataTransfer.dropEffect = ev.altKey ? "copy" : "move"
+                }
+              }}
+              onDrop={(ev) => {
+                if (!loc || !ev.dataTransfer.types.includes(DRAG_TYPE)) return
+                ev.preventDefault()
+                void dropTo(
+                  ev.dataTransfer.getData(DRAG_TYPE),
+                  { root: loc.root, path: loc.path },
+                  ev.altKey,
+                )
+              }}
+            >
+              {(editing?.mode === "folder" || editing?.mode === "file") && (
+                <div className="files-new" style={{ top: 0 }}>
                   <span className="files-name">
-                    <Icon aria-hidden="true" size={15} strokeWidth={1.6} />
-                    {editing?.mode === "rename" && editing.path === e.path ? (
-                      <NameEditor
-                        initial={e.name}
-                        onCommit={(n) => {
-                          setEditing(null)
-                          run((c) => act.rename(c, e, n))
-                          listRef.current?.focus({ preventScroll: true })
-                        }}
-                        onCancel={() => {
-                          setEditing(null)
-                          listRef.current?.focus({ preventScroll: true })
-                        }}
-                      />
-                    ) : (
-                      <span>{e.name}</span>
-                    )}
-                    {e.symlink && <span className="files-link">→</span>}
+                    {editing.mode === "folder" ? "New folder:" : "New file:"}
+                    <NameEditor
+                      initial={editing.mode === "folder" ? "untitled folder" : "untitled.md"}
+                      onCommit={(n) => {
+                        const kind = editing.mode === "folder" ? "folder" : "file"
+                        setEditing(null)
+                        run((c) => act.newItem(c, kind, n))
+                        listRef.current?.focus({ preventScroll: true })
+                      }}
+                      onCancel={() => {
+                        setEditing(null)
+                        listRef.current?.focus({ preventScroll: true })
+                      }}
+                    />
                   </span>
-                  <span className="files-size">{e.dir ? "" : formatSize(e.size)}</span>
-                  <span className="files-time">{formatTime(e.mtime)}</span>
                 </div>
-              )
-            })}
-          </div>
-          {listing.state === "loading" && !listing.entries.length && slow && (
-            <div className="files-state">
-              {root?.kind === "sftp" ? `Connecting to ${root.host}…` : "Reading…"}
+              )}
+              <div style={{ height: shown.length * ROW_H, position: "relative" }}>
+                {shown.slice(first, last).map((e, k) => {
+                  const i = first + k
+                  const Icon = e.broken ? Link2Off : iconOf(e)
+                  return (
+                    // biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles the keyboard
+                    <div
+                      key={e.path}
+                      id={`${winId}-row-${i}`}
+                      role="option"
+                      aria-selected={e.path === sel}
+                      tabIndex={-1}
+                      className="files-row"
+                      data-selected={e.path === sel}
+                      data-picked={picked.has(e.path)}
+                      data-drop={dropOn === e.path}
+                      data-cut={
+                        getClip()?.mode === "cut" &&
+                        getClip()?.items.some((x) => x.root === loc?.root && x.path === e.path)
+                      }
+                      draggable={!editing}
+                      onDragStart={(ev) => {
+                        const items = picked.has(e.path) ? targets() : [e]
+                        ev.dataTransfer.setData(DRAG_TYPE, dragItems(items, loc?.root ?? ""))
+                        ev.dataTransfer.effectAllowed = "copyMove"
+                      }}
+                      onDragOver={(ev) => {
+                        if (e.dir && ev.dataTransfer.types.includes(DRAG_TYPE)) {
+                          ev.preventDefault()
+                          ev.dataTransfer.dropEffect = ev.altKey ? "copy" : "move"
+                          setDropOn(e.path)
+                        }
+                      }}
+                      onDragLeave={() => setDropOn((d) => (d === e.path ? null : d))}
+                      onDrop={(ev) => {
+                        setDropOn(null)
+                        if (!e.dir || !loc) return
+                        ev.preventDefault()
+                        void dropTo(
+                          ev.dataTransfer.getData(DRAG_TYPE),
+                          { root: loc.root, path: e.path },
+                          ev.altKey,
+                        )
+                      }}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault()
+                        ev.stopPropagation()
+                        if (!picked.has(e.path)) pick(e, { metaKey: false, shiftKey: false })
+                        setMenu({ x: ev.clientX, y: ev.clientY, on: e })
+                      }}
+                      data-dir={e.dir}
+                      data-dim={e.name.startsWith(".") || e.broken}
+                      style={{ top: i * ROW_H }}
+                      onClick={(ev) => {
+                        pick(e, ev)
+                        listRef.current?.focus({ preventScroll: true })
+                      }}
+                      onDoubleClick={() => open(e)}
+                    >
+                      <span className="files-name">
+                        <Icon aria-hidden="true" size={15} strokeWidth={1.6} />
+                        {editing?.mode === "rename" && editing.path === e.path ? (
+                          <NameEditor
+                            initial={e.name}
+                            onCommit={(n) => {
+                              setEditing(null)
+                              run((c) => act.rename(c, e, n))
+                              listRef.current?.focus({ preventScroll: true })
+                            }}
+                            onCancel={() => {
+                              setEditing(null)
+                              listRef.current?.focus({ preventScroll: true })
+                            }}
+                          />
+                        ) : (
+                          <span>{e.name}</span>
+                        )}
+                        {e.symlink && <span className="files-link">→</span>}
+                      </span>
+                      <span className="files-size">{e.dir ? "" : formatSize(e.size)}</span>
+                      <span className="files-time">{formatTime(e.mtime)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+              {listing.state === "loading" && !listing.entries.length && slow && (
+                <div className="files-state">
+                  {root?.kind === "sftp" ? `Connecting to ${root.host}…` : "Reading…"}
+                </div>
+              )}
+              {listing.state === "error" && (
+                <div className="files-state">
+                  <p>{listing.message}</p>
+                  <button
+                    type="button"
+                    className="desk-button"
+                    onClick={() => setReload((r) => r + 1)}
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+              {listing.state === "ready" && !shown.length && (
+                <div className="files-state">
+                  {filter ? `Nothing matches “${filter}”.` : "This folder is empty."}
+                </div>
+              )}
             </div>
-          )}
-          {listing.state === "error" && (
-            <div className="files-state">
-              <p>{listing.message}</p>
-              <button type="button" className="desk-button" onClick={() => setReload((r) => r + 1)}>
-                Try again
-              </button>
-            </div>
-          )}
-          {listing.state === "ready" && !shown.length && (
-            <div className="files-state">
-              {filter ? `Nothing matches “${filter}”.` : "This folder is empty."}
-            </div>
-          )}
-        </div>
-        <footer className="files-foot">
-          <span>
-            {notice ||
-              `${shown.length} item${shown.length === 1 ? "" : "s"}${
-                listing.entries.length !== shown.length
-                  ? ` (${listing.entries.length - shown.length} hidden)`
-                  : ""
-              }`}
-          </span>
-          <span className="files-hint">
-            type to filter · ⌘O open · ↵ rename · ⌘⌫ delete · right-click for more
-          </span>
-        </footer>
+            <footer className="files-foot">
+              <span>
+                {notice ||
+                  `${shown.length} item${shown.length === 1 ? "" : "s"}${
+                    listing.entries.length !== shown.length
+                      ? ` (${listing.entries.length - shown.length} hidden)`
+                      : ""
+                  }`}
+              </span>
+              <span className="files-hint">
+                type to filter · ⌘O open · ↵ rename · ⌘⌫ delete · ⌘F search · right-click for more
+              </span>
+            </footer>
+          </>
+        )}
       </section>
 
       {menu && (

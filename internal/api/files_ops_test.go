@@ -71,6 +71,12 @@ func TestFilesOpsRoutes(t *testing.T) {
 		t.Fatalf("search: %+v", found)
 	}
 	c.call("GET", "/api/files/search?root=dev&path=../&q=x", nil, 403)
+	var grep files.GrepResult
+	_ = json.Unmarshal(c.call("GET", "/api/files/grep?root=dev&path=&q=ALPHA", nil, 200).Body.Bytes(), &grep)
+	if len(grep.Matches) != 1 || grep.Matches[0].Path != "notes/a.md" {
+		t.Fatalf("grep: %+v", grep)
+	}
+	c.call("GET", "/api/files/grep?root=dev&path=../&q=x", nil, 403)
 
 	// Places: a remote is added and kept, then removed; a local place cannot be removed.
 	c.call("GET", "/api/files/hosts", nil, 200)

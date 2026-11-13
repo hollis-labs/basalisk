@@ -3,6 +3,7 @@
  * app registered for it (desk.openFile); without one, the preview pane shows it.
  */
 import { FileText, Folder, FolderOpen, Server } from "lucide-react"
+import { files } from "../../api/files"
 import {
   type DeskAPI,
   registerApp,
@@ -10,7 +11,7 @@ import {
   registerProvider,
 } from "../../desktop/registry"
 import { FilesBrowser, loadRoots } from "./browser"
-import { baseOf, parentOf, recents } from "./model"
+import { baseOf, lastLoc, parentOf, recents } from "./model"
 import "./files.css"
 
 registerApp({
@@ -92,5 +93,40 @@ registerProvider({
         },
       }))
     return [...places, ...recent]
+  },
+})
+
+// ⌘K finds a file by name in the place last open in Files (recursive, on the server).
+registerProvider({
+  id: "files-find",
+  async search(query) {
+    const q = query.trim()
+    if (q.length < 3) return []
+    let roots: Awaited<ReturnType<typeof loadRoots>> = []
+    try {
+      roots = await loadRoots()
+    } catch {
+      return []
+    }
+    const last = lastLoc()
+    const root = roots.find((r) => r.id === last?.root) ?? roots[0]
+    if (!root) return []
+    const res = await files.search(root.id, "", q).catch(() => null)
+    if (!res) return []
+    return res.entries.slice(0, 8).map((e) => ({
+      id: `files:file:${root.id}:${e.path}`,
+      title: e.name,
+      subtitle: `${root.label} / ${parentOf(e.path) || "."}`,
+      section: `Files in ${root.label}`,
+      icon: e.dir ? Folder : FileText,
+      run: (desk: DeskAPI) => {
+        if (e.dir) {
+          desk.open("files", { args: { root: root.id, path: e.path } })
+          return
+        }
+        if (desk.openFile({ root: root.id, path: e.path })) return
+        desk.open("files", { args: { root: root.id, path: parentOf(e.path), select: e.path } })
+      },
+    }))
   },
 })

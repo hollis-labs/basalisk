@@ -20,6 +20,7 @@ func (a *API) filesOpsRoutes() []route {
 		{"POST", "/api/files/copy", w, a.filesCopy},
 		{"POST", "/api/files/delete", w, a.filesDelete},
 		{"GET", "/api/files/search", r, a.filesSearch},
+		{"GET", "/api/files/grep", r, a.filesGrep},
 		{"GET", "/api/files/hosts", r, a.filesHosts},
 		{"POST", "/api/files/roots", w, a.filesAddRoot},
 		{"DELETE", "/api/files/roots/{id}", w, a.filesRemoveRoot},
@@ -113,6 +114,21 @@ func (a *API) filesSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	res, err := a.files.Search(r.Context(), q.Get("root"), q.Get("path"), q.Get("q"))
 	if err != nil {
+		opsFail(w, err)
+		return
+	}
+	reply(w, 200, res)
+}
+
+// filesGrep searches file contents (ripgrep where the place has it).
+func (a *API) filesGrep(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	res, err := a.files.Grep(r.Context(), q.Get("root"), q.Get("path"), q.Get("q"))
+	if err != nil {
+		if !errors.Is(err, files.ErrOutside) && !errors.Is(err, files.ErrNoRoot) && !errors.Is(err, files.ErrNotFound) && !errors.Is(err, files.ErrNotDir) {
+			fail(w, 400, capitalize(err.Error())+".")
+			return
+		}
 		opsFail(w, err)
 		return
 	}

@@ -234,3 +234,49 @@ func TestSSHHosts(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestGrepScanAndQuoting(t *testing.T) {
+	m, home, _ := opsFixture(t)
+	dev := filepath.Join(home, "dev")
+	writeFile(t, filepath.Join(dev, "notes/plan.md"), "first line\nThe Brackets idea\nlast")
+	writeFile(t, filepath.Join(dev, "node_modules/x/index.js"), "brackets inside deps")
+	writeFile(t, filepath.Join(dev, "bin.dat"), "brackets\x00binary")
+	res, err := m.Grep(context.Background(), "dev", "", "BRACKETS")
+	must(t, err)
+	if len(res.Matches) != 1 || res.Matches[0].Path != "notes/plan.md" || res.Matches[0].Line != 2 || res.Matches[0].Text != "The Brackets idea" {
+		t.Fatalf("%+v", res)
+	}
+	if _, err = m.Grep(context.Background(), "dev", "../", "x"); !errors.Is(err, ErrOutside) {
+		t.Fatal(err)
+	}
+	if got := shQuote(`it's; rm -rf ~`); got != `'it'\''s; rm -rf ~'` {
+		t.Fatal(got)
+	}
+	matches, cut := readRG(strings.NewReader(`{"type":"match","data":{"path":{"text":"/base/a.md"},"lines":{"text":"hit\n"},"line_number":3}}
+{"type":"match","data":{"path":{"text":"/elsewhere/b.md"},"lines":{"text":"no"},"line_number":1}}
+{"type":"summary"}`), "/base")
+	if cut || len(matches) != 1 || matches[0] != (Match{Path: "a.md", Line: 3, Text: "hit"}) {
+		t.Fatalf("%+v", matches)
+	}
+}
+
+// A read-only content search on a real host, when BASALISK_LIVE_SFTP names one ("host:path").
+func TestLiveRemoteGrep(t *testing.T) {
+	spec := os.Getenv("BASALISK_LIVE_SFTP")
+	if spec == "" {
+		t.Skip("set BASALISK_LIVE_SFTP=host:path for a live check")
+	}
+	host, dir, _ := strings.Cut(spec, ":")
+	m, err := New(Config{Local: []RootConfig{}, Remotes: []RootConfig{{ID: "live", Host: host, Path: dir}}}, t.TempDir())
+	must(t, err)
+	defer m.Close()
+	res, err := m.Grep(context.Background(), "live", "", "package")
+	must(t, err)
+	t.Logf("engine=%s matches=%d truncated=%v first=%+v", res.Engine, len(res.Matches), res.Truncated, res.Matches[:min(1, len(res.Matches))])
+	if res.Engine != "ripgrep" {
+		t.Fatal(res.Engine)
+	}
+	names, err := m.Search(context.Background(), "live", "", "readme")
+	must(t, err)
+	t.Logf("name search: %d entries, truncated=%v", len(names.Entries), names.Truncated)
+}

@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: the panes style unrelated elements that share tag names (svg, span, button) */
 /* Files. Colours and type come from the desk theme (--desk-*). */
 
 .files {
@@ -199,7 +200,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* biome-ignore lint/style/noDescendingSpecificity: unrelated icons in another column */
 .files-name svg {
   flex: 0 0 auto;
   color: var(--desk-muted);
@@ -408,7 +408,6 @@
   box-shadow: inset 0 0 0 1px var(--desk-accent);
   color: var(--desk-muted);
 }
-/* biome-ignore lint/style/noDescendingSpecificity: the new-item row's own name cell */
 .files-new .files-name {
   gap: 10px;
 }
@@ -468,4 +467,79 @@
   margin: 4px 6px;
   border: 0;
   border-top: 1px solid var(--desk-border);
+}
+
+/* ---- Search ---- */
+.files-search {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.files-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--desk-border);
+  color: var(--desk-muted);
+}
+.files-search-bar input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--desk-fg);
+  font: inherit;
+}
+.files-search-modes {
+  display: flex;
+  gap: 2px;
+}
+.files-search-modes button {
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: var(--desk-muted);
+  font-size: 11.5px;
+}
+.files-search-modes button[data-on="true"] {
+  background: var(--desk-accent-soft);
+  color: var(--desk-accent);
+}
+.files-search-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 4px;
+}
+.files-search-hit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.files-search-hit[data-selected="true"] {
+  background: var(--desk-accent-soft);
+  color: var(--desk-fg);
+}
+.files-search-hit svg {
+  flex: 0 0 auto;
+  color: var(--desk-muted);
+}
+.files-search-name {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.files-search-where {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--desk-muted);
+  font-size: 11.5px;
 }
