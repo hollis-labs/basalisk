@@ -8,6 +8,8 @@ import { registerAgentTools, type ToolContext } from "../../agent/tools"
 import { ApiError } from "../../api/account"
 import { files } from "../../api/files"
 import type { DeskAPI, FileRef } from "../../desktop/registry"
+import { loadRoots } from "../files/browser"
+import { credentialReason } from "../files/credentials"
 import { changed } from "../files/ops"
 import { inFolder, noteName, notesFolder } from "./notefiles"
 import { noteWindows } from "./open"
@@ -167,6 +169,14 @@ registerAgentTools([
       let text: string
       if (open) text = open.shown()
       else {
+        // A path is read from disk, so the Files rule applies: what looks like a credential
+        // stays on this machine. (A window is different: the owner opened that file himself.)
+        const base = (await loadRoots().catch(() => [])).find((r) => r.id === file.root)?.path
+        const why = credentialReason(file.path, base ?? "")
+        if (why)
+          throw new Error(
+            `${file.root}:${file.path} looks like a credential, by ${why}, so it is not read: what the agent reads goes to the model's provider. If something in it is needed, ask the owner to paste just that part.`,
+          )
         const got = await readFile(file)
         if (!got)
           throw new Error(`There is no note at ${file.root}:${file.path}. notes_list lists them.`)
