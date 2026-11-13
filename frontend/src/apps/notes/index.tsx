@@ -5,6 +5,7 @@ import {
   Eye,
   FilePlus2,
   FileText,
+  ListTree,
   Pencil,
   RotateCw,
   Save,
@@ -35,6 +36,8 @@ import {
 import { continueList, EDITOR_KEYS, indent, link, wrap } from "./editor"
 import { NotesFind } from "./find"
 import { createNote, NameForm, notesFolder, renameNote, saveAs } from "./notefiles"
+import { Outline, useRichPage } from "./outline"
+import { resolveRelative, scrollToAnchor } from "./rich"
 import "./notes.css"
 
 const MARKDOWN = /\.(md|markdown|mdx)$/i
@@ -137,7 +140,24 @@ function NotesWindow({ winId, args }: WindowProps) {
   const [conflict, setConflict] = useState(false)
   const editor = useRef<HTMLTextAreaElement>(null)
   const view = useRef<HTMLElement>(null)
+  const preview = useRef<HTMLElement>(null)
   const [finding, setFinding] = useState(false)
+  const [outline, setOutline] = useState(() => {
+    try {
+      return window.localStorage.getItem("basalisk.notes.outline") === "1"
+    } catch {
+      return false
+    }
+  })
+  const toggleOutline = () =>
+    setOutline((o) => {
+      try {
+        window.localStorage.setItem("basalisk.notes.outline", o ? "0" : "1")
+      } catch {
+        // Not kept.
+      }
+      return !o
+    })
   // A name being asked for: a new note, a rename, a save as.
   const [form, setForm] = useState<"rename" | "save-as" | null>(null)
   const [folder, setFolder] = useState<FileRef | undefined>()
@@ -282,6 +302,30 @@ function NotesWindow({ winId, args }: WindowProps) {
     if (handled) e.preventDefault()
   }
 
+  // A link in the page to another file opens it (a note in Notes, at its anchor); to this
+  // file, it scrolls.
+  const here = doc?.file
+  const openLinked = useCallback(
+    (file: FileRef, anchor: string) => {
+      if (here && file.root === here.root && file.path === here.path) {
+        const page = view.current ?? preview.current
+        if (page && anchor) scrollToAnchor(page, anchor)
+      } else if (TEXT.test(file.path)) desk.open("notes", { args: { file, anchor } })
+      else desk.openFile(file)
+    },
+    [desk, here],
+  )
+  const rendered = !!doc?.markdown && !raw && draft === null
+  const viewText = doc ? resolveRelative(doc.text, doc.file) : ""
+  const previewText = draft !== null && doc?.markdown ? resolveRelative(draft, doc.file) : ""
+  const headings = useRichPage(view, viewText, openLinked, rendered)
+  useRichPage(preview, previewText, openLinked, draft !== null && !!doc?.markdown)
+  // Opened at an anchor (a link from another note): scroll there once it is drawn.
+  const anchor = typeof args.anchor === "string" ? args.anchor : ""
+  useEffect(() => {
+    if (anchor && rendered && view.current) scrollToAnchor(view.current, anchor)
+  }, [anchor, rendered])
+
   const openFile = (file: FileRef, edit: boolean) => {
     editOnLoad.current = edit
     setForm(null)
@@ -396,6 +440,16 @@ function NotesWindow({ winId, args }: WindowProps) {
             </button>
           </>
         )}
+        {rendered && (
+          <button
+            type="button"
+            title={outline ? "Hide the outline" : "Show the outline"}
+            aria-pressed={outline}
+            onClick={toggleOutline}
+          >
+            <ListTree aria-hidden="true" size={14} strokeWidth={1.6} />
+          </button>
+        )}
         {doc.markdown && draft === null && (
           <button
             type="button"
@@ -502,43 +556,46 @@ function NotesWindow({ winId, args }: WindowProps) {
           />
           {doc.markdown && (
             <div className="notes-preview">
-              <article className="notes-page">
-                <Markdown source={draft} />
+              <article className="notes-page" ref={preview}>
+                <Markdown source={previewText} />
               </article>
             </div>
           )}
         </div>
       ) : (
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: the page scrolls and takes ⌘F
-        <div className="notes-scroll" tabIndex={0}>
-          <article className="notes-page" ref={view}>
-            {record && (
-              <div className="notes-record">
-                <h1>{record.title}</h1>
-                <div className="notes-meta">
-                  {record.status && (
-                    <span className="cite-status" data-tone={record.status.tone}>
-                      {record.status.label}
-                    </span>
-                  )}
-                  {record.fields?.map((f) => (
-                    <span key={f.label} className="notes-field">
-                      <span>{f.label}</span>
-                      {f.mono ? <CiteText text={f.value} /> : f.value}
-                    </span>
-                  ))}
+        <div className="notes-body">
+          {rendered && outline && <Outline headings={headings} page={view} />}
+          {/* biome-ignore lint/a11y/noNoninteractiveTabindex: the page scrolls and takes ⌘F */}
+          <div className="notes-scroll" tabIndex={0}>
+            <article className="notes-page" ref={view}>
+              {record && (
+                <div className="notes-record">
+                  <h1>{record.title}</h1>
+                  <div className="notes-meta">
+                    {record.status && (
+                      <span className="cite-status" data-tone={record.status.tone}>
+                        {record.status.label}
+                      </span>
+                    )}
+                    {record.fields?.map((f) => (
+                      <span key={f.label} className="notes-field">
+                        <span>{f.label}</span>
+                        {f.mono ? <CiteText text={f.value} /> : f.value}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-            {doc.markdown && !raw ? (
-              <Markdown source={doc.text} />
-            ) : (
-              <pre className="notes-text">
-                <CiteText text={doc.text} />
-              </pre>
-            )}
-            {!doc.text.trim() && <p className="notes-hint">This one has no text.</p>}
-          </article>
+              )}
+              {doc.markdown && !raw ? (
+                <Markdown source={viewText} />
+              ) : (
+                <pre className="notes-text">
+                  <CiteText text={doc.text} />
+                </pre>
+              )}
+              {!doc.text.trim() && <p className="notes-hint">This one has no text.</p>}
+            </article>
+          </div>
         </div>
       )}
     </div>
