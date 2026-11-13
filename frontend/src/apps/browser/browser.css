@@ -1,0 +1,109 @@
+/* Browser. The page itself is a native view over .browser-slot; this is the chrome. */
+
+.browser {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  font-family: var(--desk-font);
+  font-size: 12.5px;
+  color: var(--desk-fg-soft);
+  background: var(--desk-panel);
+}
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--desk-border);
+}
+.browser-address {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin-left: 6px;
+  padding: 0 10px;
+  height: 28px;
+  border: 1px solid var(--desk-border);
+  border-radius: 6px;
+  background: var(--desk-bg);
+  color: var(--desk-muted);
+}
+.browser-address:focus-within {
+  border-color: var(--desk-accent);
+}
+.browser-address input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--desk-fg);
+  font: inherit;
+}
+.browser-notice {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--desk-accent);
+  font-size: 11.5px;
+}
+.browser-progress {
+  height: 2px;
+  background: var(--desk-accent);
+  transform-origin: left;
+  opacity: 0;
+  transition:
+    transform 160ms ease-out,
+    opacity 300ms ease-out;
+}
+.browser-progress[data-on="true"] {
+  opacity: 1;
+}
+.browser-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.browser-slot {
+  position: absolute;
+  inset: 0;
+  background: var(--desk-bg);
+}
+.browser-shot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+}
+.browser-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 2rem;
+  background: var(--desk-panel);
+  color: var(--desk-muted);
+  text-align: center;
+}
+.browser-off {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  color: var(--desk-muted);
+  font-family: var(--desk-font);
+}

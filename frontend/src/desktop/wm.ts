@@ -66,6 +66,7 @@ export type WMAction =
       args?: Record<string, unknown>
     }
   | { type: "title"; id: string; title: string }
+  | { type: "args"; id: string; args: Record<string, unknown> }
   | { type: "close"; id: string }
   | { type: "focus"; id: string }
   | { type: "rect"; id: string; rect: Rect }
@@ -142,6 +143,8 @@ export function reducer(s: WMState, a: WMAction): WMState {
     }
     case "title":
       return patch(s, a.id, { title: a.title })
+    case "args":
+      return patch(s, a.id, { args: a.args })
     case "close":
       return {
         ...s,

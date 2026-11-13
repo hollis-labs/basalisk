@@ -55,6 +55,11 @@ export interface DeskAPI {
   openFile(ref: FileRef): boolean
   close(winId: string): void
   setTitle(winId: string, title: string): void
+  /**
+   * Replace what the window was opened with (the page a browser window is on, say), so the
+   * window manager's record of it stays true. The app's body is re-rendered with the new value.
+   */
+  setArgs(winId: string, args: Record<string, unknown>): void
   wm(action: WMAction): void
   wmState(): WMState
   area(): Rect

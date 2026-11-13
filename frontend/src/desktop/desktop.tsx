@@ -148,6 +148,7 @@ export function Desktop() {
       },
       close: (id) => dispatch({ type: "close", id }),
       setTitle: (id, title) => dispatch({ type: "title", id, title }),
+      setArgs: (id, args) => dispatch({ type: "args", id, args }),
       wm: dispatch,
       wmState: () => stateRef.current,
       area: () => areaRef.current,

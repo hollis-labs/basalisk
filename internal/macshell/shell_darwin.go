@@ -49,6 +49,7 @@ func Attach(nsWindow unsafe.Pointer) {
 	shell.attached = true
 	shell.mu.Unlock()
 	C.bslInit(nsWindow)
+	attachBrowser(nsWindow) // browser_darwin.go
 	if first {
 		go shell.pump()
 		shell.log.add("attached", "native shell ready")
@@ -313,6 +314,9 @@ func (s *Shell) RequestPermission(kind string) error {
 
 // Events implements Controller.
 func (s *Shell) Events(after int64) []Event { return s.log.after(after) }
+
+// Note implements Controller.
+func (s *Shell) Note(kind, detail string) { s.log.add(kind, detail) }
 
 // Snapshot implements Controller.
 func (s *Shell) Snapshot() ([]byte, error) {

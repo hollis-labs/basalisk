@@ -5,3 +5,4 @@
 import "./builtin"
 import "./files"
 import "./notes"
+import "./browser"
