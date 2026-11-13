@@ -5,11 +5,15 @@ go 1.26.10
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
+	github.com/google/jsonschema-go v0.4.3
+	github.com/hollis-labs/libs/agent/core v0.4.0
 	github.com/hollis-labs/libs/core/store v0.1.0
 	github.com/hollis-labs/libs/core/util v0.6.0
+	github.com/hollis-labs/libs/llm/core v0.4.0
 	github.com/hollis-labs/libs/security/auth v0.3.0
 	github.com/hollis-labs/libs/security/pairing v0.0.0-20261018164511-e8bfb38b4f31
 	github.com/hollis-labs/libs/security/secrets v0.1.0
+	github.com/hollis-labs/libs/ui/ui-go v0.4.0
 	github.com/hollis-labs/substrate v0.1.1-0.20261112131348-09c04e56e7dd
 	github.com/pkg/sftp v1.13.12
 	github.com/spf13/cobra v1.10.2
@@ -24,14 +28,10 @@ require (
 	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
-	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hollis-labs/libs/agent/core v0.4.0 // indirect
 	github.com/hollis-labs/libs/app/app-host v0.1.0 // indirect
 	github.com/hollis-labs/libs/core/panics v0.1.0 // indirect
-	github.com/hollis-labs/libs/llm/core v0.4.0 // indirect
 	github.com/hollis-labs/libs/security/redact v0.2.0 // indirect
-	github.com/hollis-labs/libs/ui/ui-go v0.4.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
