@@ -28,6 +28,9 @@ type capturePeer struct {
 	failure                                  int
 	jwt                                      string
 	hook                                     func()
+	// invalid collects documents FE's own schema refused (feschema_test.go); the stub answers
+	// them 400 as FE does, and the fixture fails the test.
+	invalid []string
 }
 
 func (p *capturePeer) serve(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +71,15 @@ func (p *capturePeer) serve(w http.ResponseWriter, r *http.Request) {
 	id := ""
 	schema := "fe.capture.status.v1"
 	completion := "complete"
+	contract := "capture-envelope"
+	if strings.HasSuffix(r.URL.Path, "/complete") {
+		contract = "capture-completion"
+	}
+	if err := validateFE(contract, raw); err != nil {
+		p.invalid = append(p.invalid, r.URL.Path+": "+err.Error())
+		http.Error(w, `{"code":"validation_failed"}`, http.StatusBadRequest)
+		return
+	}
 	if r.URL.Path == "/v1/captures" {
 		p.manifests = append(p.manifests, string(raw))
 		var m map[string]any
@@ -129,6 +141,13 @@ func newDeliveryFixture(t *testing.T, withContext bool, metadata ...*captureMeta
 	f.peer.jwt = "test." + base64.RawURLEncoding.EncodeToString(claims) + ".signature"
 	f.server = httptest.NewTLSServer(http.HandlerFunc(f.peer.serve))
 	t.Cleanup(f.server.Close)
+	t.Cleanup(func() {
+		f.peer.mu.Lock()
+		defer f.peer.mu.Unlock()
+		for _, bad := range f.peer.invalid {
+			t.Errorf("FE's capture schema refused what the worker sent: %s", bad)
+		}
+	})
 	var err error
 	f.s, err = Open(f.dir)
 	if err != nil {
