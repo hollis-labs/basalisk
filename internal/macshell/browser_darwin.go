@@ -45,7 +45,7 @@ func (browser) List() ([]BrowserView, error) {
 }
 
 func (browser) Command(msg map[string]any) (json.RawMessage, error) {
-	// What an agent does to a page Chrispian may be signed in to goes in the shell log, where
+	// What an agent does to a page the owner may be signed in to goes in the shell log, where
 	// the desktop shows it.
 	if op, _ := msg["op"].(string); op != "state" {
 		shell.log.add("browser", describeCommand(msg))
