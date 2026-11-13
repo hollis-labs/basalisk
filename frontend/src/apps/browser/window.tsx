@@ -8,9 +8,14 @@ import {
   nativeBrowser,
   toURL,
 } from "../../api/browser"
+import { SHELL_EVENT } from "../../api/shell"
 import { useDesk } from "../../desktop/context"
+import { bindings, chordOf } from "../../desktop/keys"
+import { useDeskSettings } from "../../desktop/settings"
 
 const HOME = "https://duckduckgo.com/"
+/** The window's own shortcuts, which must work while the page has the keyboard. */
+const LOCAL_CHORDS = ["cmd+l", "cmd+[", "cmd+]", "cmd+r"]
 /** How often a visible view refreshes the picture shown while something covers it. */
 const SNAPSHOT_MS = 3000
 
@@ -54,6 +59,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   const [shot, setShot] = useState("")
   const [covered, setCovered] = useState(false)
   const lastFrame = useRef("")
+  const keys = useDeskSettings().keys
 
   const send = useCallback(
     (msg: Record<string, unknown>) => nativeBrowser.send({ id: winId, ...msg }),
@@ -83,8 +89,11 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
       const slot = slotRef.current
       if (!slot) return
       const r = slot.getBoundingClientRect()
-      const shown = r.width > 1 && r.height > 1 && !document.hidden
-      const clear = shown && uncovered(slot, r)
+      // The desktop says when a window is moving or something it draws is over this one;
+      // the hit tests catch anything else in the DOM.
+      const g = desk.geometry(winId)
+      const shown = r.width > 1 && r.height > 1 && !document.hidden && g?.visible !== false
+      const clear = shown && !g?.covered && uncovered(slot, r)
       const f: Frame = { x: r.left, y: r.top, w: r.width, h: r.height, visible: clear }
       const key = `${Math.round(f.x)},${Math.round(f.y)},${Math.round(f.w)},${Math.round(f.h)},${clear}`
       if (key === lastFrame.current) return
@@ -94,7 +103,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [available, send])
+  }, [available, desk, send, winId])
 
   // ---- A picture to show while the view steps aside. ----
   const refreshShot = useCallback(() => {
@@ -110,6 +119,16 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   useEffect(() => {
     if (available && !state.loading) refreshShot()
   }, [available, state.loading, refreshShot])
+
+  const runLocalRef = useRef<(chord: string) => boolean>(() => false)
+  const runLocal = (chord: string) => runLocalRef.current(chord)
+
+  // ---- Shortcuts while the page has the keyboard: the native layer hands these back. ----
+  useEffect(() => {
+    if (!available) return
+    const chords = [...bindings(keys).keys(), ...LOCAL_CHORDS]
+    void nativeBrowser.send({ op: "chords", chords }).catch(() => undefined)
+  }, [available, keys])
 
   // ---- What the view tells us. ----
   useEffect(() => {
@@ -135,6 +154,13 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
           break
         case "focus":
           desk.wm({ type: "focus", id: winId })
+          break
+        case "chord":
+          if (!runLocalRef.current(ev.chord))
+            // The desktop runs a chord it is told the native layer swallowed.
+            window.dispatchEvent(
+              new CustomEvent(SHELL_EVENT, { detail: { kind: "swallowed", detail: ev.chord } }),
+            )
           break
         case "download":
           flash(
@@ -189,17 +215,28 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
       .catch((e: Error) => setError(e.message))
   }
 
+  runLocalRef.current = (chord: string) => {
+    switch (chord) {
+      case "cmd+l":
+        inputRef.current?.focus()
+        inputRef.current?.select()
+        return true
+      case "cmd+[":
+        void send({ op: "back" })
+        return true
+      case "cmd+]":
+        void send({ op: "forward" })
+        return true
+      case "cmd+r":
+        void send({ op: "reload" })
+        return true
+    }
+    return false
+  }
+
   const onChromeKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (!e.metaKey) return
-    let handled = true
-    if (e.code === "KeyL") {
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    } else if (e.key === "[") void send({ op: "back" })
-    else if (e.key === "]") void send({ op: "forward" })
-    else if (e.code === "KeyR") void send({ op: "reload" })
-    else handled = false
-    if (handled) {
+    const chord = chordOf(e.nativeEvent)
+    if (chord && runLocal(chord)) {
       e.preventDefault()
       e.stopPropagation()
     }

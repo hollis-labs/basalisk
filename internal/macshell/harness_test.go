@@ -101,6 +101,19 @@ func TestBrowserViews(t *testing.T) {
 	waitFor(t, "open event", func() bool {
 		return strings.Contains(HxEvalPage(`return window.__ev.filter(e=>e.kind==='open').map(e=>e.url)`), "/site2")
 	})
+	// Chords the page asked for come back to it while the view has the keyboard; others go
+	// to the site.
+	HxEvalPage(`return await window.webkit.messageHandlers.basaliskBrowser.postMessage({op:'chords',chords:['cmd+k','ctrl+alt+t']})`)
+	HxEvalPage(`return await window.webkit.messageHandlers.basaliskBrowser.postMessage({op:'focus',id:'w1'})`)
+	HxKey(40, true, "k") // cmd+k
+	HxKey(8, true, "c")  // cmd+c
+	waitFor(t, "chord event", func() bool {
+		return strings.Contains(HxEvalPage(`return window.__ev.filter(e=>e.kind==='chord').map(e=>e.chord)`), "cmd+k")
+	})
+	if got := HxEvalPage(`return window.__ev.filter(e=>e.kind==='chord').map(e=>e.chord)`); got != `[["cmd+k"]]` {
+		t.Errorf("chords forwarded = %s, want only cmd+k", got)
+	}
+
 	// Hidden when not visible; a cross-origin page may not drive the views.
 	HxEvalPage(`return await window.webkit.messageHandlers.basaliskBrowser.postMessage({op:'frame',id:'w1',x:100,y:50,w:600,h:400,visible:false})`)
 	if f := HxViewFrame("w1"); !strings.Contains(f, "hidden=1") {

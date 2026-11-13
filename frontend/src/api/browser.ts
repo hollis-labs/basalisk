@@ -22,6 +22,7 @@ export type BrowserEvent =
   | { kind: "open"; id: string; url: string }
   | { kind: "close"; id: string }
   | { kind: "focus"; id: string }
+  | { kind: "chord"; id: string; chord: string }
   | {
       kind: "download"
       id: string

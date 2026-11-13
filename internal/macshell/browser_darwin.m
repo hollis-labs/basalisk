@@ -36,6 +36,10 @@ static NSMutableSet<NSString *> *bDirty;
 static BOOL bFlushQueued;
 static BSLBrowser *bHandler;
 static id bMouseMonitor;
+static id bKeyMonitor;
+// The chords the page wants back while a view has the keyboard (its shortcuts), as
+// "ctrl+alt+shift+cmd+key" in that order: the spelling of macshell's combo and keys.ts.
+static NSSet<NSString *> *bChords;
 
 // The browser views' website data store. A fixed identifier keeps it across launches.
 static NSString *const kStoreID = @"6F1D3C52-9A4E-4D57-8A43-2B7D0C9E5A11";
@@ -109,6 +113,47 @@ static void markDirty(NSString *viewID) {
 			}
 		}
 	});
+}
+
+// Key names by macOS virtual key code: the table in macshell.go, inverted.
+static NSString *keyName(unsigned short code) {
+	static NSDictionary<NSNumber *, NSString *> *names;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		names = @{
+			@0 : @"a", @1 : @"s", @2 : @"d", @3 : @"f", @4 : @"h", @5 : @"g", @6 : @"z", @7 : @"x", @8 : @"c", @9 : @"v",
+			@11 : @"b", @12 : @"q", @13 : @"w", @14 : @"e", @15 : @"r", @16 : @"y", @17 : @"t", @18 : @"1", @19 : @"2",
+			@20 : @"3", @21 : @"4", @22 : @"6", @23 : @"5", @24 : @"=", @25 : @"9", @26 : @"7", @27 : @"-", @28 : @"8",
+			@29 : @"0", @30 : @"]", @31 : @"o", @32 : @"u", @33 : @"[", @34 : @"i", @35 : @"p", @37 : @"l", @38 : @"j",
+			@39 : @"'", @40 : @"k", @41 : @";", @42 : @"\\", @43 : @",", @44 : @"/", @45 : @"n", @46 : @"m", @47 : @".",
+			@50 : @"`", @36 : @"return", @48 : @"tab", @49 : @"space", @51 : @"delete", @53 : @"escape",
+			@122 : @"f1", @120 : @"f2", @99 : @"f3", @118 : @"f4", @96 : @"f5", @97 : @"f6", @98 : @"f7", @100 : @"f8",
+			@101 : @"f9", @109 : @"f10", @103 : @"f11", @111 : @"f12",
+			@123 : @"left", @124 : @"right", @125 : @"down", @126 : @"up",
+		};
+	});
+	return names[@(code)];
+}
+
+static NSString *chordOf(NSEvent *e) {
+	NSString *key = keyName(e.keyCode);
+	if (!key) return nil;
+	NSEventModifierFlags f = e.modifierFlags;
+	NSMutableArray *parts = [NSMutableArray array];
+	if (f & NSEventModifierFlagControl) [parts addObject:@"ctrl"];
+	if (f & NSEventModifierFlagOption) [parts addObject:@"alt"];
+	if (f & NSEventModifierFlagShift) [parts addObject:@"shift"];
+	if (f & NSEventModifierFlagCommand) [parts addObject:@"cmd"];
+	[parts addObject:key];
+	return [parts componentsJoinedByString:@"+"];
+}
+
+// The view that has the keyboard, if any.
+static BSLWebView *focusedView(void) {
+	id r = bWin.firstResponder;
+	NSView *v = [r isKindOfClass:[NSView class]] ? (NSView *)r : nil;
+	while (v && ![v isKindOfClass:[BSLWebView class]]) v = v.superview;
+	return (BSLWebView *)v;
 }
 
 static NSURL *parseURL(id raw) {
@@ -201,6 +246,14 @@ static void handle(NSDictionary *m, BSLReply reply) {
 	NSString *op = [m[@"op"] isKindOfClass:[NSString class]] ? m[@"op"] : @"";
 	NSString *viewID = [m[@"id"] isKindOfClass:[NSString class]] ? m[@"id"] : nil;
 
+	if ([op isEqual:@"chords"]) {
+		NSMutableSet *set = [NSMutableSet set];
+		for (id c in [m[@"chords"] isKindOfClass:[NSArray class]] ? m[@"chords"] : @[]) {
+			if ([c isKindOfClass:[NSString class]]) [set addObject:[c lowercaseString]];
+		}
+		bChords = set;
+		return reply(@(set.count), nil);
+	}
 	if ([op isEqual:@"list"]) {
 		NSMutableArray *out = [NSMutableArray array];
 		for (BSLWebView *w in bViews.allValues) [out addObject:stateOf(w)];
@@ -500,6 +553,19 @@ void bslBrowserInit(void *window) {
 					while (hit && ![hit isKindOfClass:[BSLWebView class]]) hit = hit.superview;
 					if (hit) emit(@{@"kind" : @"focus", @"id" : ((BSLWebView *)hit).bslID});
 					return e;
+				}];
+		}
+		// While a view has the keyboard, the page's own shortcuts still go to the page.
+		if (!bKeyMonitor) {
+			bKeyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+				handler:^NSEvent *(NSEvent *e) {
+					if (e.window != bWin || bChords.count == 0) return e;
+					BSLWebView *w = focusedView();
+					if (!w) return e;
+					NSString *chord = chordOf(e);
+					if (!chord || ![bChords containsObject:chord]) return e;
+					emit(@{@"kind" : @"chord", @"id" : w.bslID, @"chord" : chord});
+					return nil;
 				}];
 		}
 	});

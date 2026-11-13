@@ -11,6 +11,7 @@ void hxRun(void);
 char *hxEvalPage(const char *js);
 char *hxViewFrame(const char *id);
 void hxStop(void);
+void hxKey(unsigned short code, unsigned long flags, const char *chars);
 */
 import "C"
 
@@ -40,4 +41,15 @@ func takeString(p *C.char) string {
 	}
 	defer C.free(unsafe.Pointer(p))
 	return C.GoString(p)
+}
+
+// HxKey posts a key-down to the harness window: code is the virtual key code, cmd adds Command.
+func HxKey(code uint16, cmd bool, chars string) {
+	c := C.CString(chars)
+	defer C.free(unsafe.Pointer(c))
+	var flags C.ulong
+	if cmd {
+		flags = 1 << 20 // NSEventModifierFlagCommand
+	}
+	C.hxKey(C.ushort(code), flags, c)
 }

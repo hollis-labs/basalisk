@@ -70,3 +70,13 @@ char *hxViewFrame(const char *ident) {
 	});
 	return strdup(answer.UTF8String);
 }
+
+void hxKey(unsigned short code, unsigned long flags, const char *chars) {
+	NSString *c = [NSString stringWithUTF8String:chars];
+	dispatch_async(dispatch_get_main_queue(), ^{
+		NSEvent *e = [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:flags timestamp:0
+		                          windowNumber:hWin.windowNumber context:nil characters:c charactersIgnoringModifiers:c
+		                             isARepeat:NO keyCode:code];
+		[NSApp postEvent:e atStart:NO];
+	});
+}
