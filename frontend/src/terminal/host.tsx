@@ -9,13 +9,13 @@ import {
   useState,
 } from "react"
 import { createPortal } from "react-dom"
-import { terminal as api, TERMINAL_FOCUS_EVENT } from "../api/shell"
+import { terminal as api } from "../api/shell"
 import { TerminalDeck } from "./deck"
 
 /**
  * One terminal deck for the whole app. Its DOM lives in a node that is never destroyed and
- * is moved to wherever the terminal is shown: the Terminal page, or the drop-down overlay
- * (Ctrl+`). Moving the node, instead of mounting a second deck, keeps every xterm, its
+ * is moved to wherever the terminal is shown: the Terminal window, or the drop-down overlay
+ * (the "Toggle terminal" command). Moving the node, instead of mounting a second deck, keeps every xterm, its
  * scrollback and its socket across navigation.
  */
 interface TerminalHostValue {
@@ -76,25 +76,6 @@ export function TerminalHost({ children }: { children: ReactNode }) {
     },
     [place],
   )
-
-  // Ctrl+` from anywhere: drop the terminal down, or put it away. On the Terminal page the
-  // deck is already showing in a window, so the key brings that window forward.
-  useEffect(() => {
-    if (!enabled) return
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "`" || e.code === "Backquote")))
-        return
-      e.preventDefault()
-      e.stopPropagation()
-      if (owners.current.has("page")) {
-        window.dispatchEvent(new Event(TERMINAL_FOCUS_EVENT))
-        return
-      }
-      setOverlayOpen((open) => !open)
-    }
-    window.addEventListener("keydown", onKey, true)
-    return () => window.removeEventListener("keydown", onKey, true)
-  }, [enabled])
 
   const value = useMemo(
     () => ({ enabled, adopt, overlayOpen, setOverlayOpen }),

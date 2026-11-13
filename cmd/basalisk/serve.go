@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -73,6 +74,14 @@ func (b *basalisk) serve(ctx context.Context) error {
 		return err
 	}
 	a := svc.API(api.IdentityUsers{Svc: id})
+	// The desktop's settings documents live beside the database, in the private data directory.
+	if db, _ := app.Config["database"].(map[string]any); db != nil {
+		if sq, _ := db["sqlite"].(map[string]any); sq != nil {
+			if p, _ := sq["path"].(string); filepath.IsAbs(p) {
+				a.SetDeskDir(filepath.Join(filepath.Dir(p), "desk"))
+			}
+		}
+	}
 	if b.shell != nil {
 		a.EnableShell(b.shell)
 	}

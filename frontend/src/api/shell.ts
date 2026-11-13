@@ -56,9 +56,6 @@ export const shell = {
 /** The DOM event the desktop app dispatches for every shell log entry. */
 export const SHELL_EVENT = "basalisk:shell"
 
-/** Asks the desktop to open or bring forward the terminal window. */
-export const TERMINAL_FOCUS_EVENT = "basalisk:terminal-focus"
-
 /** A terminal session (GET /api/terminal). */
 export interface TerminalSession {
   id: string

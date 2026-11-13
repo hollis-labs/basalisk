@@ -60,15 +60,46 @@ Signed in, the app is a desktop: a bar, an empty canvas, and windows (`frontend/
   it. Drag a tiled window onto another to trade places. Keys, all with ⌃⌥: `T` layout,
   `J`/`K` next/previous, `Enter` maximize, `F` float or re-tile, `M` make master, `H` hide,
   `W` close, `←`/`→` resize the master (tile) or snap to a half (float), `↑` fill, `↓` centre.
-- **Apps** (`apps.tsx`) are entries in a registry: id, title, icon, default size, a render
-  function. One window per app for now. Settings is an app with sections (Appearance,
-  Account, Security, Integrations, Devices, Mac shell).
+- **Apps** are entries in a registry (`registry.ts`): id, title, icon, default size, a render
+  function that receives the window id and the arguments it was opened with. An app marked
+  `multi` can have several windows, told apart by a key. Settings is an app with sections
+  (Appearance, Shortcuts, Account, Security, Integrations, Devices, Mac shell).
+- **Commands** are named actions (`commands.ts` and each app's own). Everything the desktop
+  does is one, plus "Open <app>" for every app. They fill the palette and carry the shortcuts.
+- **Command palette** (`palette.tsx`, ⌘K): commands, apps, open windows, and rows from
+  registered providers (files, notes, cited records), fuzzy matched, most recent first.
+- **Shortcuts** (`keys.ts`, `shortcuts.tsx`). A shortcut belongs to a command. Defaults live
+  in the commands; Settings, Shortcuts records a new one, clears one or resets it, and a
+  chord given to a second command is taken from the first. Chords also arrive from the
+  native event tap: with key swallowing on, a swallowed chord (⌘Space, say) runs whatever
+  command it is bound to.
+- **Desk settings** (`settings.ts`, `GET`/`PUT /api/desk/settings`): theme, layout and
+  shortcuts, one JSON document per person kept beside the database, cached in local storage.
 - **Themes** (`themes.ts`). Palettes taken from four Omarchy themes (Aura, the default;
   Moodpeak; Cyberphunk; Blade Rainner), applied by overriding the design tokens' base
   variables, so kit components and the terminal follow. Chosen in Settings, Appearance.
-- The desktop starts empty every launch; only the layout and the theme are remembered.
+- The desktop starts empty every launch; the layout, theme and shortcuts are remembered.
 - The app-shell `ManifestShell` is no longer rendered and `cmd/basalisk/app.ui.json` no longer
   drives navigation. The desktop's app registry should eventually be fed by the manifest.
+
+#### Adding an app
+
+Put it in `frontend/src/apps/<name>/` and import it from `frontend/src/apps/index.ts`. The
+module registers what it has when imported:
+
+```ts
+registerApp({ id: "files", title: "Files", icon: Folder, menu: true, size: [1000, 640], bare: true,
+  render: ({ winId, args }) => <Files winId={winId} args={args} /> })
+registerCommands([{ id: "files.home", title: "Files: go home", section: "Files", keys: "ctrl+alt+e",
+  run: desk => desk.open("files", { args: { path: "~" } }) }])
+registerProvider({ id: "files", search: async (q, desk) => [/* rows whose ids start "files:" */] })
+registerFileHandler({ app: "notes", match: name => /\.(md|txt)$/.test(name) })
+```
+
+Inside a window, `useDesk()` gives the desktop: `open(app, { args, key, title })`,
+`openFile({ root, path })` (opens the app registered for that file), `close`, `setTitle`,
+the window manager, the palette, the terminal toggle, the shell status. Backend routes go in
+their own file in `internal/api` and are added to `allRoutes` in `api.go`.
 
 ### The adapter
 

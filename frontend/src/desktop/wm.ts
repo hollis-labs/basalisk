@@ -23,6 +23,10 @@ export interface Win {
   floating: boolean
   maximized: boolean
   minimized: boolean
+  /** What the window was opened with; handed to the app. */
+  args: Record<string, unknown>
+  /** For an app with several windows: what this one shows, so it is not opened twice. */
+  key?: string
 }
 
 export interface WMState {
@@ -51,7 +55,17 @@ export interface Placed extends Rect {
 export type Snap = "left" | "right" | "full" | "center"
 
 export type WMAction =
-  | { type: "open"; app: string; title: string; size: [number, number]; area: Rect }
+  | {
+      type: "open"
+      app: string
+      title: string
+      size: [number, number]
+      area: Rect
+      multi?: boolean
+      key?: string
+      args?: Record<string, unknown>
+    }
+  | { type: "title"; id: string; title: string }
   | { type: "close"; id: string }
   | { type: "focus"; id: string }
   | { type: "rect"; id: string; rect: Rect }
@@ -95,8 +109,15 @@ function nextFocus(s: WMState, gone: string): string | null {
 export function reducer(s: WMState, a: WMAction): WMState {
   switch (a.type) {
     case "open": {
-      const existing = s.wins.find((w) => w.app === a.app)
-      if (existing) return reducer(s, { type: "focus", id: existing.id })
+      // One window per app, or per key for an app that has several. Opening what is
+      // already open brings it forward, with the new arguments if any were given.
+      const existing = a.multi
+        ? s.wins.find((w) => w.app === a.app && a.key !== undefined && w.key === a.key)
+        : s.wins.find((w) => w.app === a.app)
+      if (existing) {
+        const next = a.args ? patch(s, existing.id, { args: a.args, title: a.title }) : s
+        return reducer(next, { type: "focus", id: existing.id })
+      }
       const [w, h] = [
         Math.min(a.size[0], a.area.w - 2 * GAP),
         Math.min(a.size[1], a.area.h - 2 * GAP),
@@ -114,9 +135,13 @@ export function reducer(s: WMState, a: WMAction): WMState {
         floating: false,
         maximized: false,
         minimized: false,
+        args: a.args ?? {},
+        key: a.key,
       }
       return { ...s, wins: [...s.wins, win], focus: win.id, seq: s.seq + 1, z: s.z + 1 }
     }
+    case "title":
+      return patch(s, a.id, { title: a.title })
     case "close":
       return {
         ...s,

@@ -35,6 +35,8 @@ type API struct {
 	// EnableTerminal were called (the desktop app does; a server deployment does not).
 	shell macshell.Controller
 	term  *terminal.Manager
+	// deskDir holds the desktop settings documents (desk.go); empty means not kept.
+	deskDir string
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,
@@ -84,11 +86,13 @@ func (a *API) routes() []route {
 	}
 }
 
-// allRoutes is the dashboard's routes plus the desktop shell's and the terminal's. Those two
+// allRoutes is the dashboard's routes plus the desk settings, the desktop shell's and the
+// terminal's. The last two
 // always serve their state route, so the frontend can ask whether they are available, and
 // serve the rest only when enabled.
 func (a *API) allRoutes() []route {
-	return append(append(a.routes(), a.shellRoutes()...), a.terminalRoutes()...)
+	rts := append(a.routes(), a.deskRoutes()...)
+	return append(append(rts, a.shellRoutes()...), a.terminalRoutes()...)
 }
 
 // Handler serves the owner routes; it is httphost.Options.Routes. The auth guard in front of

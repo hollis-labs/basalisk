@@ -8,6 +8,7 @@ import {
   Minimize,
   Minus,
   PictureInPicture2,
+  Search,
   Settings,
   Square,
   X,
@@ -24,9 +25,17 @@ import {
   useState,
 } from "react"
 import { ApiError, request } from "../api/account"
-import { SHELL_EVENT, type ShellStatus, shell, TERMINAL_FOCUS_EVENT } from "../api/shell"
+import "../apps"
+import "./commands"
+import { SHELL_EVENT, type ShellEvent, type ShellStatus, shell } from "../api/shell"
 import { useSession } from "../session"
-import { APPS, type AppDef, appById } from "./apps"
+import { useTerminalHost } from "../terminal/host"
+import { DeskContext } from "./context"
+import { bindings, chordFor, chordOf, keyCapture, prettyChord } from "./keys"
+import { PaletteDialog } from "./palette"
+import { type AppDef, allApps, allCommands, appById, type DeskAPI, handlerFor } from "./registry"
+import { loadSettings, updateSettings, useDeskSettings } from "./settings"
+import { applyDeskTheme, THEMES } from "./themes"
 import {
   dividerX,
   GAP,
@@ -46,11 +55,10 @@ const seqOf = (id: string) => Number(id.slice(id.lastIndexOf("-") + 1))
 
 /**
  * The desktop: a bar, a canvas, and windows on it. It starts empty. Apps open from the menu
- * (and later from the command palette), each in a window the window manager tiles or floats.
+ * or the command palette, each in a window the window manager tiles or floats.
  *
- * Keys, all with ⌃⌥: T tile/float layout · J K next/previous window · Enter maximize ·
- * F float or re-tile the window · M make it the master · H hide · W close ·
- * ← → resize the master (tile) or snap to a half (float) · ↑ fill · ↓ centre.
+ * Everything it can do is a command (commands.ts and the apps' own), and every shortcut is
+ * a command's: the defaults are in the commands, the user's changes in the desk settings.
  */
 export function Desktop() {
   const [state, dispatch] = useReducer(reducer, undefined, initialState)
@@ -89,66 +97,129 @@ export function Desktop() {
     }
   }, [])
 
-  const open = useCallback((id: string) => {
-    const app = appById(id)
-    if (app)
-      dispatch({ type: "open", app: id, title: app.title, size: app.size, area: areaRef.current })
-  }, [])
+  const { signedOut } = useSession()
+  const terminal = useTerminalHost()
+  const terminalRef = useRef(terminal)
+  terminalRef.current = terminal
+  const statusRef = useRef(status)
+  statusRef.current = status
+  const [palette, setPalette] = useState(false)
+  const settings = useDeskSettings()
 
-  // Ctrl+` with a terminal window open brings that window forward.
+  // What commands, apps and the palette may ask of the desktop. Stable for its lifetime.
+  const desk = useMemo<DeskAPI>(() => {
+    const api: DeskAPI = {
+      open(id, opts = {}) {
+        const app = appById(id)
+        if (!app) return
+        dispatch({
+          type: "open",
+          app: id,
+          title: opts.title ?? app.title,
+          size: app.size,
+          area: areaRef.current,
+          multi: !!app.multi,
+          key: opts.key,
+          args: opts.args,
+        })
+      },
+      openFile(ref) {
+        const name = ref.path.split("/").pop() || ref.path
+        const handler = handlerFor(name)
+        if (!handler) return false
+        api.open(handler.app, { args: { file: ref }, key: `${ref.root}:${ref.path}`, title: name })
+        return true
+      },
+      close: (id) => dispatch({ type: "close", id }),
+      setTitle: (id, title) => dispatch({ type: "title", id, title }),
+      wm: dispatch,
+      wmState: () => stateRef.current,
+      area: () => areaRef.current,
+      togglePalette: (open) => setPalette((p) => open ?? !p),
+      toggleTerminal() {
+        // With a terminal window open the shortcut goes to it; otherwise it drops one down.
+        const win = stateRef.current.wins.find((w) => w.app === "terminal")
+        if (win) dispatch({ type: "focus", id: win.id })
+        else terminalRef.current.setOverlayOpen(!terminalRef.current.overlayOpen)
+      },
+      shellStatus: () => statusRef.current,
+      setKiosk: (on) =>
+        void shell
+          .kiosk(on, false)
+          .then(setStatus)
+          .catch(() => undefined),
+      setTheme(id) {
+        const theme = THEMES.find((t) => t.id === id)
+        if (!theme) return
+        applyDeskTheme(theme)
+        updateSettings({ theme: id })
+      },
+      signOut() {
+        void request("logout", "POST", {})
+          .then(signedOut)
+          .catch((e) => e instanceof ApiError && e.status === 401 && signedOut())
+      },
+    }
+    return api
+  }, [signedOut])
+
+  // The server's copy of the desk settings wins over the cached one.
   useEffect(() => {
-    const onTerminal = () => open("terminal")
-    window.addEventListener(TERMINAL_FOCUS_EVENT, onTerminal)
-    return () => window.removeEventListener(TERMINAL_FOCUS_EVENT, onTerminal)
-  }, [open])
+    void loadSettings().then((s) => {
+      const theme = THEMES.find((t) => t.id === s.theme)
+      if (theme) applyDeskTheme(theme)
+      if (s.layout !== stateRef.current.layout) dispatch({ type: "layout", layout: s.layout })
+    })
+  }, [])
+  useEffect(() => {
+    if (settings.layout !== state.layout) updateSettings({ layout: state.layout })
+  }, [state.layout, settings.layout])
 
+  // Shortcuts: a chord runs the command it is bound to. Chords arrive from the page, and,
+  // in the desktop app with key swallowing on, from the native event tap, which takes the
+  // ones the system would otherwise keep (Cmd-Space, Cmd-Tab) and reports them here.
+  const bound = useMemo(() => bindings(settings.keys), [settings.keys])
+  const boundRef = useRef(bound)
+  boundRef.current = bound
+  const runChord = useCallback(
+    (chord: string) => {
+      const id = boundRef.current.get(chord)
+      const command = id ? allCommands().find((c) => c.id === id) : undefined
+      if (!command || (command.when && !command.when(desk))) return false
+      void command.run(desk)
+      return true
+    },
+    [desk],
+  )
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || !e.altKey || e.metaKey) return
-      const s = stateRef.current
-      const id = s.focus
-      const tiling = s.layout === "tile"
-      let action: WMAction | null = null
-      if (e.code === "KeyT") action = { type: "layout" }
-      else if (e.code === "KeyJ") action = { type: "cycle", delta: 1 }
-      else if (e.code === "KeyK") action = { type: "cycle", delta: -1 }
-      else if (tiling && e.code === "ArrowLeft") action = { type: "ratio", value: s.ratio - 0.04 }
-      else if (tiling && e.code === "ArrowRight") action = { type: "ratio", value: s.ratio + 0.04 }
-      else if (id) {
-        if (e.code === "Enter") action = { type: "maximize", id }
-        else if (e.code === "KeyW") action = { type: "close", id }
-        else if (e.code === "KeyF") action = { type: "float", id }
-        else if (e.code === "KeyM") action = { type: "promote", id }
-        else if (e.code === "KeyH") action = { type: "minimize", id }
-        else if (e.code === "ArrowLeft")
-          action = { type: "snap", id, to: "left", area: areaRef.current }
-        else if (e.code === "ArrowRight")
-          action = { type: "snap", id, to: "right", area: areaRef.current }
-        else if (e.code === "ArrowUp")
-          action = tiling
-            ? { type: "maximize", id }
-            : { type: "snap", id, to: "full", area: areaRef.current }
-        else if (e.code === "ArrowDown")
-          action = { type: "snap", id, to: "center", area: areaRef.current }
-      }
-      if (!action) return
+      if (keyCapture.active) return
+      const chord = chordOf(e)
+      if (!chord || !runChord(chord)) return
       e.preventDefault()
       e.stopPropagation()
-      dispatch(action)
+    }
+    const onShell = (e: Event) => {
+      const detail = (e as CustomEvent<ShellEvent>).detail
+      if (detail?.kind === "swallowed") runChord(detail.detail)
     }
     window.addEventListener("keydown", onKey, true)
-    return () => window.removeEventListener("keydown", onKey, true)
-  }, [])
+    window.addEventListener(SHELL_EVENT, onShell)
+    return () => {
+      window.removeEventListener("keydown", onKey, true)
+      window.removeEventListener(SHELL_EVENT, onShell)
+    }
+  }, [runChord])
 
-  // Keyboard focus follows window focus.
+  // Keyboard focus follows window focus, and returns to the window when the palette closes.
   useEffect(() => {
-    if (!state.focus) return
+    if (!state.focus || palette) return
     const el = canvas.current?.querySelector<HTMLElement>(`[data-win="${state.focus}"]`)
     if (!el || el.contains(document.activeElement)) return
     const target =
       el.querySelector<HTMLElement>('.xterm-host[data-active="true"] .xterm-helper-textarea') ?? el
     target.focus({ preventScroll: true })
-  }, [state.focus])
+  }, [state.focus, palette])
 
   const placed = useMemo(() => place(state, area), [state, area])
   const divider = dividerX(state, area)
@@ -195,116 +266,141 @@ export function Desktop() {
   )
 
   return (
-    <div className="desk" data-layout={state.layout}>
-      <header className="desk-bar" data-notch={notch}>
-        <div className="desk-bar-side">
-          <DeskMenu
-            layout={state.layout}
-            status={status}
-            onOpen={open}
-            onLayout={() => dispatch({ type: "layout" })}
-            onKiosk={() => status && void shell.kiosk(!status.kiosk, false).then(setStatus)}
-          />
-          <div className="desk-tasks">
-            {state.wins.map((w) => {
-              const app = appById(w.app)
-              const Icon = app?.icon ?? AppWindow
-              const active = state.focus === w.id && !w.minimized
-              return (
-                <button
-                  key={w.id}
-                  type="button"
-                  className="desk-task"
-                  data-active={active}
-                  data-minimized={w.minimized}
-                  title={w.title}
-                  onClick={() =>
-                    dispatch(active ? { type: "minimize", id: w.id } : { type: "focus", id: w.id })
-                  }
-                >
-                  <Icon aria-hidden="true" size={14} strokeWidth={1.6} />
-                  <span>{w.title}</span>
-                </button>
-              )
-            })}
+    <DeskContext.Provider value={desk}>
+      <div className="desk" data-layout={state.layout}>
+        <header className="desk-bar" data-notch={notch}>
+          <div className="desk-bar-side">
+            <DeskMenu
+              layout={state.layout}
+              status={status}
+              onOpen={(id) => desk.open(id)}
+              onLayout={() => dispatch({ type: "layout" })}
+              onKiosk={() => status && void shell.kiosk(!status.kiosk, false).then(setStatus)}
+            />
+            <div className="desk-tasks">
+              {state.wins.map((w) => {
+                const app = appById(w.app)
+                const Icon = app?.icon ?? AppWindow
+                const active = state.focus === w.id && !w.minimized
+                return (
+                  <button
+                    key={w.id}
+                    type="button"
+                    className="desk-task"
+                    data-active={active}
+                    data-minimized={w.minimized}
+                    title={w.title}
+                    onClick={() =>
+                      dispatch(
+                        active ? { type: "minimize", id: w.id } : { type: "focus", id: w.id },
+                      )
+                    }
+                  >
+                    <Icon aria-hidden="true" size={14} strokeWidth={1.6} />
+                    <span>{w.title}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
-        <div className="desk-bar-side desk-bar-end">
-          <button
-            type="button"
-            className="desk-bar-button"
-            title={`${state.layout === "tile" ? "Tiling" : "Floating"} layout (⌃⌥T)`}
-            onClick={() => dispatch({ type: "layout" })}
-          >
-            {state.layout === "tile" ? (
-              <Columns2 aria-hidden="true" size={14} strokeWidth={1.6} />
-            ) : (
-              <AppWindow aria-hidden="true" size={14} strokeWidth={1.6} />
-            )}
-            <span>{state.layout}</span>
-          </button>
-          {status?.available && (
+          <div className="desk-bar-side desk-bar-end">
             <button
               type="button"
               className="desk-bar-button"
-              title={`${status.kiosk ? "Leave" : "Enter"} full screen (⌃⌥⌘F)`}
-              aria-label={status.kiosk ? "Leave full screen" : "Enter full screen"}
-              onClick={() => void shell.kiosk(!status.kiosk, false).then(setStatus)}
+              title={`Command palette (${prettyChord(chordFor("palette.toggle", settings.keys))})`}
+              aria-label="Command palette"
+              onClick={() => setPalette(true)}
             >
-              {status.kiosk ? (
-                <Minimize aria-hidden="true" size={14} strokeWidth={1.6} />
-              ) : (
-                <Maximize aria-hidden="true" size={14} strokeWidth={1.6} />
-              )}
+              <Search aria-hidden="true" size={14} strokeWidth={1.6} />
             </button>
-          )}
-          <Clock />
-        </div>
-      </header>
-
-      <div ref={canvas} className="desk-canvas">
-        {!state.wins.length && (
-          <div className="desk-empty" aria-hidden="true">
-            <span className="desk-empty-mark">basalisk</span>
-            <span>⌃` terminal</span>
+            <button
+              type="button"
+              className="desk-bar-button"
+              title={`${state.layout === "tile" ? "Tiling" : "Floating"} layout (⌃⌥T)`}
+              onClick={() => dispatch({ type: "layout" })}
+            >
+              {state.layout === "tile" ? (
+                <Columns2 aria-hidden="true" size={14} strokeWidth={1.6} />
+              ) : (
+                <AppWindow aria-hidden="true" size={14} strokeWidth={1.6} />
+              )}
+              <span>{state.layout}</span>
+            </button>
+            {status?.available && (
+              <button
+                type="button"
+                className="desk-bar-button"
+                title={`${status.kiosk ? "Leave" : "Enter"} full screen (⌃⌥⌘F)`}
+                aria-label={status.kiosk ? "Leave full screen" : "Enter full screen"}
+                onClick={() => void shell.kiosk(!status.kiosk, false).then(setStatus)}
+              >
+                {status.kiosk ? (
+                  <Minimize aria-hidden="true" size={14} strokeWidth={1.6} />
+                ) : (
+                  <Maximize aria-hidden="true" size={14} strokeWidth={1.6} />
+                )}
+              </button>
+            )}
+            <Clock />
           </div>
-        )}
-        {ordered.map((w) => {
-          const rect = placed.get(w.id)
-          const app = appById(w.app)
-          if (!app) return null
-          return (
-            <WindowFrame
-              key={w.id}
-              win={w}
-              app={app}
-              rect={rect}
-              focused={state.focus === w.id}
-              layout={state.layout}
-              dropTarget={dropTarget === w.id}
-              dispatch={dispatch}
-              hitTest={hitTest}
-              onDropTarget={setDropTarget}
+        </header>
+
+        <div ref={canvas} className="desk-canvas">
+          {!state.wins.length && (
+            <div className="desk-empty" aria-hidden="true">
+              <span className="desk-empty-mark">basalisk</span>
+              <span>
+                {prettyChord(chordFor("palette.toggle", settings.keys))} commands ·{" "}
+                {prettyChord(chordFor("terminal.toggle", settings.keys))} terminal
+              </span>
+            </div>
+          )}
+          {ordered.map((w) => {
+            const rect = placed.get(w.id)
+            const app = appById(w.app)
+            if (!app) return null
+            return (
+              <WindowFrame
+                key={w.id}
+                win={w}
+                app={app}
+                rect={rect}
+                focused={state.focus === w.id}
+                layout={state.layout}
+                dropTarget={dropTarget === w.id}
+                dispatch={dispatch}
+                hitTest={hitTest}
+                onDropTarget={setDropTarget}
+              />
+            )
+          })}
+          {divider !== null && (
+            <div
+              className="desk-divider"
+              style={{ left: divider, width: GAP, top: GAP, bottom: GAP }}
+              onPointerDown={dragDivider}
+              role="separator"
+              aria-orientation="vertical"
             />
-          )
-        })}
-        {divider !== null && (
-          <div
-            className="desk-divider"
-            style={{ left: divider, width: GAP, top: GAP, bottom: GAP }}
-            onPointerDown={dragDivider}
-            role="separator"
-            aria-orientation="vertical"
-          />
-        )}
+          )}
+        </div>
+        {palette && <PaletteDialog desk={desk} onClose={() => setPalette(false)} />}
       </div>
-    </div>
+    </DeskContext.Provider>
   )
 }
 
 /** The app's content. Memoized so moving a window does not re-render what is inside it. */
-const AppBody = memo(function AppBody({ app }: { app: AppDef }) {
-  return <>{app.render()}</>
+const AppBody = memo(function AppBody({
+  app,
+  winId,
+  args,
+}: {
+  app: AppDef
+  winId: string
+  args: Record<string, unknown>
+}) {
+  return <>{app.render({ winId, args })}</>
 })
 
 const EDGES = ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const
@@ -486,7 +582,7 @@ function WindowFrame({
         </div>
       </header>
       <div className="desk-window-body" data-bare={!!app.bare}>
-        <AppBody app={app} />
+        <AppBody app={app} winId={win.id} args={win.args} />
       </div>
       {sizable &&
         EDGES.map((dir) => (
@@ -591,17 +687,19 @@ function DeskMenu({
             </button>
             {apps && (
               <div className="desk-menu desk-menu-fly" role="menu">
-                {APPS.filter((a) => a.menu).map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    role="menuitem"
-                    onClick={pick(() => onOpen(a.id))}
-                  >
-                    <a.icon aria-hidden="true" size={15} strokeWidth={1.6} />
-                    <span>{a.title}</span>
-                  </button>
-                ))}
+                {allApps()
+                  .filter((a) => a.menu)
+                  .map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      role="menuitem"
+                      onClick={pick(() => onOpen(a.id))}
+                    >
+                      <a.icon aria-hidden="true" size={15} strokeWidth={1.6} />
+                      <span>{a.title}</span>
+                    </button>
+                  ))}
               </div>
             )}
           </div>

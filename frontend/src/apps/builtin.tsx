@@ -2,6 +2,7 @@ import {
   Cable,
   History,
   Inbox,
+  Keyboard,
   Laptop,
   type LucideIcon,
   Monitor,
@@ -13,6 +14,11 @@ import {
   User,
 } from "lucide-react"
 import { type ReactNode, useState } from "react"
+import { useDesk } from "../desktop/context"
+import { type AppDef, registerApp } from "../desktop/registry"
+import { useDeskSettings } from "../desktop/settings"
+import { Shortcuts } from "../desktop/shortcuts"
+import { THEMES } from "../desktop/themes"
 import { AccountPage } from "../pages/account"
 import { DevicesPage } from "../pages/devices"
 import { IntegrationsPage } from "../pages/integrations"
@@ -23,20 +29,6 @@ import { SessionsPage } from "../pages/sessions"
 import { ShellPage } from "../pages/shell"
 import { useSession } from "../session"
 import { TerminalSlot, useTerminalHost } from "../terminal/host"
-import { applyDeskTheme, type DeskTheme, storedTheme, THEMES } from "./themes"
-
-/** Something that opens in a window. One window per app for now. */
-export interface AppDef {
-  id: string
-  title: string
-  icon: LucideIcon
-  /** Listed under Apps in the menu. Settings has its own entry. */
-  menu: boolean
-  size: [number, number]
-  /** The body fills the window edge to edge and manages its own scrolling. */
-  bare?: boolean
-  render: () => ReactNode
-}
 
 function Timezone({ children }: { children: (timezone: string) => ReactNode }) {
   return <>{children(useSession().profile.timezone)}</>
@@ -55,7 +47,8 @@ function TerminalApp() {
 }
 
 function Appearance() {
-  const [active, setActive] = useState<DeskTheme>(storedTheme)
+  const desk = useDesk()
+  const active = useDeskSettings().theme
   return (
     <div className="desk-themes">
       {THEMES.map((t) => (
@@ -63,11 +56,8 @@ function Appearance() {
           key={t.id}
           type="button"
           className="desk-theme"
-          data-active={t.id === active.id}
-          onClick={() => {
-            applyDeskTheme(t)
-            setActive(t)
-          }}
+          data-active={t.id === active}
+          onClick={() => desk.setTheme(t.id)}
         >
           <span className="desk-theme-preview" style={{ background: t.desk }}>
             <span className="desk-theme-window" style={{ background: t.bg, borderColor: t.accent }}>
@@ -90,6 +80,7 @@ function Appearance() {
 
 const SECTIONS: { id: string; label: string; icon: LucideIcon; render: () => ReactNode }[] = [
   { id: "appearance", label: "Appearance", icon: Palette, render: () => <Appearance /> },
+  { id: "shortcuts", label: "Shortcuts", icon: Keyboard, render: () => <Shortcuts /> },
   { id: "account", label: "Account", icon: User, render: () => <AccountPage /> },
   { id: "security", label: "Security", icon: Shield, render: () => <SecurityPage /> },
   {
@@ -133,7 +124,7 @@ function SettingsApp() {
   )
 }
 
-export const APPS: AppDef[] = [
+const BUILTIN: AppDef[] = [
   {
     id: "terminal",
     title: "Terminal",
@@ -177,5 +168,4 @@ export const APPS: AppDef[] = [
     render: () => <SettingsApp />,
   },
 ]
-
-export const appById = (id: string) => APPS.find((a) => a.id === id)
+for (const app of BUILTIN) registerApp(app)
