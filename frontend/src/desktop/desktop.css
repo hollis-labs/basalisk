@@ -1323,3 +1323,10 @@ button.desk-shortcut-chord:hover {
   border-color: var(--color-danger);
   color: var(--color-danger);
 }
+
+/* A registered overlay: above the windows and the bar, below the palette and dialogs. */
+.desk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 15000;
+}

@@ -64,6 +64,9 @@ export interface DeskAPI {
   wmState(): WMState
   area(): Rect
   togglePalette(open?: boolean): void
+  /** Show or hide a registered overlay (toggles when `open` is not given). */
+  toggleOverlay(id: string, open?: boolean): void
+  overlayOpen(id: string): boolean
   toggleTerminal(): void
   shellStatus(): ShellStatus | null
   setKiosk(on: boolean): void
@@ -151,6 +154,7 @@ const apps = new Map<string, AppDef>()
 const commands = new Map<string, Command>()
 const providers = new Map<string, PaletteProvider>()
 const handlers: FileHandler[] = []
+const overlays = new Map<string, OverlayDef>()
 
 export function registerApp(def: AppDef) {
   apps.set(def.id, def)
@@ -178,6 +182,22 @@ export function registerProvider(p: PaletteProvider) {
   providers.set(p.id, p)
 }
 export const allProviders = () => [...providers.values()]
+
+/**
+ * Something drawn over the whole desktop rather than in a window: a capture box, a switcher.
+ * The desktop mounts it while it is open, counts it as covering every window (so native
+ * views step aside), and returns the keyboard to the focused window when it closes. The
+ * overlay draws its own backdrop and handles its own keys; `close` hides it.
+ */
+export interface OverlayDef {
+  id: string
+  render: (props: { close: () => void }) => ReactNode
+}
+
+export function registerOverlay(def: OverlayDef) {
+  overlays.set(def.id, def)
+}
+export const overlayById = (id: string) => overlays.get(id)
 
 export function registerFileHandler(h: FileHandler) {
   handlers.push(h)

@@ -43,6 +43,7 @@ import {
   type ConfirmOptions,
   type DeskAPI,
   handlerFor,
+  overlayById,
 } from "./registry"
 import { loadSettings, updateSettings, useDeskSettings } from "./settings"
 import { applyDeskTheme, THEMES } from "./themes"
@@ -128,6 +129,10 @@ export function Desktop() {
   const statusRef = useRef(status)
   statusRef.current = status
   const [palette, setPalette] = useState(false)
+  // Registered overlays that are showing (registry.ts, registerOverlay).
+  const [overlays, setOverlays] = useState<string[]>([])
+  const overlaysRef = useRef(overlays)
+  overlaysRef.current = overlays
   const [question, setQuestion] = useState<{
     options: ConfirmOptions
     answer: (yes: boolean) => void
@@ -165,6 +170,13 @@ export function Desktop() {
       wmState: () => stateRef.current,
       area: () => areaRef.current,
       togglePalette: (open) => setPalette((p) => open ?? !p),
+      toggleOverlay: (id, open) =>
+        setOverlays((current) => {
+          const show = open ?? !current.includes(id)
+          if (show === current.includes(id) || (show && !overlayById(id))) return current
+          return show ? [...current, id] : current.filter((o) => o !== id)
+        }),
+      overlayOpen: (id) => overlaysRef.current.includes(id),
       toggleTerminal() {
         // With a terminal window open the shortcut goes to it; otherwise it drops one down.
         const win = stateRef.current.wins.find((w) => w.app === "terminal")
@@ -303,22 +315,33 @@ export function Desktop() {
 
   // Keyboard focus follows window focus, and returns to the window when the palette closes.
   useEffect(() => {
-    if (!state.focus || palette) return
+    if (!state.focus || palette || overlays.length) return
     const el = canvas.current?.querySelector<HTMLElement>(`[data-win="${state.focus}"]`)
     if (!el || el.contains(document.activeElement)) return
     const target =
       el.querySelector<HTMLElement>('.xterm-host[data-active="true"] .xterm-helper-textarea') ?? el
     target.focus({ preventScroll: true })
-  }, [state.focus, palette])
+  }, [state.focus, palette, overlays.length])
 
   const placed = useMemo(() => place(state, area), [state, area])
   placedRef.current = placed
-  overlayRef.current = palette || menuOpen || terminal.overlayOpen || !!card || !!question
+  overlayRef.current =
+    palette || menuOpen || terminal.overlayOpen || !!card || !!question || overlays.length > 0
   // Tell whoever follows window geometry (a native view) that it may have changed.
   // biome-ignore lint/correctness/useExhaustiveDependencies: these are the things geometry() reads
   useEffect(() => {
     for (const fn of watchers.current) fn()
-  }, [placed, state.focus, palette, menuOpen, terminal.overlayOpen, card, movingTick, question])
+  }, [
+    placed,
+    state.focus,
+    palette,
+    menuOpen,
+    terminal.overlayOpen,
+    card,
+    movingTick,
+    question,
+    overlays,
+  ])
   const divider = dividerX(state, area)
 
   const hitTest = useCallback(
@@ -484,6 +507,11 @@ export function Desktop() {
           )}
         </div>
         {palette && <PaletteDialog desk={desk} onClose={() => setPalette(false)} />}
+        {overlays.map((id) => (
+          <div key={id} className="desk-overlay" data-overlay={id}>
+            {overlayById(id)?.render({ close: () => desk.toggleOverlay(id, false) })}
+          </div>
+        ))}
         {question && (
           <ConfirmDialog
             options={question.options}

@@ -127,7 +127,12 @@ registerCommands([{ id: "files.home", title: "Files: go home", section: "Files",
   run: desk => desk.open("files", { args: { path: "~" } }) }])
 registerProvider({ id: "files", search: async (q, desk) => [/* rows whose ids start "files:" */] })
 registerFileHandler({ app: "notes", match: name => /\.(md|txt)$/.test(name) })
+registerOverlay({ id: "frag", render: ({ close }) => <Capture onDone={close} /> })   // desk.toggleOverlay("frag")
 ```
+
+An overlay is drawn over the whole desktop instead of in a window. The desktop mounts it
+while it is open, treats every window as covered, and returns the keyboard to the focused
+window when it closes; the overlay draws its own backdrop and handles its own keys.
 
 Inside a window, `useDesk()` gives the desktop: `open(app, { args, key, title })`,
 `openFile({ root, path })` (opens the app registered for that file), `close`, `setTitle`,
