@@ -60,6 +60,11 @@ export interface DeskAPI {
    * window manager's record of it stays true. The app's body is re-rendered with the new value.
    */
   setArgs(winId: string, args: Record<string, unknown>): void
+  /**
+   * Say whether the window holds unsaved work. While it does, closing it (the title bar, the
+   * shortcut, the palette) asks first; `close` resolves without closing if the answer is no.
+   */
+  setDirty(winId: string, dirty: boolean): void
   wm(action: WMAction): void
   wmState(): WMState
   area(): Rect

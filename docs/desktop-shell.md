@@ -137,6 +137,7 @@ window when it closes; the overlay draws its own backdrop and handles its own ke
 Inside a window, `useDesk()` gives the desktop: `open(app, { args, key, title })`,
 `openFile({ root, path })` (opens the app registered for that file), `close`, `setTitle`,
 the window manager, the palette, the terminal toggle, the shell status, and
+`setDirty(winId, dirty)` (while set, closing the window asks first), and
 `confirm({ title, message, confirmLabel, danger })`, a yes/no dialog that resolves to a
 boolean. Use it instead of `window.confirm`: the desktop app's web view has no handler for
 JavaScript dialogs and answers "no" without showing anything. For content that is
@@ -278,10 +279,9 @@ Other things learned:
 ## Known gaps
 
 - No app icon.
-- Fragments Engine records are not cited yet (no id pattern or resolver), and Tether agents
-  and file paths are detected but have no preview.
-- Notes edits in a plain text area (no syntax highlighting, no markdown shortcuts), cannot
-  create a new file, and closing a window with unsaved changes does not ask (the draft is kept).
+- Tether agents and file paths are detected as references but have no preview.
+- Notes edits in a plain text area (no syntax highlighting, no markdown shortcuts) and cannot
+  create a new file.
 - One window per app: two terminals side by side need a second terminal window, which the
   deck does not support yet (tabs only).
 - The terminal has no search, no split panes and no configuration; font size is the one setting

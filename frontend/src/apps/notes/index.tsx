@@ -165,6 +165,10 @@ function NotesWindow({ winId, args }: WindowProps) {
   useEffect(() => {
     if (title) desk.setTitle(winId, dirty ? `● ${title}` : title)
   }, [desk, winId, title, dirty])
+  // Unsaved changes: the desktop asks before closing this window.
+  useEffect(() => {
+    desk.setDirty(winId, dirty)
+  }, [desk, winId, dirty])
 
   const edit = (text: string) => {
     setDraft(text)

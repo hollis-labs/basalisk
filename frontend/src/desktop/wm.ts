@@ -27,6 +27,8 @@ export interface Win {
   args: Record<string, unknown>
   /** For an app with several windows: what this one shows, so it is not opened twice. */
   key?: string
+  /** The app says it holds unsaved work; closing asks first. */
+  dirty?: boolean
 }
 
 export interface WMState {
@@ -67,6 +69,7 @@ export type WMAction =
     }
   | { type: "title"; id: string; title: string }
   | { type: "args"; id: string; args: Record<string, unknown> }
+  | { type: "dirty"; id: string; dirty: boolean }
   | { type: "close"; id: string }
   | { type: "focus"; id: string }
   | { type: "rect"; id: string; rect: Rect }
@@ -145,6 +148,8 @@ export function reducer(s: WMState, a: WMAction): WMState {
       return patch(s, a.id, { title: a.title })
     case "args":
       return patch(s, a.id, { args: a.args })
+    case "dirty":
+      return patch(s, a.id, { dirty: a.dirty })
     case "close":
       return {
         ...s,

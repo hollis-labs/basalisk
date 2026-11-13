@@ -163,7 +163,22 @@ export function Desktop() {
         api.open(handler.app, { args: { file: ref }, key: `${ref.root}:${ref.path}`, title: name })
         return true
       },
-      close: (id) => dispatch({ type: "close", id }),
+      close(id) {
+        const win = stateRef.current.wins.find((w) => w.id === id)
+        if (!win?.dirty) {
+          dispatch({ type: "close", id })
+          return
+        }
+        void api
+          .confirm({
+            title: `Close ${win.title.replace(/^● /, "")}?`,
+            message: "It has unsaved changes.",
+            confirmLabel: "Close anyway",
+            danger: true,
+          })
+          .then((yes) => yes && dispatch({ type: "close", id }))
+      },
+      setDirty: (id, dirty) => dispatch({ type: "dirty", id, dirty }),
       setTitle: (id, title) => dispatch({ type: "title", id, title }),
       setArgs: (id, args) => dispatch({ type: "args", id, args }),
       wm: dispatch,
@@ -493,6 +508,7 @@ export function Desktop() {
                 hitTest={hitTest}
                 onDropTarget={setDropTarget}
                 onMoving={onMoving}
+                onClose={desk.close}
               />
             )
           })}
@@ -602,6 +618,7 @@ function WindowFrame({
   hitTest,
   onDropTarget,
   onMoving,
+  onClose,
 }: {
   win: Win
   app: AppDef
@@ -613,6 +630,7 @@ function WindowFrame({
   hitTest: (x: number, y: number, self: string) => string | null
   onDropTarget: (id: string | null) => void
   onMoving: (id: string, moving: boolean) => void
+  onClose: (id: string) => void
 }) {
   const drag = useRef<{ px: number; py: number; x: number; y: number; moved: boolean } | null>(null)
   const resize = useRef<{ dir: string; px: number; py: number; start: Rect } | null>(null)
@@ -767,7 +785,7 @@ function WindowFrame({
             className="desk-close"
             title="Close (⌃⌥W)"
             aria-label="Close window"
-            onClick={() => dispatch({ type: "close", id: win.id })}
+            onClick={() => onClose(win.id)}
           >
             <X aria-hidden="true" size={13} strokeWidth={1.6} />
           </button>
