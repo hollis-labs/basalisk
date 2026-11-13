@@ -3,3 +3,4 @@
  * file handlers) when imported, so adding an app is its own folder and one line here.
  */
 import "./builtin"
+import "./files"

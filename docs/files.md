@@ -49,3 +49,15 @@ stays a link.
 
 Remote modification times have one-second resolution, so two saves of the same size within
 one second share an ETag.
+
+## The Files window
+
+`frontend/src/apps/files`. Places (roots) on the left, the folder in the middle, a preview on
+the right (text, images, audio, video, file details). It is keyboard first: type to filter,
+↑↓ PageUp/PageDown Home/End to move, ↵ or → to open, ⌫ or ← to go up, ⌘[ ⌘] back and
+forward, Space or ⌘I to toggle the preview, ⌘⇧. for hidden files, ⌃T for a terminal in this
+folder (local roots), ⌘⌥C to copy the full path, ⌘R or F5 to reload.
+
+Opening a file calls `desk.openFile`; when no app handles that file the preview shows it. The
+palette finds places and recently opened files, and ⌃⌥E opens Files. The last folder, the
+hidden-files and preview choices, and the recents are kept in local storage.

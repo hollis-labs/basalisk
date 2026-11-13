@@ -7,6 +7,17 @@ const FONT_KEY = "basalisk.terminal.fontSize"
 const ACTIVE_KEY = "basalisk.terminal.active"
 const DEFAULT_FONT = 14
 
+const ADOPT_EVENT = "basalisk:terminal-adopt"
+
+/**
+ * Shows a session created elsewhere (Files' "open terminal here") as the active tab: now,
+ * if the deck is running, or when it next starts.
+ */
+export function adoptTerminal(session: TerminalSession) {
+  window.localStorage.setItem(ACTIVE_KEY, session.id)
+  window.dispatchEvent(new CustomEvent(ADOPT_EVENT, { detail: session }))
+}
+
 function storedFont(): number {
   const n = Number(window.localStorage.getItem(FONT_KEY))
   return n >= 9 && n <= 32 ? n : DEFAULT_FONT
@@ -66,6 +77,16 @@ export function TerminalDeck({ epoch, onEmpty }: { epoch: number; onEmpty: () =>
       live = false
     }
   }, [create, select])
+
+  useEffect(() => {
+    const onAdopt = (e: Event) => {
+      const s = (e as CustomEvent<TerminalSession>).detail
+      setSessions((list) => (list.some((x) => x.id === s.id) ? list : [...list, s]))
+      select(s.id)
+    }
+    window.addEventListener(ADOPT_EVENT, onAdopt)
+    return () => window.removeEventListener(ADOPT_EVENT, onAdopt)
+  }, [select])
 
   const remove = useCallback(
     (id: string) => {
