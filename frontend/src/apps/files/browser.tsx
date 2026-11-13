@@ -34,6 +34,7 @@ import { adoptTerminal } from "../../terminal/deck"
 import {
   baseOf,
   cacheKey,
+  filesLocations,
   formatSize,
   formatTime,
   iconOf,
@@ -162,11 +163,14 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
       })
       .finally(() => window.clearTimeout(slowTimer))
     setLastLoc(loc)
+    filesLocations.set(winId, loc)
     return () => {
       live = false
       window.clearTimeout(slowTimer)
     }
-  }, [loc, reload])
+  }, [loc, reload, winId])
+
+  useEffect(() => () => void filesLocations.delete(winId), [winId])
 
   // ---- Title follows the location. ----
   useEffect(() => {

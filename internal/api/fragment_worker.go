@@ -181,11 +181,11 @@ func (w *FragmentWorker) freeze(ctx context.Context, j *deliveryJob, origin stri
 		tags = []string{}
 	}
 	title := "Frag note"
-	device := j.device
-	if isOwnerCapture(device) {
-		device = "owner" // the owner's own capture in Basalisk; no device, no context sent
+	provenance := map[string]any{"capture_id": in.CaptureID, "device_id": j.device, "draft_at": in.DraftAt, "submitted_at": in.SubmittedAt, "draft": in.Draft, "save_context": in.SaveContext}
+	if isOwnerCapture(j.device) {
+		// The owner's own capture: no device, and its context (session, window) stays here.
+		provenance = map[string]any{"capture_id": in.CaptureID, "device_id": "owner", "draft_at": in.DraftAt, "submitted_at": in.SubmittedAt}
 	}
-	provenance := map[string]any{"capture_id": in.CaptureID, "device_id": device, "draft_at": in.DraftAt, "submitted_at": in.SubmittedAt, "draft": in.Draft, "save_context": in.SaveContext}
 	if in.ContextBindingID != "" {
 		provenance["capture_context_binding_id"] = in.ContextBindingID
 	}

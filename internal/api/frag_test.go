@@ -9,12 +9,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hollis-labs/basalisk/internal/activity"
 )
 
 func fragIn(id, content string, tags ...string) map[string]any {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	return map[string]any{"captureId": id, "content": content, "tags": tags, "draftAt": now, "submittedAt": now,
-		"context": map[string]any{"window": map[string]string{"app": "notes", "title": "plan.md"}}}
+		"context": map[string]any{"draft": map[string]any{"window": map[string]string{"app": "notes", "title": "plan.md"}}}}
 }
 
 func ownerRow(t *testing.T, f *deliveryFixture, seq int64) (state, code, integration, fragment string) {
@@ -175,5 +177,55 @@ func TestFragCaptureValidation(t *testing.T) {
 	s.Handler().ServeHTTP(w, r)
 	if w.Code != 401 {
 		t.Fatal(w.Code)
+	}
+}
+
+// Context: the draft session is kept only when it is the owner's, the save session is read on
+// the server, and the saved fragment joins the session; none of it reaches FE.
+func TestFragContextAndSessionArtifact(t *testing.T) {
+	f := newDeliveryFixture(t, false)
+	personal, _ := f.s.NewFragmentWorker(DeliveryConfig{}, f.server.Client())
+	f.s.db.Exec(`DELETE FROM integrations`)
+	f.peer.jwt = "personal-owner-token-0123456789abcdef"
+	f.c.call("POST", "/api/integrations", map[string]any{"name": "FE", "provider": "fragments-engine", "baseUrl": f.server.URL, "credential": f.peer.jwt}, 201)
+	session := command(f.c, activity.Command{RequestID: "frag-session-start-001", Action: "start", Title: "Writing", Project: "Secret Project"}, 200)
+
+	in := fragIn("frag-capture-000010", "context test")
+	in["context"] = map[string]any{
+		"draft": map[string]any{"session": map[string]string{"id": session.ID, "project": "Secret Project"}, "window": map[string]string{"app": "browser", "url": "https://example.com/private-page"}},
+		"save":  map[string]any{"session": map[string]string{"id": "forged-session"}, "window": map[string]string{"app": "notes", "title": "plan.md"}},
+	}
+	q := responseAs[fragmentSubmissionStatus](t, f.c.call("POST", "/api/frag/captures", in, 202))
+	forged := fragIn("frag-capture-000011", "forged session")
+	forged["context"] = map[string]any{"draft": map[string]any{"session": map[string]string{"id": "not-my-session"}}}
+	q2 := responseAs[fragmentSubmissionStatus](t, f.c.call("POST", "/api/frag/captures", forged, 202))
+	for range 3 {
+		if err := personal.Once(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st, _, _, _ := ownerRow(t, f, q.Sequence); st != "saved" {
+		t.Fatal(st)
+	}
+	for _, m := range f.peer.manifests {
+		for _, secret := range []string{"Secret Project", session.ID, "private-page", "plan.md", "Writing"} {
+			if strings.Contains(m, secret) {
+				t.Fatalf("context reached FE: %q in %s", secret, m)
+			}
+		}
+	}
+	// The stored context: the save session is the server's current one, not the forged id.
+	var payload string
+	f.s.db.QueryRow(`SELECT payload FROM fragment_submissions WHERE sequence=?`, q.Sequence).Scan(&payload)
+	if !strings.Contains(payload, `"ownerContext"`) || !strings.Contains(payload, "private-page") || strings.Contains(payload, "forged-session") || strings.Count(payload, session.ID) < 2 {
+		t.Fatal(payload)
+	}
+	f.s.db.QueryRow(`SELECT payload FROM fragment_submissions WHERE sequence=?`, q2.Sequence).Scan(&payload)
+	if strings.Contains(payload, "not-my-session") {
+		t.Fatal("a session that is not the owner's was kept")
+	}
+	page := f.c.call("GET", "/api/activity/sessions/"+session.ID+"/artifacts", nil, 200).Body.String()
+	if !strings.Contains(page, "confirmed-fragment") || strings.Count(page, `"fragmentID"`) != 2 {
+		t.Fatal(page)
 	}
 }

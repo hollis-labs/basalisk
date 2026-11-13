@@ -192,6 +192,9 @@ export const parentOf = (path: string) => {
 }
 export const baseOf = (path: string) => path.slice(path.lastIndexOf("/") + 1)
 
+/** Where each Files window is, for others to ask (Frag's capture context). */
+export const filesLocations = new Map<string, Loc>()
+
 /** Listings already seen, so going back is instant; a fresh copy replaces them. */
 export const listingCache = new Map<string, FileListing>()
 export const cacheKey = (l: Loc) => `${l.root}\u0000${l.path}`

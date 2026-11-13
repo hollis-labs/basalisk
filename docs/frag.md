@@ -22,6 +22,20 @@ The capture id belongs to one text: it stays the same while the content and tags
 second ⌘↩ answers with the same row (200), and the same id with different text is refused
 (409; the box then takes a new id).
 
+## Context
+
+When a draft begins, the box notes the moment: the active work session and the window that had
+focus (its app and title, and what the app can say: the folder of a Files window, the file of a
+Notes window, the page of a Browser window, the directory of the terminal). A kept draft keeps
+the moment it began. At save the window is read again, and the server reads the session itself.
+
+The server keeps a draft session only if it is the owner's, and records the save session from
+its own state, never from the request. The context is stored with the queued capture
+(`ownerContext`, shown in `GET /api/frag/captures`) and never sent to FE. Once FE confirms the
+capture, the fragment is listed in the session's artifacts
+(`/api/activity/sessions/{id}/artifacts`), under the draft's session or, without one, the
+session it was saved in. While a draft belongs to a session the status line says so.
+
 ## Delivery modes
 
 - **Exchange**, when the five delivery keys are configured (`fe_integration_id`,
@@ -40,7 +54,8 @@ row or sent to the page. `GET /api/frag` reports the mode and the integration in
 
 ```
 GET  /api/frag            -> {mode: exchange|personal|off, integration: {id, name} | null}
-POST /api/frag/captures   {captureId, content, tags, draftAt, submittedAt, context?}
+POST /api/frag/captures   {captureId, content, tags, draftAt, submittedAt,
+                           context?: {draft?: {session?, window?}, save?: {window?}}}
                           -> 202 queued | 200 the same capture | 409 the id has other text
 GET  /api/frag/captures   -> {items: [status + content, tags, context]}, newest first, 50
 ```

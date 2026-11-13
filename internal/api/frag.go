@@ -160,6 +160,60 @@ func (a *API) fragState(w http.ResponseWriter, r *http.Request) {
 	reply(w, 200, out)
 }
 
+// fragContext is what the capture box knew when the draft began and when it was saved: the
+// work session (as the box read it) and the window that had focus.
+type fragContext struct {
+	Draft *fragMoment `json:"draft,omitempty"`
+	Save  *fragMoment `json:"save,omitempty"`
+}
+type fragMoment struct {
+	Session *fragSession    `json:"session,omitempty"`
+	Window  json.RawMessage `json:"window,omitempty"`
+}
+type fragSession struct {
+	ID         string `json:"id"`
+	Title      string `json:"title,omitempty"`
+	Project    string `json:"project,omitempty"`
+	Workstream string `json:"workstream,omitempty"`
+	ContextID  string `json:"contextId,omitempty"`
+}
+
+// freezeOwnerContext checks the context the box sent and completes it on the server: a draft
+// session is kept only if it is the owner's, and the save-time session is read here, not
+// taken from the request. The sessions also go in the submission's draft and save context,
+// which link the saved fragment to the session (they are not sent to FE for owner captures).
+func (a *API) freezeOwnerContext(ctx context.Context, owner, device string, in fragCaptureIn, sub *fragmentSubmission) json.RawMessage {
+	var c fragContext
+	if len(in.Context) > 0 {
+		_ = json.Unmarshal(in.Context, &c)
+	}
+	if c.Draft != nil && c.Draft.Session != nil && (c.Draft.Session.ID == "" || a.svc.activity.Owns(ctx, owner, c.Draft.Session.ID) != nil) {
+		c.Draft.Session = nil
+	}
+	if c.Save == nil {
+		c.Save = &fragMoment{}
+	}
+	c.Save.Session = nil
+	if st, err := a.svc.activity.State(ctx, owner); err == nil && st.Current != nil && st.Current.Status != "ended" {
+		cur := st.Current
+		c.Save.Session = &fragSession{ID: cur.ID, Title: cur.Title, Project: cur.Context.Project, Workstream: cur.Context.Workstream, ContextID: cur.Context.ID}
+	}
+	moment := func(m *fragMoment, at string) *artifactContext {
+		if m == nil || m.Session == nil {
+			return nil
+		}
+		return &artifactContext{SchemaVersion: 1, Origin: "basalisk", DeviceID: device, SessionID: m.Session.ID, ContextID: m.Session.ContextID,
+			ContextAsOf: at, PublishedAt: at, ExpiresAt: at, Project: m.Session.Project, Workstream: m.Session.Workstream, HistoryRefs: []string{}}
+	}
+	sub.Draft = moment(c.Draft, in.DraftAt)
+	if sub.Draft == nil {
+		sub.Draft = moment(c.Save, in.DraftAt) // the session the note was saved in
+	}
+	sub.SaveContext = moment(c.Save, in.SubmittedAt)
+	raw, _ := json.Marshal(c)
+	return raw
+}
+
 type fragCaptureIn struct {
 	CaptureID   string          `json:"captureId"`
 	Content     string          `json:"content"`
@@ -200,12 +254,13 @@ func (a *API) fragCapture(w http.ResponseWriter, r *http.Request) {
 	device := ownerDevicePrefix + owner
 	// The hash covers what FE receives; the context is ours and may be read again at save.
 	sub := fragmentSubmission{CaptureID: in.CaptureID, Content: in.Content, Tags: in.Tags, DraftAt: in.DraftAt, SubmittedAt: in.SubmittedAt}
+	ownerCtx := a.freezeOwnerContext(r.Context(), owner, device, in, &sub)
 	hashed, _ := json.Marshal(struct {
 		Content string   `json:"content"`
 		Tags    []string `json:"tags"`
 	}{sub.Content, sub.Tags})
 	hash := digest(string(hashed))
-	stored, _ := json.Marshal(ownerCapture{sub, in.Context})
+	stored, _ := json.Marshal(ownerCapture{sub, ownerCtx})
 
 	tx, err := a.svc.db.BeginTx(r.Context(), nil)
 	if err != nil {

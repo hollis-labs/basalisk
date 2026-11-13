@@ -10,6 +10,8 @@ export interface Draft {
   captureId: string
   /** content + tags the id was made for. */
   idFor: string
+  /** The moment the draft began (session, focused window), read once. */
+  context?: unknown
 }
 
 const KEY = "basalisk.frag.draft"

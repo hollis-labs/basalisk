@@ -1,6 +1,8 @@
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
 import { ApiError } from "../../api/account"
 import { type FragCapture, type FragState, frag } from "../../api/frag"
+import { useDesk } from "../../desktop/context"
+import { type Moment, moment } from "./context"
 import { captureIdFor, type Draft, newDraft, parseTags, readDraft, writeDraft } from "./draft"
 
 type Status =
@@ -31,11 +33,18 @@ function described(c: FragCapture, state: FragState | null): Status {
   return { tone: "ok", text: "queued" }
 }
 
+/** "session linked · <project>" while the draft belongs to a work session. */
+function linked(d: Draft): string {
+  const s = (d.context as Moment | undefined)?.session
+  return s ? `session linked · ${s.project || s.title}` : ""
+}
+
 /**
  * The capture box: text and tags, ⌘↩ queues the note on this Basalisk (delivery happens
  * behind it, so nothing is lost offline), Esc hides it and keeps the draft.
  */
 export function Capture({ close }: { close: () => void }) {
+  const desk = useDesk()
   const [draft, setDraft] = useState<Draft>(readDraft)
   const [status, setStatus] = useState<Status>({ tone: "idle", text: "" })
   const [state, setState] = useState<FragState | null>(null)
@@ -43,6 +52,20 @@ export function Capture({ close }: { close: () => void }) {
   const [pulse, setPulse] = useState(0)
   const textRef = useRef<HTMLTextAreaElement>(null)
   const saving = useRef(false)
+
+  // A new draft remembers the moment it began (once; a kept draft keeps its own).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read once, when the box opens
+  useEffect(() => {
+    if (draft.context) return
+    void moment(desk).then((m) =>
+      setDraft((d) => {
+        if (d.context) return d
+        const next = { ...d, context: m }
+        if (next.content || next.tags) writeDraft(next)
+        return next
+      }),
+    )
+  }, [])
 
   useEffect(() => {
     textRef.current?.focus()
@@ -100,6 +123,7 @@ export function Capture({ close }: { close: () => void }) {
     saving.current = true
     let d = captureIdFor(draft)
     setStatus({ tone: "busy", text: "queueing…" })
+    const atSave = await moment(desk).catch(() => ({}) as Moment)
     const send = (dd: Draft) =>
       frag.capture({
         captureId: dd.captureId,
@@ -107,6 +131,7 @@ export function Capture({ close }: { close: () => void }) {
         tags: parseTags(dd.tags),
         draftAt: dd.draftAt,
         submittedAt: new Date().toISOString(),
+        context: { draft: dd.context, save: { window: atSave.window } },
       })
     try {
       let c: FragCapture
@@ -193,7 +218,7 @@ export function Capture({ close }: { close: () => void }) {
         </label>
         <footer className="frag-foot">
           <span className="frag-status" data-tone={status.tone} role="status">
-            {status.text}
+            {status.text || linked(draft)}
           </span>
           <span className="frag-hint">esc hide · ⌘↵ commit</span>
         </footer>
