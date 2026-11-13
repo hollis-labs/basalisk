@@ -340,6 +340,14 @@ static void handle(NSDictionary *m, BSLReply reply) {
 		[w evaluateJavaScript:@"window.getSelection()&&window.getSelection().removeAllRanges();0" completionHandler:nil];
 		return reply(@YES, nil);
 	}
+	if ([op isEqual:@"external"]) {
+		// The way out for a site that needs what this view lacks (extensions, DRM).
+		NSURL *u = w.URL;
+		NSString *scheme = u.scheme.lowercaseString;
+		if (!u || !([scheme isEqual:@"http"] || [scheme isEqual:@"https"])) return reply(nil, @"only web pages open elsewhere");
+		[[NSWorkspace sharedWorkspace] openURL:u];
+		return reply(@YES, nil);
+	}
 	if ([op isEqual:@"state"]) return reply(stateOf(w), nil);
 	if ([op isEqual:@"close"]) {
 		destroy(w);
@@ -391,8 +399,10 @@ static void handle(NSDictionary *m, BSLReply reply) {
 
 // ---- Navigation ----
 
+// ⌘-click and middle-click on a link open it in a new Browser window.
 static BOOL wantsNewWindow(WKNavigationAction *a) {
-	return a.navigationType == WKNavigationTypeLinkActivated && (a.modifierFlags & NSEventModifierFlagCommand);
+	return a.navigationType == WKNavigationTypeLinkActivated &&
+	       ((a.modifierFlags & NSEventModifierFlagCommand) || a.buttonNumber == 2);
 }
 
 - (void)webView:(WKWebView *)webView

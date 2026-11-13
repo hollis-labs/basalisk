@@ -24,6 +24,7 @@ await window.webkit.messageHandlers.basaliskBrowser.postMessage({ op, id, ...fie
 | `zoom` | `zoom` (0.25 to 5) | page zoom |
 | `find` | `query`, `backwards?`, `caseSensitive?` | finds and selects the next match (wraps); returns `{found}` |
 | `find-clear` | | clears the selection |
+| `external` | | opens the page in the default browser (http and https only) |
 | `state` | | returns `{id,url,title,loading,progress,back,forward,visible}` |
 | `snapshot` | | returns a JPEG data URL of the view |
 | `eval` | `js` | runs script in the view, returns its result |
@@ -32,8 +33,8 @@ await window.webkit.messageHandlers.basaliskBrowser.postMessage({ op, id, ...fie
 | `chords` | `chords` | the shortcuts to hand back while a view has the keyboard |
 
 The views answer with `basalisk:browser` DOM events: `state` (on any change of url, title,
-loading, progress or history), `error`, `crashed`, `open` (window.open, target=_blank or
-⌘-click: the desktop opens another Browser window), `close`, `focus` (a click in the view, so
+loading, progress or history), `error`, `crashed`, `open` (window.open, target=_blank,
+⌘-click or middle-click: the desktop opens another Browser window), `close`, `focus` (a click in the view, so
 the desktop focuses that window), `chord` (below) and `download` (into ~/Downloads, never over a file).
 
 The views share one persistent website data store of their own, so sites keep their logins and
@@ -115,6 +116,13 @@ ranked by visits weighted for recency, and a host that starts with the query com
 Every page a window settles on is recorded (http and https only). Typing in the address field
 lists matching pages under it (↓ ↑ to choose, Enter to go, Esc to close the list), and the
 palette's History section finds them too (rows `browser:history:<url>`); both rank as above.
+
+## Links and the way out
+
+⌘-click and middle-click on a link open it in a new Browser window, and so does WebKit's own
+link menu ("Open Link in New Window", beside "Copy Link"), since it goes through the same
+new-window path as window.open. The ↗ button in the chrome opens the current page in the
+default browser, for a site that needs extensions or DRM.
 
 ## Links stay in the desktop
 

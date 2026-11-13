@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Globe, Lock, RotateCw, X } from "lucide-react"
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, Lock, RotateCw, X } from "lucide-react"
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
 import {
   BROWSER_EVENT,
@@ -555,6 +555,16 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
           </button>
         )}
         {notice && <span className="browser-notice">{notice}</span>}
+        {/^https?:/.test(state.url) && (
+          <button
+            type="button"
+            className="files-icon"
+            title="Open in the default browser (for sites that need extensions or DRM)"
+            onClick={() => void send({ op: "external" }).catch((e: Error) => flash(e.message))}
+          >
+            <ExternalLink size={15} strokeWidth={1.6} aria-label="Open in the default browser" />
+          </button>
+        )}
       </div>
       {finding && <FindBar inputRef={findRef} find={find} onClose={closeFind} />}
       <div

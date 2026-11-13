@@ -80,3 +80,17 @@ void hxKey(unsigned short code, unsigned long flags, const char *chars) {
 		[NSApp postEvent:e atStart:NO];
 	});
 }
+
+// hxClick posts a left click at a point in the window (AppKit coordinates). (A middle click
+// cannot be synthesized for an off-screen window: AppKit's constructor has no button number,
+// and a CoreGraphics event is not routed to a window that is not under the pointer.)
+void hxClick(double x, double y, unsigned long flags) {
+	dispatch_async(dispatch_get_main_queue(), ^{
+		NSEvent *d = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:NSMakePoint(x, y) modifierFlags:flags
+		                               timestamp:0 windowNumber:hWin.windowNumber context:nil eventNumber:0 clickCount:1 pressure:1];
+		NSEvent *u = [NSEvent mouseEventWithType:NSEventTypeLeftMouseUp location:NSMakePoint(x, y) modifierFlags:flags
+		                               timestamp:0 windowNumber:hWin.windowNumber context:nil eventNumber:0 clickCount:1 pressure:0];
+		[NSApp postEvent:d atStart:NO];
+		[NSApp postEvent:u atStart:NO];
+	});
+}

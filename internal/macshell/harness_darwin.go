@@ -12,6 +12,7 @@ char *hxEvalPage(const char *js);
 char *hxViewFrame(const char *id);
 void hxStop(void);
 void hxKey(unsigned short code, unsigned long flags, const char *chars);
+void hxClick(double x, double y, unsigned long flags);
 */
 import "C"
 
@@ -52,4 +53,13 @@ func HxKey(code uint16, cmd bool, chars string) {
 		flags = 1 << 20 // NSEventModifierFlagCommand
 	}
 	C.hxKey(C.ushort(code), flags, c)
+}
+
+// HxClick left-clicks at a window point (AppKit coordinates, origin bottom left).
+func HxClick(x, y float64, cmd bool) {
+	var flags C.ulong
+	if cmd {
+		flags = 1 << 20
+	}
+	C.hxClick(C.double(x), C.double(y), flags)
 }

@@ -96,6 +96,17 @@ func TestBrowserViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, "back", func() bool { v, _ := DefaultBrowser().List(); return len(v) == 1 && v[0].Title == "Site One" })
+	// ⌘-click on the link (top left of the view, which sits at 100,350 to 700,750 in the
+	// window) becomes an "open" event and leaves the page where it is. Middle-click takes the
+	// same path (buttonNumber 2) but cannot be synthesized here; see hxClick.
+	countOpens := func() string { return HxEvalPage(`return window.__ev.filter(e=>e.kind==='open').length`) }
+	before := countOpens()
+	HxClick(112, 742, true)
+	waitFor(t, "cmd-click open", func() bool { return countOpens() != before })
+	if v, _ := DefaultBrowser().List(); len(v) != 1 || v[0].Title != "Site One" {
+		t.Errorf("the page moved: %+v", v)
+	}
+
 	// window.open becomes an "open" event, not a window.
 	_, _ = DefaultBrowser().Command(map[string]any{"op": "eval", "id": "w1", "js": "window.open('/site2'); 1"})
 	waitFor(t, "open event", func() bool {
@@ -131,6 +142,11 @@ func TestBrowserViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, "file", func() bool { v, _ := DefaultBrowser().List(); return len(v) == 1 && v[0].Title == "Local File" })
+	// "Open in default browser" is for web pages only. (It is never run on one here: that
+	// would open the default browser and take focus.)
+	if _, err = DefaultBrowser().Command(map[string]any{"op": "external", "id": "w1"}); err == nil {
+		t.Error("external opened a file page")
+	}
 
 	// Chords the page asked for come back to it while the view has the keyboard; others go
 	// to the site.
