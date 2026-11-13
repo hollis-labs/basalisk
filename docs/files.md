@@ -76,9 +76,17 @@ one second share an ETag.
 
 `frontend/src/apps/files`. Places (roots) on the left, the folder in the middle, a preview on
 the right (text, images, audio, video, file details). It is keyboard first: type to filter,
-↑↓ PageUp/PageDown Home/End to move, ↵ or → to open, ⌫ or ← to go up, ⌘[ ⌘] back and
+↑↓ PageUp/PageDown Home/End to move, ⌘O or → to open, ⌫ or ← to go up, ⌘[ ⌘] back and
 forward, Space or ⌘I to toggle the preview, ⌘⇧. for hidden files, ⌃T for a terminal in this
 folder (local roots), ⌘⌥C to copy the full path, ⌘R or F5 to reload.
+
+Managing files: ⌘N new file and ⌘⇧N new folder (the name is typed in place), Enter or F2 renames,
+⌘D duplicates, ⌘⌫ deletes (to the Trash locally; a remote delete asks first and says it is
+permanent), ⌘C / ⌘X / ⌘V copy, cut and paste files between folders and Files windows, ⌘A selects
+everything; ⌘-click and ⇧-click or ⇧↑↓ select several. A right-click gives the same as a menu.
+Rows drag onto a folder or a place to move them (⌥ to copy). A name that is taken is never
+replaced: Files asks, and "keep both" gives the new one a free name. Every window showing a
+changed folder reloads it. ⌘O, ⌘↓, → (folders) or a double-click opens.
 
 Opening a file calls `desk.openFile`; when no app handles that file the preview shows it. The
 palette finds places and recently opened files, and ⌃⌥E opens Files. The last folder, the

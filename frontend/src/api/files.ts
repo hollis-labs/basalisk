@@ -29,8 +29,15 @@ export interface FileListing {
   entries: FileEntry[]
 }
 
+export interface FileRefLike {
+  root: string
+  path: string
+}
+
 const q = (root: string, path: string) =>
   `root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+
+const q_ = (root: string, path: string) => q(root, path)
 
 export const files = {
   state: () => request<{ enabled: boolean; roots?: FileRoot[]; terminal?: boolean }>("files"),
@@ -40,6 +47,24 @@ export const files = {
   /** The file's bytes; usable as an <img> src. */
   contentURL: (root: string, path: string, download = false) =>
     `/api/files/content?${q(root, path)}${download ? "&download=1" : ""}`,
+  mkdir: (root: string, path: string) => request<FileEntry>("files/mkdir", "POST", { root, path }),
+  create: (root: string, path: string) =>
+    request<FileEntry>("files/create", "POST", { root, path }),
+  move: (from: FileRefLike, to: FileRefLike) =>
+    request<FileEntry>("files/move", "POST", { from, to }),
+  copy: (from: FileRefLike, to: FileRefLike) =>
+    request<FileEntry>("files/copy", "POST", { from, to }),
+  /** Local places go to the Trash (trashed true); remote ones are gone for good. */
+  remove: (root: string, path: string) =>
+    request<{ trashed: boolean }>("files/delete", "POST", { root, path }),
+  search: (root: string, path: string, q: string) =>
+    request<{ entries: FileEntry[]; truncated: boolean }>(
+      `files/search?${q_(root, path)}&q=${encodeURIComponent(q)}`,
+    ),
+  hosts: () => request<{ hosts: string[] }>("files/hosts").then((r) => r.hosts),
+  addRoot: (host: string, path: string, label = "") =>
+    request<FileRoot>("files/roots", "POST", { host, path, label }),
+  removeRoot: (id: string) => request<void>(`files/roots/${encodeURIComponent(id)}`, "DELETE"),
   terminal: (root: string, path: string) =>
     request<TerminalSession>("files/terminal", "POST", { root, path }),
 }

@@ -380,3 +380,92 @@
     grid-template-columns: minmax(0, 1fr) 64px;
   }
 }
+
+/* ---- Operations: picks, drops, cut items, names being typed, the context menu ---- */
+.files-row[data-picked="true"] {
+  background: color-mix(in srgb, var(--desk-accent-soft) 80%, transparent);
+  color: var(--desk-fg);
+}
+.files-row[data-drop="true"],
+.files-side button[data-drop="true"] {
+  box-shadow: inset 0 0 0 1px var(--desk-accent);
+  background: var(--desk-accent-soft);
+}
+.files-row[data-cut="true"] {
+  opacity: 0.45;
+}
+.files-new {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 14px;
+  border-radius: 5px;
+  background: var(--desk-panel);
+  box-shadow: inset 0 0 0 1px var(--desk-accent);
+  color: var(--desk-muted);
+}
+/* biome-ignore lint/style/noDescendingSpecificity: the new-item row's own name cell */
+.files-new .files-name {
+  gap: 10px;
+}
+.files-name-edit {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--desk-accent);
+  border-radius: 4px;
+  background: var(--desk-bg);
+  color: var(--desk-fg);
+  font: inherit;
+  outline: none;
+}
+.files-menu {
+  position: fixed;
+  z-index: 20000;
+  min-width: 13rem;
+  padding: 4px;
+  border: 1px solid var(--desk-border);
+  border-radius: 8px;
+  background: var(--desk-panel);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.5);
+  font-family: var(--desk-font);
+  font-size: 12.5px;
+}
+.files-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 5px 10px;
+  border-radius: 5px;
+  color: var(--desk-fg-soft);
+  text-align: left;
+}
+.files-menu button:hover:not(:disabled),
+.files-menu button:focus-visible {
+  background: var(--desk-accent-soft);
+  color: var(--desk-fg);
+  outline: none;
+}
+.files-menu button:disabled {
+  opacity: 0.4;
+}
+.files-menu button[data-danger="true"] {
+  color: var(--desk-accent-2);
+}
+.files-menu kbd {
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--desk-muted);
+}
+.files-menu hr {
+  margin: 4px 6px;
+  border: 0;
+  border-top: 1px solid var(--desk-border);
+}

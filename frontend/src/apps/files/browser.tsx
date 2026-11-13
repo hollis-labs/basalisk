@@ -31,6 +31,8 @@ import {
 import { type FileEntry, type FileRoot, files } from "../../api/files"
 import { useDesk } from "../../desktop/context"
 import { adoptTerminal } from "../../terminal/deck"
+import * as act from "./actions"
+import { ContextMenu, type MenuItem, NameEditor } from "./menu"
 import {
   baseOf,
   cacheKey,
@@ -46,6 +48,7 @@ import {
   remember,
   setLastLoc,
 } from "./model"
+import { CHANGED_EVENT, CLIP_EVENT, DRAG_TYPE, dragItems, getClip } from "./ops"
 import { Preview } from "./preview"
 
 const ROW_H = 26
@@ -96,6 +99,17 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
   const [hidden, setHidden] = useState(prefs.hidden)
   const [preview, setPreview] = useState(prefs.preview)
   const [sel, setSel] = useState<string | null>(null)
+  // Multi-select: the picked paths (empty means just the cursor, sel), and the shift anchor.
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const anchor = useRef<string | null>(null)
+  // A name being typed: a rename of a row, or a new folder or file.
+  const [editing, setEditing] = useState<{
+    mode: "rename" | "folder" | "file"
+    path?: string
+  } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; on: FileEntry | null } | null>(null)
+  const [dropOn, setDropOn] = useState<string | null>(null)
+  const [, setClipTick] = useState(0)
   const [notice, setNotice] = useState("")
   const [reload, setReload] = useState(0)
   const [hasTerminal, setHasTerminal] = useState(false)
@@ -204,6 +218,33 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
 
   const index = shown.findIndex((e) => e.path === sel)
   const selected = index >= 0 ? shown[index] : null
+  // What an operation acts on: the picked rows, else the cursor's.
+  const targets = (): FileEntry[] => {
+    const many = shown.filter((e) => picked.has(e.path))
+    return many.length ? many : selected ? [selected] : []
+  }
+
+  // Another window (or this one) changed a folder this window shows: read it again.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ root: string; folders: string[] }>).detail
+      if (loc && d.root === loc.root && d.folders.includes(loc.path)) setReload((r) => r + 1)
+    }
+    const clip = () => setClipTick((t) => t + 1)
+    window.addEventListener(CHANGED_EVENT, on)
+    window.addEventListener(CLIP_EVENT, clip)
+    return () => {
+      window.removeEventListener(CHANGED_EVENT, on)
+      window.removeEventListener(CLIP_EVENT, clip)
+    }
+  }, [loc])
+  // A new folder clears the picks.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on a change of folder only
+  useEffect(() => {
+    setPicked(new Set())
+    anchor.current = null
+    setEditing(null)
+  }, [loc])
 
   // ---- Scrolling: keep the selection in view; render only the visible rows. ----
   useLayoutEffect(() => {
@@ -332,6 +373,107 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
       .catch(() => flash("Could not copy."))
   }, [flash, loc, root, selected])
 
+  const ctx = (): act.Ctx | null =>
+    root && loc
+      ? {
+          desk,
+          root,
+          folder: loc.path,
+          flash,
+          select: (p: string) => {
+            pendingSel.current = p
+            setPicked(new Set())
+          },
+          refocus: () => listRef.current?.focus({ preventScroll: true }),
+        }
+      : null
+  const run = (f: (c: act.Ctx) => void | Promise<void>) => {
+    const c = ctx()
+    if (c) void f(c)
+  }
+  const pick = (e: FileEntry, ev: { metaKey: boolean; shiftKey: boolean }) => {
+    if (ev.shiftKey && anchor.current) {
+      const a = shown.findIndex((x) => x.path === anchor.current)
+      const b = shown.findIndex((x) => x.path === e.path)
+      if (a >= 0 && b >= 0)
+        setPicked(new Set(shown.slice(Math.min(a, b), Math.max(a, b) + 1).map((x) => x.path)))
+    } else if (ev.metaKey) {
+      setPicked((cur) => {
+        const next = new Set(cur.size ? cur : sel ? [sel] : [])
+        if (next.has(e.path)) next.delete(e.path)
+        else next.add(e.path)
+        return next
+      })
+      anchor.current = e.path
+    } else {
+      setPicked(new Set())
+      anchor.current = e.path
+    }
+    setSel(e.path)
+  }
+  const menuItems = (on: FileEntry | null): (MenuItem | "-")[] => {
+    const items = on ? targets() : []
+    const one = items.length === 1 ? items[0] : null
+    const clip = getClip()
+    const pasteItem: MenuItem = {
+      label: clip
+        ? `Paste ${clip.items.length} item${clip.items.length === 1 ? "" : "s"}`
+        : "Paste",
+      keys: "⌘V",
+      disabled: !clip,
+      run: () => run(act.paste),
+    }
+    if (!on)
+      return [
+        { label: "New folder", keys: "⌘⇧N", run: () => setEditing({ mode: "folder" }) },
+        { label: "New file", keys: "⌘N", run: () => setEditing({ mode: "file" }) },
+        "-",
+        pasteItem,
+      ]
+    return [
+      { label: "Open", keys: "⌘O", disabled: !one, run: () => one && open(one) },
+      {
+        label: "Rename",
+        keys: "↵",
+        disabled: !one,
+        run: () => one && setEditing({ mode: "rename", path: one.path }),
+      },
+      { label: "Duplicate", keys: "⌘D", run: () => run((c) => act.duplicate(c, items)) },
+      "-",
+      { label: "Copy", keys: "⌘C", run: () => root && act.copyItems(root.id, items, "copy") },
+      { label: "Cut", keys: "⌘X", run: () => root && act.copyItems(root.id, items, "cut") },
+      pasteItem,
+      { label: "Copy path", keys: "⌘⌥C", disabled: !one, run: copyPath },
+      "-",
+      {
+        label: root?.kind === "local" ? "Move to Trash" : "Delete…",
+        keys: "⌘⌫",
+        danger: true,
+        run: () => run((c) => act.remove(c, items)),
+      },
+    ]
+  }
+  const dropTo = async (raw: string, dest: { root: string; path: string }, copy: boolean) => {
+    let refs: { root: string; path: string; name: string; dir?: boolean }[]
+    try {
+      refs = JSON.parse(raw)
+    } catch {
+      return
+    }
+    // A folder is not dropped into itself.
+    refs = refs.filter(
+      (r) =>
+        !(r.root === dest.root && (dest.path === r.path || dest.path.startsWith(`${r.path}/`))),
+    )
+    if (refs.length)
+      await act.transfer(
+        { desk, flash, refocus: () => listRef.current?.focus({ preventScroll: true }) },
+        refs,
+        dest,
+        copy ? "copy" : "move",
+      )
+  }
+
   const toggleHidden = useCallback(() => {
     setHidden((h) => {
       prefs.hidden = !h
@@ -351,11 +493,36 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
     const move = (to: number) => {
       if (!shown.length) return
       const i = Math.max(0, Math.min(shown.length - 1, to))
+      setPicked(new Set())
+      anchor.current = shown[i].path
       setSel(shown[i].path)
     }
     const page = Math.max(1, Math.floor(viewH / ROW_H) - 1)
     let handled = true
-    if (e.metaKey && e.key === "ArrowUp") goUp()
+    const shift = (to: number) => {
+      if (!shown.length) return
+      const i = Math.max(0, Math.min(shown.length - 1, to))
+      anchor.current ??= sel
+      const a = shown.findIndex((x) => x.path === anchor.current)
+      setPicked(new Set(shown.slice(Math.min(a, i), Math.max(a, i) + 1).map((x) => x.path)))
+      setSel(shown[i].path)
+    }
+    const one = targets().length === 1 ? targets()[0] : null
+    if (e.metaKey && e.key === "Backspace") run((c) => act.remove(c, targets()))
+    else if (e.metaKey && e.shiftKey && e.code === "KeyN") setEditing({ mode: "folder" })
+    else if (e.metaKey && !e.shiftKey && e.code === "KeyN") setEditing({ mode: "file" })
+    else if (e.metaKey && e.code === "KeyD") run((c) => act.duplicate(c, targets()))
+    else if (e.metaKey && !e.altKey && e.code === "KeyC" && root)
+      act.copyItems(root.id, targets(), "copy")
+    else if (e.metaKey && e.code === "KeyX" && root) act.copyItems(root.id, targets(), "cut")
+    else if (e.metaKey && e.code === "KeyV") run(act.paste)
+    else if (e.metaKey && e.code === "KeyA") setPicked(new Set(shown.map((x) => x.path)))
+    else if (e.metaKey && e.code === "KeyO") selected && open(selected)
+    else if ((e.key === "Enter" && !mod) || e.key === "F2") {
+      if (one) setEditing({ mode: "rename", path: one.path })
+    } else if (e.shiftKey && e.key === "ArrowDown") shift(index + 1)
+    else if (e.shiftKey && e.key === "ArrowUp") shift(index - 1)
+    else if (e.metaKey && e.key === "ArrowUp") goUp()
     else if (e.metaKey && e.key === "ArrowDown") selected && open(selected)
     else if ((e.metaKey && e.key === "[") || (e.altKey && e.key === "ArrowLeft")) goBack()
     else if ((e.metaKey && e.key === "]") || (e.altKey && e.key === "ArrowRight")) goFwd()
@@ -371,12 +538,12 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
     else if (e.key === "PageUp") move(index - page)
     else if (e.key === "Home") move(0)
     else if (e.key === "End") move(shown.length - 1)
-    else if (e.key === "Enter") selected && open(selected)
     else if (e.key === "ArrowRight") selected?.dir && open(selected)
     else if (e.key === "ArrowLeft") goUp()
     else if (e.key === "Backspace") filter ? setFilter((f) => f.slice(0, -1)) : goUp()
     else if (e.key === "Escape") {
       if (filter) setFilter("")
+      else if (picked.size) setPicked(new Set())
       else handled = false
     } else if (e.key === " " && !filter) togglePreview()
     else if (e.key.length === 1) setFilter((f) => f + e.key)
@@ -416,6 +583,24 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
                     tabIndex={-1}
                     data-active={r.id === loc?.root}
                     title={r.kind === "sftp" ? `${r.host}:${r.path}` : r.path}
+                    data-drop={dropOn === `place:${r.id}`}
+                    onDragOver={(ev) => {
+                      if (ev.dataTransfer.types.includes(DRAG_TYPE)) {
+                        ev.preventDefault()
+                        ev.dataTransfer.dropEffect = ev.altKey ? "copy" : "move"
+                        setDropOn(`place:${r.id}`)
+                      }
+                    }}
+                    onDragLeave={() => setDropOn(null)}
+                    onDrop={(ev) => {
+                      setDropOn(null)
+                      ev.preventDefault()
+                      void dropTo(
+                        ev.dataTransfer.getData(DRAG_TYPE),
+                        { root: r.id, path: "" },
+                        ev.altKey,
+                      )
+                    }}
                     onClick={() => {
                       go({ root: r.id, path: "" })
                       listRef.current?.focus()
@@ -553,7 +738,46 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
           aria-activedescendant={selected ? `${winId}-row-${index}` : undefined}
           onKeyDown={onKey}
           onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+          onContextMenu={(ev) => {
+            ev.preventDefault()
+            setMenu({ x: ev.clientX, y: ev.clientY, on: null })
+          }}
+          onDragOver={(ev) => {
+            if (ev.dataTransfer.types.includes(DRAG_TYPE) && !dropOn) {
+              ev.preventDefault()
+              ev.dataTransfer.dropEffect = ev.altKey ? "copy" : "move"
+            }
+          }}
+          onDrop={(ev) => {
+            if (!loc || !ev.dataTransfer.types.includes(DRAG_TYPE)) return
+            ev.preventDefault()
+            void dropTo(
+              ev.dataTransfer.getData(DRAG_TYPE),
+              { root: loc.root, path: loc.path },
+              ev.altKey,
+            )
+          }}
         >
+          {(editing?.mode === "folder" || editing?.mode === "file") && (
+            <div className="files-new" style={{ top: 0 }}>
+              <span className="files-name">
+                {editing.mode === "folder" ? "New folder:" : "New file:"}
+                <NameEditor
+                  initial={editing.mode === "folder" ? "untitled folder" : "untitled.md"}
+                  onCommit={(n) => {
+                    const kind = editing.mode === "folder" ? "folder" : "file"
+                    setEditing(null)
+                    run((c) => act.newItem(c, kind, n))
+                    listRef.current?.focus({ preventScroll: true })
+                  }}
+                  onCancel={() => {
+                    setEditing(null)
+                    listRef.current?.focus({ preventScroll: true })
+                  }}
+                />
+              </span>
+            </div>
+          )}
           <div style={{ height: shown.length * ROW_H, position: "relative" }}>
             {shown.slice(first, last).map((e, k) => {
               const i = first + k
@@ -568,18 +792,69 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
                   tabIndex={-1}
                   className="files-row"
                   data-selected={e.path === sel}
+                  data-picked={picked.has(e.path)}
+                  data-drop={dropOn === e.path}
+                  data-cut={
+                    getClip()?.mode === "cut" &&
+                    getClip()?.items.some((x) => x.root === loc?.root && x.path === e.path)
+                  }
+                  draggable={!editing}
+                  onDragStart={(ev) => {
+                    const items = picked.has(e.path) ? targets() : [e]
+                    ev.dataTransfer.setData(DRAG_TYPE, dragItems(items, loc?.root ?? ""))
+                    ev.dataTransfer.effectAllowed = "copyMove"
+                  }}
+                  onDragOver={(ev) => {
+                    if (e.dir && ev.dataTransfer.types.includes(DRAG_TYPE)) {
+                      ev.preventDefault()
+                      ev.dataTransfer.dropEffect = ev.altKey ? "copy" : "move"
+                      setDropOn(e.path)
+                    }
+                  }}
+                  onDragLeave={() => setDropOn((d) => (d === e.path ? null : d))}
+                  onDrop={(ev) => {
+                    setDropOn(null)
+                    if (!e.dir || !loc) return
+                    ev.preventDefault()
+                    void dropTo(
+                      ev.dataTransfer.getData(DRAG_TYPE),
+                      { root: loc.root, path: e.path },
+                      ev.altKey,
+                    )
+                  }}
+                  onContextMenu={(ev) => {
+                    ev.preventDefault()
+                    ev.stopPropagation()
+                    if (!picked.has(e.path)) pick(e, { metaKey: false, shiftKey: false })
+                    setMenu({ x: ev.clientX, y: ev.clientY, on: e })
+                  }}
                   data-dir={e.dir}
                   data-dim={e.name.startsWith(".") || e.broken}
                   style={{ top: i * ROW_H }}
-                  onClick={() => {
-                    setSel(e.path)
+                  onClick={(ev) => {
+                    pick(e, ev)
                     listRef.current?.focus({ preventScroll: true })
                   }}
                   onDoubleClick={() => open(e)}
                 >
                   <span className="files-name">
                     <Icon aria-hidden="true" size={15} strokeWidth={1.6} />
-                    <span>{e.name}</span>
+                    {editing?.mode === "rename" && editing.path === e.path ? (
+                      <NameEditor
+                        initial={e.name}
+                        onCommit={(n) => {
+                          setEditing(null)
+                          run((c) => act.rename(c, e, n))
+                          listRef.current?.focus({ preventScroll: true })
+                        }}
+                        onCancel={() => {
+                          setEditing(null)
+                          listRef.current?.focus({ preventScroll: true })
+                        }}
+                      />
+                    ) : (
+                      <span>{e.name}</span>
+                    )}
                     {e.symlink && <span className="files-link">→</span>}
                   </span>
                   <span className="files-size">{e.dir ? "" : formatSize(e.size)}</span>
@@ -617,11 +892,22 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
               }`}
           </span>
           <span className="files-hint">
-            type to filter · ↵ open · ⌫ up · space preview · ⌘⌥C copy path
+            type to filter · ⌘O open · ↵ rename · ⌘⌫ delete · right-click for more
           </span>
         </footer>
       </section>
 
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menuItems(menu.on)}
+          onClose={() => {
+            setMenu(null)
+            listRef.current?.focus({ preventScroll: true })
+          }}
+        />
+      )}
       {preview && root && (
         <Preview root={root} entry={selected} count={shown.length} onOpen={open} />
       )}
