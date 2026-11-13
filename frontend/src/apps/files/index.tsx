@@ -12,6 +12,7 @@ import {
 } from "../../desktop/registry"
 import { FilesBrowser, loadRoots } from "./browser"
 import { baseOf, lastLoc, parentOf, recents } from "./model"
+import "./agent"
 import "./files.css"
 
 registerApp({
