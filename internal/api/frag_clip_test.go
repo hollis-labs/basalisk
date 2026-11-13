@@ -51,7 +51,7 @@ func TestFragClipManifest(t *testing.T) {
 			Submitted    string `json:"submitted_url"`
 			Canonical    string `json:"canonical_url"`
 			Provider     string
-			ItemKey      string `json:"source_item_key"`
+			ItemKey      string                            `json:"source_item_key"`
 			Canon        struct{ Adapter, Version string } `json:"canonicalizer"`
 		}
 		Document struct {

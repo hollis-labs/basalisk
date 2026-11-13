@@ -81,7 +81,7 @@ func slug(s string) string {
 
 // New opens the roots. home is this machine's home directory.
 func New(c Config, home string) (*Manager, error) {
-	m := &Manager{by: map[string]backend{}}
+	m := &Manager{by: map[string]backend{}, cfg: c, home: home}
 	add := func(r Root, b backend) error {
 		if r.ID == "" || slug(r.ID) != r.ID {
 			return fmt.Errorf("files: root id %q must be lower-case letters, digits and dashes", r.ID)
@@ -115,6 +115,7 @@ func New(c Config, home string) (*Manager, error) {
 		if err != nil {
 			continue
 		}
+		l.trash = filepath.Join(home, ".Trash")
 		label := rc.Label
 		if label == "" {
 			label = filepath.Base(dir)

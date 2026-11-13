@@ -38,6 +38,7 @@ func enableFiles(ctx context.Context, b *basalisk, a *api.API) {
 	if err == nil {
 		var m *files.Manager
 		if m, err = files.New(cfg, home); err == nil {
+			m.SetConfigFile(file) // places added from Files are kept here
 			a.EnableFiles(m)
 			go func() {
 				<-ctx.Done()

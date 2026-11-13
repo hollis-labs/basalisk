@@ -25,14 +25,15 @@ func (a *API) filesRoutes() []route {
 		return rts
 	}
 	r, w := ScopeRead, ScopeWrite
-	return append(rts,
+	rts = append(rts,
 		route{"GET", "/api/files/roots", r, a.filesRoots},
 		route{"GET", "/api/files/list", r, a.filesList},
 		route{"GET", "/api/files/stat", r, a.filesStat},
 		route{"GET", "/api/files/content", r, a.filesContent},
 		route{"PUT", "/api/files/content", w, a.filesWrite},
 		route{"POST", "/api/files/terminal", w, a.filesTerminal},
-	)
+	) // and the operations, files_ops.go:
+	return append(rts, a.filesOpsRoutes()...)
 }
 
 func (a *API) filesState(w http.ResponseWriter, _ *http.Request) {

@@ -79,10 +79,10 @@ func validateFE(name string, raw []byte) error {
 func TestFESchemaRefusesRelativeSourceLink(t *testing.T) {
 	m := map[string]any{
 		"schema_version": "fe.capture.v1", "capture_id": "basalisk-x", "captured_at": "2026-11-13T00:00:00Z", "principal_id": "local-user",
-		"client":     map[string]string{"kind": "basalisk", "version": "1.0.0"},
-		"source":     map[string]any{"submitted_url": "/api/fragment-submissions/1", "canonical_url": "/api/fragment-submissions/1", "provider": "basalisk", "source_registration_id": "basalisk-notes", "source_item_key": "note:x", "segment_key": "root", "canonicalizer": map[string]string{"adapter": "basalisk", "version": "1.0.0"}},
-		"document":   map[string]any{"title": "t", "content": map[string]string{"format": "markdown", "body": "b"}},
-		"tags":       []string{}, "annotations": []any{}, "media": []any{},
+		"client":   map[string]string{"kind": "basalisk", "version": "1.0.0"},
+		"source":   map[string]any{"submitted_url": "/api/fragment-submissions/1", "canonical_url": "/api/fragment-submissions/1", "provider": "basalisk", "source_registration_id": "basalisk-notes", "source_item_key": "note:x", "segment_key": "root", "canonicalizer": map[string]string{"adapter": "basalisk", "version": "1.0.0"}},
+		"document": map[string]any{"title": "t", "content": map[string]string{"format": "markdown", "body": "b"}},
+		"tags":     []string{}, "annotations": []any{}, "media": []any{},
 		"extraction": map[string]any{"adapter": "basalisk", "adapter_version": "1.0.0", "observed_capabilities": []string{"title", "body"}, "warnings": []any{}},
 	}
 	raw, _ := json.Marshal(m)

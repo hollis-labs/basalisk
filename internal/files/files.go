@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -80,14 +81,28 @@ type backend interface {
 
 // Manager holds the roots.
 type Manager struct {
+	mu    sync.RWMutex
 	roots []Root
 	by    map[string]backend
+	// cfg and cfgFile let remote places be added and removed at run time (places.go).
+	cfg     Config
+	cfgFile string
+	home    string
 }
 
+// Hosts lists the concrete hosts in the owner's ssh config, for adding a remote place.
+func (m *Manager) Hosts() []string { return SSHHosts(m.home) }
+
 // Roots lists the served roots in order.
-func (m *Manager) Roots() []Root { return append([]Root(nil), m.roots...) }
+func (m *Manager) Roots() []Root {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return append([]Root(nil), m.roots...)
+}
 
 func (m *Manager) backend(id string) (backend, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	b, ok := m.by[id]
 	if !ok {
 		return nil, ErrNoRoot
@@ -167,6 +182,8 @@ func (m *Manager) LocalPath(root, p string) (string, error) {
 
 // Close disconnects the remote roots.
 func (m *Manager) Close() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, b := range m.by {
 		_ = b.Close()
 	}

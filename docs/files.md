@@ -37,6 +37,28 @@ POST /api/files/terminal {root,path}       -> a terminal session in that folder 
 Entry: {name, path, dir, size, mtime (RFC 3339), mode ("-rw-r--r--"), symlink, broken?}
 ```
 
+Changes (write scope); nothing is ever overwritten, a taken name is 409:
+
+```
+POST   /api/files/mkdir   {root, path}                      -> 201 Entry   new folder
+POST   /api/files/create  {root, path}                      -> 201 Entry   new empty file
+POST   /api/files/move    {from: {root, path}, to: {...}}   -> Entry       rename, or move (also between places)
+POST   /api/files/copy    {from, to}                        -> 201 Entry   folders with their contents
+POST   /api/files/delete  {root, path}                      -> {trashed}   local: to the Trash; remote: for good
+GET    /api/files/search?root=&path=&q=                     -> {entries, truncated}
+GET    /api/files/hosts                                     -> {hosts}     concrete Host names in ~/.ssh/config
+POST   /api/files/roots   {host, path, label?}              -> 201 Root    add a remote place (kept in files.json)
+DELETE /api/files/roots/{id}                                -> 204         remove a remote place (its files untouched)
+```
+
+A move or copy between places copies through the two places' own reads and writes; a move then
+removes the original (to the Trash when it was local). A folder cannot move or be copied into
+itself. Local delete moves the item into `~/.Trash` (renamed if the name is taken there) and only
+when its real folder is inside the root; a link is moved itself, never its target. Search
+matches every word of `q` in names, case-insensitive, skips `.git` and `node_modules` unless it
+starts inside one, and stops at 200 results, 200,000 items or 5 seconds (`truncated`). A copy
+stops at 20,000 items (413).
+
 Errors: 404 no such root or file, 403 outside the root, 400 not a folder / is a folder / bad
 path, 412 changed since read, 502 remote host unreachable. Reads need the read scope; writes
 and the terminal need the write scope.

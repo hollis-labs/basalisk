@@ -14,8 +14,9 @@ import (
 // local is a folder on this machine. Every access goes through an os.Root, which refuses a
 // path or a symbolic link that leads outside the folder.
 type local struct {
-	dir  string
-	root *os.Root
+	dir   string
+	root  *os.Root
+	trash string // where Delete moves things (the owner's ~/.Trash)
 }
 
 func openLocal(dir string) (*local, error) {

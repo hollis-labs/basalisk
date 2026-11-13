@@ -26,7 +26,8 @@ type remote struct {
 	mu     sync.Mutex
 	client *sftp.Client
 	cmd    *exec.Cmd
-	base   string // the folder's resolved path on the host, symlinks resolved
+	base   string                       // the folder's resolved path on the host, symlinks resolved
+	dial   func() (*sftp.Client, error) // tests: an in-process SFTP server instead of ssh
 }
 
 func newRemote(host, dir string) *remote { return &remote{host: host, dir: dir} }
@@ -42,6 +43,13 @@ func sshPath() string {
 func (r *remote) connectLocked() error {
 	if r.client != nil {
 		return nil
+	}
+	if r.dial != nil { // tests: an in-process SFTP server
+		c, err := r.dial()
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrRemote, err)
+		}
+		return r.bindLocked(c, nil)
 	}
 	// The host is from the config and cannot start with "-" (config.go refuses it).
 	cmd := exec.Command(sshPath(), //nolint:gosec // fixed argv; the host is checked config
@@ -82,26 +90,33 @@ func (r *remote) connectLocked() error {
 		_ = cmd.Wait()
 		return fmt.Errorf("%w: %w", ErrRemote, res.err)
 	}
+	return r.bindLocked(res.c, cmd)
+}
+
+// bindLocked resolves the folder on the connected host and keeps the connection.
+func (r *remote) bindLocked(c *sftp.Client, cmd *exec.Cmd) error {
 	dir := r.dir
 	if dir == "~" || dir == "" {
 		dir = "."
 	} else if strings.HasPrefix(dir, "~/") {
 		dir = dir[2:]
 	}
-	base, err := res.c.RealPath(dir)
+	base, err := c.RealPath(dir)
 	if err == nil {
 		var fi fs.FileInfo
-		if fi, err = res.c.Stat(base); err == nil && !fi.IsDir() {
+		if fi, err = c.Stat(base); err == nil && !fi.IsDir() {
 			err = ErrNotDir
 		}
 	}
 	if err != nil {
-		_ = res.c.Close()
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+		_ = c.Close()
+		if cmd != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
 		return fmt.Errorf("%w: %s: %w", ErrRemote, r.dir, err)
 	}
-	r.client, r.cmd, r.base = res.c, cmd, path.Clean(base)
+	r.client, r.cmd, r.base = c, cmd, path.Clean(base)
 	return nil
 }
 
