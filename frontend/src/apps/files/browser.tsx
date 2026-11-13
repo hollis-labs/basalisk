@@ -121,7 +121,11 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
           (last && rs.find((r) => r.id === last.root) && last) ||
           (rs[0] && { root: rs[0].id, path: "" })
         if (start) {
-          if (want.select) pendingSel.current = want.select
+          // select is a name in the folder ("notes.md") or a root-relative path.
+          if (want.select)
+            pendingSel.current = want.select.includes("/")
+              ? want.select
+              : [start.path, want.select].filter(Boolean).join("/")
           setLoc(start)
         }
       })
@@ -226,6 +230,7 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
   })
 
   // ---- Focus: the list takes the keyboard when the window is focused. ----
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the list exists once roots load
   useEffect(() => {
     const win = rootRef.current?.closest<HTMLElement>("[data-win]")
     if (!win) return
@@ -233,10 +238,12 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
       if (e.target === win) listRef.current?.focus({ preventScroll: true })
     }
     win.addEventListener("focus", onFocus)
-    if (document.activeElement === win || !win.contains(document.activeElement))
+    // The list renders once the roots arrive; by then the desktop may already have focused
+    // the window, so take it now.
+    if (document.activeElement === win || document.activeElement === document.body)
       listRef.current?.focus({ preventScroll: true })
     return () => win.removeEventListener("focus", onFocus)
-  }, [])
+  }, [roots])
 
   // ---- Navigation. ----
   const go = useCallback(

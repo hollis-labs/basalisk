@@ -61,3 +61,7 @@ folder (local roots), ⌘⌥C to copy the full path, ⌘R or F5 to reload.
 Opening a file calls `desk.openFile`; when no app handles that file the preview shows it. The
 palette finds places and recently opened files, and ⌃⌥E opens Files. The last folder, the
 hidden-files and preview choices, and the recents are kept in local storage.
+
+Window args: `{root?, path?, select?}`. `select` is a name in that folder (`"notes.md"`) or a
+root-relative path; the window opens with it highlighted. Without `root` the window opens at
+the last folder it showed.
