@@ -133,7 +133,14 @@
 .agent-tool-caret[data-open="true"] {
   transform: rotate(90deg);
 }
+.agent-tool-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .agent-tool-state {
+  flex: 0 0 auto;
   color: var(--desk-muted);
 }
 .agent-tool[data-running="true"] .agent-tool-state {
@@ -205,6 +212,11 @@
 }
 .agent-approval-title {
   line-height: 1.4;
+}
+.agent-approval-summary {
+  margin-top: 4px;
+  color: var(--desk-fg-soft);
+  overflow-wrap: anywhere;
 }
 .agent-approval-actions {
   display: flex;

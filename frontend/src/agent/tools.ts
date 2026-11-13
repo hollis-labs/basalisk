@@ -11,6 +11,11 @@ import { allApps, allCommands, type DeskAPI } from "../desktop/registry"
 import type { DeskSnapshot, SnapshotWindow, ToolSpec } from "./api"
 
 export interface AgentTool extends ToolSpec {
+  /**
+   * One plain line saying what this call will do, for the permission question and the
+   * call's row ("Click “Send” on example.com"). Without it the raw input is shown.
+   */
+  describe?: (input: Record<string, unknown>) => string
   /** Returns what the model is told. Throw to report a failure. */
   run: (input: Record<string, unknown>, desk: DeskAPI) => unknown | Promise<unknown>
 }
@@ -29,6 +34,15 @@ export const toolSpecs = (): ToolSpec[] =>
     input_schema,
     level,
   }))
+
+/** The call in a line, when its tool can say (AgentTool.describe). */
+export function describeCall(name: string, input: unknown): string {
+  try {
+    return tools.get(name)?.describe?.((input ?? {}) as Record<string, unknown>) ?? ""
+  } catch {
+    return ""
+  }
+}
 
 /** Run a call from the model. The answer is text: JSON for anything that is not a string. */
 export async function runTool(
@@ -174,6 +188,10 @@ registerAgentTools([
     description:
       "Run a desktop command by id (from desktop_apps), exactly as if the owner chose it in the command palette. It acts on the focused window where that matters.",
     input_schema: object({ command: str("The command id.") }, ["command"]),
+    describe: (input) => {
+      const cmd = allCommands().find((c) => c.id === input.command)
+      return cmd ? `Run “${cmd.title}”` : ""
+    },
     run: async (input, desk) => {
       const id = String(input.command ?? "")
       const cmd = allCommands().find((c) => c.id === id)

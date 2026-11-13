@@ -15,6 +15,7 @@ import {
   stop,
   useAgentSession,
 } from "./session"
+import { describeCall } from "./tools"
 import "./agent.css"
 
 /** Asks the open panel to take the keyboard (the shortcut, when the panel is already open). */
@@ -247,7 +248,10 @@ function ToolRow({ item }: { item: Extract<Item, { kind: "tool" }> }) {
     <div className="agent-tool" data-error={!!item.isError} data-running={item.running}>
       <button type="button" className="agent-tool-line" onClick={() => setOpen((o) => !o)}>
         <ChevronRight size={12} className="agent-tool-caret" data-open={open} />
-        <span className="agent-tool-name">{item.name.replaceAll("_", " ")}</span>
+        <span className="agent-tool-name">
+          {(item.input !== undefined && describeCall(item.name, item.input)) ||
+            item.name.replaceAll("_", " ")}
+        </span>
         <span className="agent-tool-state">
           {item.running ? "working" : item.isError ? "failed" : ""}
         </span>
@@ -280,11 +284,13 @@ function ApprovalCard({ q }: { q: Approval }) {
   const first = useRef<HTMLButtonElement>(null)
   useEffect(() => first.current?.focus(), [])
   const input = pretty(q.input)
+  const summary = describeCall(q.tool, q.input)
   return (
     <div className="agent-approval" role="alertdialog" aria-label="The agent asks permission">
       <div className="agent-approval-title">
         Allow <strong>{q.tool.replaceAll("_", " ")}</strong>?
       </div>
+      {summary && <div className="agent-approval-summary">{summary}</div>}
       {input && input !== "{}" && <pre>{input.slice(0, 2000)}</pre>}
       <div className="agent-approval-actions">
         <button
