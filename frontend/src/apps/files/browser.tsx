@@ -14,6 +14,7 @@ import {
   Link2Off,
   type LucideIcon,
   PanelRight,
+  Plus,
   RefreshCw,
   Search,
   Server,
@@ -49,6 +50,7 @@ import {
   setLastLoc,
 } from "./model"
 import { CHANGED_EVENT, CLIP_EVENT, DRAG_TYPE, dragItems, getClip } from "./ops"
+import { AddPlace, ROOTS_EVENT } from "./places"
 import { Preview } from "./preview"
 import { SearchPane } from "./search"
 
@@ -66,6 +68,12 @@ const rootIcon = (r: FileRoot) => (r.kind === "sftp" ? Server : (ROOT_ICONS[r.id
 
 let rootsPromise: Promise<FileRoot[]> | null = null
 /** The roots, fetched once per page. */
+/** Reads the places again in every Files window (after one is added or removed). */
+export function reloadRoots() {
+  rootsPromise = null
+  window.dispatchEvent(new Event(ROOTS_EVENT))
+}
+
 export function loadRoots(): Promise<FileRoot[]> {
   rootsPromise ??= files
     .roots()
@@ -112,6 +120,17 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
   const [dropOn, setDropOn] = useState<string | null>(null)
   const [, setClipTick] = useState(0)
   const [searching, setSearching] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [placeMenu, setPlaceMenu] = useState<{ x: number; y: number; root: FileRoot } | null>(null)
+  // Places added or removed (here or in another window).
+  useEffect(() => {
+    const on = () =>
+      void loadRoots()
+        .then(setRoots)
+        .catch(() => undefined)
+    window.addEventListener(ROOTS_EVENT, on)
+    return () => window.removeEventListener(ROOTS_EVENT, on)
+  }, [])
   const [notice, setNotice] = useState("")
   const [reload, setReload] = useState(0)
   const [hasTerminal, setHasTerminal] = useState(false)
@@ -574,7 +593,7 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
           ["Local", local],
           ["Remote", remote],
         ].map(([label, list]) =>
-          (list as FileRoot[]).length ? (
+          (list as FileRoot[]).length || label === "Remote" ? (
             <div key={label as string} className="files-side-group">
               <div className="files-side-label">{label as string}</div>
               {(list as FileRoot[]).map((r) => {
@@ -587,6 +606,11 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
                     data-active={r.id === loc?.root}
                     title={r.kind === "sftp" ? `${r.host}:${r.path}` : r.path}
                     data-drop={dropOn === `place:${r.id}`}
+                    onContextMenu={(ev) => {
+                      if (r.kind !== "sftp") return
+                      ev.preventDefault()
+                      setPlaceMenu({ x: ev.clientX, y: ev.clientY, root: r })
+                    }}
                     onDragOver={(ev) => {
                       if (ev.dataTransfer.types.includes(DRAG_TYPE)) {
                         ev.preventDefault()
@@ -614,10 +638,66 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
                   </button>
                 )
               })}
+              {label === "Remote" &&
+                (adding ? (
+                  <AddPlace
+                    onCancel={() => setAdding(false)}
+                    onAdded={(r) => {
+                      setAdding(false)
+                      reloadRoots()
+                      go({ root: r.id, path: "" })
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="files-add-place-button"
+                    onClick={() => setAdding(true)}
+                  >
+                    <Plus aria-hidden="true" size={14} strokeWidth={1.6} />
+                    <span>Add a place</span>
+                  </button>
+                ))}
             </div>
           ) : null,
         )}
       </nav>
+      {placeMenu && (
+        <ContextMenu
+          x={placeMenu.x}
+          y={placeMenu.y}
+          onClose={() => setPlaceMenu(null)}
+          items={[
+            {
+              label: "Remove place",
+              danger: true,
+              run: () => {
+                const r = placeMenu.root
+                void desk
+                  .confirm({
+                    title: `Remove ${r.label} from Places?`,
+                    message: "Its files are not touched; you can add it again.",
+                    confirmLabel: "Remove",
+                  })
+                  .then(async (yes) => {
+                    if (!yes) return
+                    try {
+                      await files.removeRoot(r.id)
+                      reloadRoots()
+                      if (loc?.root === r.id && roots) {
+                        const first = roots.find((x) => x.id !== r.id)
+                        if (first) go({ root: first.id, path: "" })
+                      }
+                    } catch (e) {
+                      flash(e instanceof Error ? e.message : "Could not remove it.")
+                    }
+                  })
+              },
+            },
+          ]}
+        />
+      )}
 
       <section className="files-main">
         <div className="files-bar">

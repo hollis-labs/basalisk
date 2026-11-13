@@ -543,3 +543,38 @@
   color: var(--desk-muted);
   font-size: 11.5px;
 }
+
+/* ---- Places: add and remove ---- */
+.files-add-place-button {
+  opacity: 0.7;
+}
+.files-add-place {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 4px;
+}
+.files-add-place .desk-input {
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+.files-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.files-add-actions .desk-button {
+  padding: 3px 8px;
+  font-size: 11.5px;
+}
+.files-add-error {
+  margin: 0;
+  color: var(--desk-accent-2);
+  font-size: 11.5px;
+}
+.files-preview-md {
+  padding: 10px 14px;
+  font-size: 12.5px;
+  line-height: 1.55;
+}

@@ -15,7 +15,9 @@ terminal, it reads and writes the disk as the user who runs the server.
   they lead outside the root. The connection opens on first use and is reopened once if it
   drops.
 
-Configure them in `files.json` beside the database (or the file named by
+Remote places can be added from the Files sidebar ("Add a place": a host from the ssh config,
+offered from `~/.ssh/config`, and a folder) and removed with a right-click on one (its files are
+untouched); both are kept in the config file. Or configure them in `files.json` beside the database (or the file named by
 `BASALISK_FILES_CONFIG`); see [files.example.json](files.example.json). A `local` list
 replaces the defaults. `BASALISK_FILES_REMOTES=host:path,...` adds remotes from the
 environment. A bad config is logged and leaves the browser off.
@@ -96,6 +98,9 @@ quoted for the remote shell); without it a local place is scanned here (text fil
 .git and node_modules skipped) and a remote one says ripgrep is missing. It is literal and
 case-insensitive, 5 lines per file and 200 in all, 8 seconds at most. ⌘K finds files by name in
 the place last open in Files.
+
+The preview renders Markdown files with the shared `<Markdown>` and shows other text with its
+references live (`<CiteText>`).
 
 Opening a file calls `desk.openFile`; when no app handles that file the preview shows it. The
 palette finds places and recently opened files, and ⌃⌥E opens Files. The last folder, the

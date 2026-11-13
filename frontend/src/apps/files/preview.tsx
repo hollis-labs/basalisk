@@ -1,6 +1,7 @@
 import { Download, ExternalLink, Link2Off } from "lucide-react"
 import { useEffect, useState } from "react"
 import { type FileEntry, type FileRoot, files } from "../../api/files"
+import { CiteText, Markdown } from "../../cite/ui"
 import { formatSize, formatTime, iconOf, kindOf, textual } from "./model"
 
 /** How much of a text file the preview reads. */
@@ -116,7 +117,15 @@ export function Preview({
     else
       body = (
         <>
-          <pre className="files-preview-text">{text.text}</pre>
+          {/\.(md|markdown|mdx)$/i.test(entry.name) ? (
+            <div className="files-preview-md">
+              <Markdown source={text.text} />
+            </div>
+          ) : (
+            <pre className="files-preview-text">
+              <CiteText text={text.text} />
+            </pre>
+          )}
           {text.cut && (
             <p className="files-preview-note">Showing the first {formatSize(TEXT_LIMIT)}.</p>
           )}
