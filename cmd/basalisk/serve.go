@@ -109,6 +109,9 @@ func (b *basalisk) serve(ctx context.Context) error {
 		}()
 	}
 	enableFiles(ctx, b, a) // files.go
+	if b.shell != nil {
+		a.EnableBrowser(macshell.DefaultBrowser())
+	}
 	a.RegisterScopes(auth.ScopeTable(app))
 
 	assets, err := webui.Assets()

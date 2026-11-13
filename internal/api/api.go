@@ -34,9 +34,10 @@ type API struct {
 	pairWindow   time.Time
 	// The desktop shell and the terminal are optional: nil unless EnableShell and
 	// EnableTerminal were called (the desktop app does; a server deployment does not).
-	shell macshell.Controller
-	term  *terminal.Manager
-	files *files.Manager // EnableFiles (files.go)
+	shell   macshell.Controller
+	term    *terminal.Manager
+	files   *files.Manager   // EnableFiles (files.go)
+	browser macshell.Browser // EnableBrowser (browser.go)
 	// deskDir holds the desktop settings documents (desk.go); empty means not kept.
 	deskDir string
 	// cite resolves references through the Tether gateway (cite.go); nil when none is configured.
@@ -99,7 +100,8 @@ func (a *API) allRoutes() []route {
 	rts = append(rts, a.citeRoutes()...)
 	rts = append(rts, a.shellRoutes()...)
 	rts = append(rts, a.terminalRoutes()...)
-	return append(rts, a.filesRoutes()...)
+	rts = append(rts, a.filesRoutes()...)
+	return append(rts, a.browserRoutes()...)
 }
 
 // Handler serves the owner routes; it is httphost.Options.Routes. The auth guard in front of

@@ -49,6 +49,7 @@ func Attach(nsWindow unsafe.Pointer) {
 	shell.attached = true
 	shell.mu.Unlock()
 	C.bslInit(nsWindow)
+	attachBrowser(nsWindow) // browser_darwin.go
 	if first {
 		go shell.pump()
 		shell.log.add("attached", "native shell ready")
