@@ -33,6 +33,7 @@ func (a *API) agentRoutes() []route {
 		route{"POST", "/api/agent/runs/{id}/tool-results", w, a.agentToolResult},
 		route{"POST", "/api/agent/runs/{id}/tool-alive", w, a.agentToolAlive},
 		route{"POST", "/api/agent/runs/{id}/approvals", w, a.agentApproval},
+		route{"GET", "/api/agent/tools", r, a.agentTools},
 		route{"GET", "/api/agent/grants", r, a.agentGrants},
 		route{"DELETE", "/api/agent/grants/{tool}", w, a.agentRevoke},
 	)
@@ -216,6 +217,11 @@ func (a *API) agentApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(204)
+}
+
+// agentTools lists the tools the server runs itself (the page knows its own).
+func (a *API) agentTools(w http.ResponseWriter, r *http.Request) {
+	reply(w, 200, map[string]any{"tools": a.agent.ServerTools(r.Context())})
 }
 
 func (a *API) agentGrants(w http.ResponseWriter, r *http.Request) {

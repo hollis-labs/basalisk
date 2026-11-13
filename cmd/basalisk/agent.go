@@ -13,12 +13,13 @@ import (
 
 // enableAgent starts the AI core (internal/agent): its conversations in a file beside the
 // database, its model at the gateway the config names. With no gateway configured the
-// routes are still served, and say so. A store that cannot be opened is logged and leaves
+// routes are still served, and say so. It returns the runtime (nil when the agent is off), so
+// the caller can give it tools. A store that cannot be opened is logged and leaves
 // the agent off; the rest of the app does not depend on it.
 //
 // The environment can stand in for the config, for a development run:
 // BASALISK_AGENT_GATEWAY, BASALISK_AGENT_KEY_FILE, BASALISK_AGENT_MODEL.
-func enableAgent(ctx context.Context, a *api.API, cfg agent.Config, dbPath string) {
+func enableAgent(ctx context.Context, a *api.API, cfg agent.Config, dbPath string) *agent.Runtime {
 	if v := os.Getenv("BASALISK_AGENT_GATEWAY"); v != "" {
 		cfg.GatewayURL = v
 	}
@@ -38,12 +39,14 @@ func enableAgent(ctx context.Context, a *api.API, cfg agent.Config, dbPath strin
 	store, err := agent.OpenStore(ctx, dbPath)
 	if err != nil {
 		slog.Warn("the agent is off: its store could not be opened", "path", dbPath, "err", err)
-		return
+		return nil
 	}
 	go func() {
 		<-ctx.Done()
 		_ = store.Close()
 	}()
-	a.EnableAgent(agent.New(ctx, cfg, store, agent.NewGateway(cfg)))
+	rt := agent.New(ctx, cfg, store, agent.NewGateway(cfg))
+	a.EnableAgent(rt)
 	slog.Info("agent enabled", "ready", cfg.Ready(), "model", cfg.Model)
+	return rt
 }

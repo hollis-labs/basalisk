@@ -255,3 +255,48 @@ func (c *Client) Call(ctx context.Context, tool string, args map[string]any) ([]
 	}
 	return []byte(text.String()), nil
 }
+
+// ToolInfo is one tool the gateway offers, as tools/list describes it.
+type ToolInfo struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"inputSchema"`
+}
+
+// Tools lists the gateway's tools (every page of tools/list).
+func (c *Client) Tools(ctx context.Context) ([]ToolInfo, error) {
+	if !c.Configured() {
+		return nil, ErrNotConfigured
+	}
+	c.startMu.Lock()
+	err := c.start(ctx)
+	c.startMu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	var out []ToolInfo
+	cursor := ""
+	for range 50 { // a bound, not an expectation
+		params := map[string]any{}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		raw, err := c.roundTrip(ctx, "tools/list", params)
+		if err != nil {
+			return nil, err
+		}
+		var page struct {
+			Tools      []ToolInfo `json:"tools"`
+			NextCursor string     `json:"nextCursor"`
+		}
+		if err := json.Unmarshal(raw, &page); err != nil {
+			return nil, fmt.Errorf("unreadable tool list: %w", err)
+		}
+		out = append(out, page.Tools...)
+		if page.NextCursor == "" {
+			return out, nil
+		}
+		cursor = page.NextCursor
+	}
+	return out, nil
+}

@@ -19,6 +19,8 @@ import (
 	"github.com/hollis-labs/libs/ui/ui-go/chatstream/conformance"
 	"github.com/hollis-labs/libs/ui/ui-go/chatstream/hubbind"
 	"github.com/hollis-labs/libs/ui/ui-go/streamhub"
+
+	"github.com/hollis-labs/basalisk/internal/tetherlink"
 )
 
 // standIn is a model gateway for tests: it answers each request with the next scripted
@@ -472,5 +474,92 @@ func TestACallIsGivenUpOnlyWhenThePageGoesQuiet(t *testing.T) {
 	}
 	if err := rt.ToolAlive("u1", id, "toolu_2"); err == nil {
 		t.Fatal("a call that was given up on still counts as waiting")
+	}
+}
+
+type fakeLink struct {
+	calls []string
+}
+
+func (f *fakeLink) Configured() bool { return true }
+func (f *fakeLink) Tools(context.Context) ([]tetherlink.ToolInfo, error) {
+	return []tetherlink.ToolInfo{
+		{Name: "torque_task_get", Description: "Get a task."},
+		{Name: "torque_task_create", Description: "Create a task.", InputSchema: map[string]any{"type": "object"}},
+		{Name: "cerberus_ssh_exec", Description: "Run a command on a host."}, // offered, not listed here
+	}, nil
+}
+func (f *fakeLink) Call(_ context.Context, tool string, args map[string]any) ([]byte, error) {
+	f.calls = append(f.calls, tool)
+	if tool == "torque_task_get" && args["id"] == "missing" {
+		return nil, &tetherlink.ToolError{Message: "no such task"}
+	}
+	return []byte(`{"id":"T-1","title":"Ship it"}`), nil
+}
+
+func TestServerToolsRunOnTheServerAndOnlyTheListedOnes(t *testing.T) {
+	link := &fakeLink{}
+	src := TetherTools(link)
+	src(t.Context()) // starts the load
+	deadline := time.Now().Add(2 * time.Second)
+	for len(src(t.Context())) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := src(t.Context()); len(got) != 2 {
+		t.Fatalf("tools: %+v", got)
+	}
+
+	s := newStandIn(t,
+		toolReply("toolu_1", "torque_task_get", `{"id":"T-1"}`), textReply("It is Ship it."),
+		toolReply("toolu_2", "torque_task_create", `{"title":"New"}`), textReply("Not created."),
+		toolReply("toolu_3", "cerberus_ssh_exec", `{"cmd":"id"}`), textReply("No such tool."),
+		toolReply("toolu_4", "torque_task_get", `{"id":"missing"}`), textReply("Not found."),
+	)
+	rt := newRuntime(t, s)
+	rt.AddTools(src)
+	turnOnce := func(decision string) (asked, toPage bool) {
+		// A page that tries to take a server tool's name is refused; one that does not is fine.
+		id, err := rt.Start(t.Context(), StartInput{Owner: "u1", Text: "go", ClientID: "c1", Tools: []ToolSpec{lookTool}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		follow(t, rt, id, func(e chatstream.Event) {
+			switch {
+			case e.Verb == chatstream.VerbApprovalRequest:
+				asked = true
+				_ = rt.Approve("u1", id, e.ApprovalID, decision)
+			case e.Verb == chatstream.VerbPartEnd && len(e.Ext) > 0:
+				var exec string
+				_ = json.Unmarshal(e.Ext["basalisk.exec"], &exec)
+				toPage = toPage || exec == "client"
+			}
+		})
+		return
+	}
+	if asked, toPage := turnOnce("deny"); asked || toPage {
+		t.Fatalf("a read: asked=%v toPage=%v", asked, toPage)
+	}
+	if sent, _ := json.Marshal(s.bodies[1]["messages"]); !strings.Contains(string(sent), "Ship it") {
+		t.Fatalf("the result did not reach the model: %s", sent)
+	}
+	if asked, _ := turnOnce("deny"); !asked {
+		t.Fatal("a write did not ask")
+	}
+	turnOnce("deny")
+	if sent, _ := json.Marshal(s.bodies[5]["messages"]); !strings.Contains(string(sent), `There is no tool named \"cerberus_ssh_exec\"`) {
+		t.Fatalf("an unlisted tool: %s", sent)
+	}
+	turnOnce("deny")
+	if sent, _ := json.Marshal(s.bodies[7]["messages"]); !strings.Contains(string(sent), "no such task") || !strings.Contains(string(sent), `"is_error":true`) {
+		t.Fatalf("a failure: %s", sent)
+	}
+	if strings.Join(link.calls, ",") != "torque_task_get,torque_task_get" {
+		t.Fatalf("gateway calls: %v", link.calls)
+	}
+	if _, err := rt.Start(t.Context(), StartInput{Owner: "u2", Text: "go", ClientID: "c1", Tools: []ToolSpec{{Name: "torque_task_get", Level: LevelRead}}}); err == nil {
+		t.Fatal("a page took a server tool's name")
+	}
+	if tools, _ := json.Marshal(s.bodies[0]["tools"]); !strings.Contains(string(tools), `"torque_task_create"`) || strings.Contains(string(tools), "cerberus") {
+		t.Fatalf("offered to the model: %s", tools)
 	}
 }

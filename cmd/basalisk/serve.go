@@ -19,6 +19,7 @@ import (
 	"github.com/hollis-labs/substrate/modules/identity"
 	"github.com/hollis-labs/substrate/modules/secrets"
 
+	"github.com/hollis-labs/basalisk/internal/agent"
 	"github.com/hollis-labs/basalisk/internal/api"
 	"github.com/hollis-labs/basalisk/internal/hostguard"
 	"github.com/hollis-labs/basalisk/internal/macshell"
@@ -81,12 +82,13 @@ func (b *basalisk) serve(ctx context.Context) error {
 		return err
 	}
 	a := svc.API(api.IdentityUsers{Svc: id})
+	var agentRT *agent.Runtime
 	// The desktop's settings documents live beside the database, in the private data directory.
 	if db, _ := app.Config["database"].(map[string]any); db != nil {
 		if sq, _ := db["sqlite"].(map[string]any); sq != nil {
 			if p, _ := sq["path"].(string); filepath.IsAbs(p) {
 				a.SetDeskDir(filepath.Join(filepath.Dir(p), "desk"))
-				enableAgent(ctx, a, cfg.Agent, filepath.Join(filepath.Dir(p), "agent.db")) // agent.go
+				agentRT = enableAgent(ctx, a, cfg.Agent, filepath.Join(filepath.Dir(p), "agent.db")) // agent.go
 			}
 		}
 	}
@@ -94,6 +96,10 @@ func (b *basalisk) serve(ctx context.Context) error {
 	// one is configured. It starts on first use and stops with the server.
 	link := tetherlink.New(cfg.TetherMCP)
 	a.EnableCite(link)
+	if agentRT != nil {
+		// The agent reaches Torque and Tesseract through the same gateway (internal/agent/tether.go).
+		agentRT.AddTools(agent.TetherTools(link))
+	}
 	go func() {
 		<-ctx.Done()
 		link.Close()

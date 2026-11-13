@@ -6,8 +6,8 @@ tools. There is one agent for the whole desktop, not one per app: apps give it t
 describe their windows, and it does the rest.
 
 This page describes the first slice: the runtime, the stream, the panel and the desktop's
-own tools. App tools (Browser, Notes, Terminal), the Tether gateway's tools, the router,
-reflexes and cards come after it and plug into what is here.
+own tools, the apps' tools, and Torque and Tesseract through the Tether gateway. The
+router, reflexes, cards and per-task agents come after it and plug into what is here.
 
 ## Shape
 
@@ -76,6 +76,27 @@ sent. A tool that changes something after a wait checks `ctx.signal.aborted` fir
 
 The desktop's own tools: `desktop_windows`, `window_context`, `desktop_apps` (read),
 `desktop_open`, `desktop_focus` (act), `desktop_run_command` (write: any palette command).
+The apps add theirs from their own folders (`apps/*/agent.ts`, `terminal/agent.ts`).
+
+### Tools the server runs
+
+Some tools need no page: the server runs them itself (`agent.ServerTool`, `Runtime.AddTools`).
+Levels and permission work the same way, and a page cannot register a tool under one of
+their names. `GET /api/agent/tools` lists them.
+
+The first source is the Tether gateway (`internal/agent/tether.go`), the same connection
+that resolves cited records. The gateway offers hundreds of tools; the agent gets only the
+ones named in that file, each with the level the file gives it:
+
+- Tesseract, read: `tesseract_recall`, `tesseract_get`.
+- Torque, read: projects, epics, sprints, tasks, comments and subtodos (list and get).
+- Torque, asks first: `torque_task_create`, `torque_task_update`, `torque_task_transition`,
+  `torque_comment_add`, `torque_task_subtodo_add`, `torque_task_subtodo_done`.
+
+A tool that is not in that list cannot be called, whatever the gateway offers. The list is
+read from the gateway in the background after the first message (starting the gateway can
+take a few seconds), so the first message after a start may go out without these tools.
+Without `tether_mcp` configured there are none.
 
 ## Permission
 
@@ -104,8 +125,9 @@ never logged. Without a gateway and a model the panel opens and says what to set
 
 ## Limits of this slice
 
-- No app tools yet: the agent can see which page or file a window shows and what is
-  selected, but cannot read a whole note or page, or act inside an app.
+- The gateway's tool descriptions are long (about 58 KB for the 18 tools). They are cached
+  by the provider between steps, but they are part of every request.
+- No Tesseract writes and no mail yet.
 - Tool calls run one after another.
 - No compaction: a very long thread will eventually exceed the model's window. Start a
   new conversation.

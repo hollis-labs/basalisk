@@ -107,6 +107,56 @@ type Runtime struct {
 	runs    map[string]*run            // running, by id
 	busy    map[string]string          // thread -> its running run
 	session map[string]map[string]bool // owner -> tools allowed until the app restarts
+	sources []ToolSource               // where the server's own tools come from (AddTools)
+}
+
+// ServerTool is a tool the server runs itself, with no page involved: a record looked up
+// through the Tether gateway, say. Its level works as a page tool's does.
+type ServerTool struct {
+	Spec ToolSpec
+	// Run returns what the model is told. An error is told to the model as a failure.
+	Run func(ctx context.Context, input map[string]any) (string, error)
+}
+
+// ToolSource lists server tools when a run starts. It must answer quickly (keep its own
+// cache) and return what it has: a source that is not ready returns nothing.
+type ToolSource func(ctx context.Context) []ServerTool
+
+// AddTools gives the agent a source of server tools. Call before serving.
+func (rt *Runtime) AddTools(src ToolSource) {
+	rt.mu.Lock()
+	rt.sources = append(rt.sources, src)
+	rt.mu.Unlock()
+}
+
+// ServerTools are the server's own tools as of now, for the interface to list.
+func (rt *Runtime) ServerTools(ctx context.Context) []ToolSpec {
+	out := []ToolSpec{}
+	for _, t := range rt.serverTools(ctx) {
+		out = append(out, t.Spec)
+	}
+	return out
+}
+
+func (rt *Runtime) serverTools(ctx context.Context) []ServerTool {
+	rt.mu.Lock()
+	sources := append([]ToolSource(nil), rt.sources...)
+	rt.mu.Unlock()
+	var out []ServerTool
+	seen := map[string]bool{}
+	for _, src := range sources {
+		for _, t := range src(ctx) {
+			if t.Run == nil || !toolName.MatchString(t.Spec.Name) || seen[t.Spec.Name] {
+				continue
+			}
+			if l := t.Spec.Level; l != LevelRead && l != LevelAct && l != LevelConfirm {
+				t.Spec.Level = LevelWrite
+			}
+			seen[t.Spec.Name] = true
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // New builds the runtime. ctx ends every run when it is cancelled (the server stopping).
@@ -152,6 +202,7 @@ type run struct {
 	id, owner, thread string
 	client            string
 	tools             map[string]ToolSpec
+	server            map[string]ServerTool // the tools among them that the server runs
 	defs              []llmtypes.ToolDefinition
 	cancel            context.CancelCauseFunc
 
@@ -178,6 +229,13 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	}
 	tools := map[string]ToolSpec{}
 	var defs []llmtypes.ToolDefinition
+	// The server's own tools first: a page cannot take one of their names.
+	server := map[string]ServerTool{}
+	for _, t := range rt.serverTools(ctx) {
+		server[t.Spec.Name] = t
+		tools[t.Spec.Name] = t.Spec
+		defs = append(defs, llmtypes.ToolDefinition{Name: t.Spec.Name, Description: t.Spec.Description, InputSchema: t.Spec.InputSchema})
+	}
 	for _, t := range in.Tools {
 		if !toolName.MatchString(t.Name) || tools[t.Name].Name != "" {
 			return "", fmt.Errorf("tool name %q is not usable", t.Name)
@@ -192,7 +250,7 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	r := &run{rt: rt, id: newID("run"), owner: in.Owner, thread: thread, client: in.ClientID, tools: tools, defs: defs,
+	r := &run{rt: rt, id: newID("run"), owner: in.Owner, thread: thread, client: in.ClientID, tools: tools, defs: defs, server: server,
 		waiting: map[string]*pending{}, approvals: map[string]chan string{}}
 
 	rt.mu.Lock()
@@ -592,8 +650,9 @@ var (
 )
 
 const (
-	approvalTimeout = 10 * time.Minute
-	maxToolResult   = 60_000 // characters handed back to the model from one call
+	serverToolTimeout = 90 * time.Second
+	approvalTimeout   = 10 * time.Minute
+	maxToolResult     = 60_000 // characters handed back to the model from one call
 )
 
 // tool runs one call: it shows the call, asks first when the tool's level requires it,
@@ -654,6 +713,27 @@ func (r *run) tool(ctx context.Context, call llmtypes.ToolUseBlock) (content str
 			}
 			return "The owner declined this. Do not try it again; ask what they would like instead.", true
 		}
+	}
+
+	// A tool of the server's own runs here.
+	if st, ok := r.server[call.Name]; ok {
+		r.emit(chatstream.Event{Verb: chatstream.VerbPartEnd, PartID: callPart, Final: input, Ext: meta("basalisk.exec", "server")})
+		toolCtx, cancel := context.WithTimeout(ctx, serverToolTimeout)
+		defer cancel()
+		args := call.Input
+		if args == nil {
+			args = map[string]any{}
+		}
+		out, err := st.Run(toolCtx, args)
+		switch {
+		case ctx.Err() != nil:
+			return "The owner stopped the run while this was in progress. Whether it ran is unknown.", true
+		case errors.Is(err, context.DeadlineExceeded):
+			return "This took too long and was given up on. Whether it ran is unknown; check before trying again.", true
+		case err != nil:
+			return err.Error(), true
+		}
+		return out, false
 	}
 
 	// The call's final event carries who is to run it: the page that sent the message.
