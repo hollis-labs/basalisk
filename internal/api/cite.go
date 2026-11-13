@@ -35,12 +35,17 @@ func (a *API) EnableCite(link *tetherlink.Client) {
 
 // citeAvailable reports whether a kind can be resolved in this process: fragments through
 // the fragment reader, the rest through the gateway.
-func (a *API) citeAvailable(kind string) bool {
+func (a *API) citeAvailable(ctx context.Context, kind string) bool {
 	if a.cite == nil {
 		return false
 	}
 	if kind == "fragments.fragment" {
-		return fragReader.Load() != nil
+		w := fragReader.Load()
+		if w == nil {
+			return false
+		}
+		_, ok := w.svc.ownerIntegration(ctx, w.config.IntegrationID) // an FE to read from
+		return ok
 	}
 	return a.cite.link.Configured()
 }
@@ -107,10 +112,10 @@ var citeKinds = map[string]citeKind{
 	"fragments.fragment": {regexp.MustCompile(`^[0-9a-f]{64}$`), fragmentCite}, // frag_cite.go
 }
 
-func (a *API) citeState(w http.ResponseWriter, _ *http.Request) {
+func (a *API) citeState(w http.ResponseWriter, r *http.Request) {
 	kinds := []string{}
 	for k := range citeKinds {
-		if a.citeAvailable(k) {
+		if a.citeAvailable(r.Context(), k) {
 			kinds = append(kinds, k)
 		}
 	}
@@ -151,7 +156,7 @@ func (c *citeResolver) one(ctx context.Context, kind, id string) (*citeEntity, e
 
 func (a *API) citeResolve(w http.ResponseWriter, r *http.Request) {
 	kind, ok := citeKinds[r.URL.Query().Get("kind")]
-	if !ok || !a.citeAvailable(r.URL.Query().Get("kind")) {
+	if !ok || !a.citeAvailable(r.Context(), r.URL.Query().Get("kind")) {
 		fail(w, 400, "Unknown reference kind.")
 		return
 	}
@@ -200,7 +205,7 @@ func (a *API) citeResolve(w http.ResponseWriter, r *http.Request) {
 func (a *API) citeRecord(w http.ResponseWriter, r *http.Request) {
 	name, id := r.URL.Query().Get("kind"), r.URL.Query().Get("id")
 	kind, ok := citeKinds[name]
-	if !ok || !a.citeAvailable(name) || !kind.id.MatchString(id) {
+	if !ok || !a.citeAvailable(r.Context(), name) || !kind.id.MatchString(id) {
 		fail(w, 400, "Unknown reference.")
 		return
 	}

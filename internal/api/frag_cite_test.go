@@ -99,11 +99,17 @@ func TestCiteWithoutGatewayListsFragmentsOnly(t *testing.T) {
 	s.api.EnableCite(tetherlink.New(nil))
 	c := &client{t: t, handler: s.api.Handler()}
 	c.signIn()
-	c.call("POST", "/api/integrations", map[string]any{"name": "FE", "provider": "fragments-engine", "baseUrl": srv.URL, "credential": key}, 201)
 	var st struct {
 		Enabled bool
 		Kinds   []string
 	}
+	// No FE integration yet: nothing to read fragments from, so the kind is not listed.
+	_ = json.Unmarshal(c.call("GET", "/api/cite", nil, 200).Body.Bytes(), &st)
+	if st.Enabled || len(st.Kinds) != 0 {
+		t.Fatalf("before an integration: %+v", st)
+	}
+	c.call("GET", "/api/cite/resolve?kind=fragments.fragment&ids="+fragID, nil, 400)
+	c.call("POST", "/api/integrations", map[string]any{"name": "FE", "provider": "fragments-engine", "baseUrl": srv.URL, "credential": key}, 201)
 	_ = json.Unmarshal(c.call("GET", "/api/cite", nil, 200).Body.Bytes(), &st)
 	if !st.Enabled || len(st.Kinds) != 1 || st.Kinds[0] != "fragments.fragment" {
 		t.Fatalf("%+v", st)
