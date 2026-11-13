@@ -101,6 +101,8 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   const [shot, setShot] = useState("")
   const [covered, setCovered] = useState(false)
   const [zoom, setZoom] = useState(1)
+  // The level the next step starts from, current even between renders (two quick ⌘+).
+  const zoomRef = useRef(1)
   const lastFrame = useRef("")
   const keys = useDeskSettings().keys
 
@@ -238,6 +240,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     void browserData.zooms().then((z) => {
       if (!live) return
       const want = z[host] ?? 1
+      zoomRef.current = want
       setZoom(want)
       void send({ op: "zoom", zoom: want }).catch(() => undefined)
     })
@@ -247,6 +250,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   }, [available, host, send])
 
   const zoomTo = (next: number) => {
+    zoomRef.current = next
     setZoom(next)
     void send({ op: "zoom", zoom: next }).catch(() => undefined)
     if (host) void browserData.setZoom(host, next)
@@ -254,8 +258,8 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   const zoomStep = (dir: 1 | -1) => {
     const next =
       dir > 0
-        ? (ZOOMS.find((z) => z > zoom + 0.001) ?? ZOOMS[ZOOMS.length - 1])
-        : ([...ZOOMS].reverse().find((z) => z < zoom - 0.001) ?? ZOOMS[0])
+        ? (ZOOMS.find((z) => z > zoomRef.current + 0.001) ?? ZOOMS[ZOOMS.length - 1])
+        : ([...ZOOMS].reverse().find((z) => z < zoomRef.current - 0.001) ?? ZOOMS[0])
     zoomTo(next)
   }
 
