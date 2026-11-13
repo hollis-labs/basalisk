@@ -10,10 +10,12 @@ import {
   Radio,
   Settings,
   Shield,
+  Sparkles,
   SquareTerminal,
   User,
 } from "lucide-react"
 import { type ReactNode, useState } from "react"
+import { AgentSettings } from "../agent/settings"
 import { useDesk } from "../desktop/context"
 import { type AppDef, registerApp } from "../desktop/registry"
 import { useDeskSettings } from "../desktop/settings"
@@ -97,6 +99,7 @@ const SECTIONS: { id: string; label: string; icon: LucideIcon; render: () => Rea
     render: () => <Timezone>{(tz) => <DevicesPage timezone={tz} />}</Timezone>,
   },
   { id: "shell", label: "Mac shell", icon: Monitor, render: () => <ShellPage /> },
+  { id: "agent", label: "Agent", icon: Sparkles, render: () => <AgentSettings /> },
 ]
 
 function SettingsApp() {
