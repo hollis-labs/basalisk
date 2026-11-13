@@ -1,15 +1,18 @@
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
 import { ApiError } from "../../api/account"
 import { type FragCapture, type FragState, frag } from "../../api/frag"
+import { fragmentRef } from "../../cite/fragment"
+import { CiteText } from "../../cite/ui"
 import { useDesk } from "../../desktop/context"
 import { type Moment, moment } from "./context"
 import { captureIdFor, type Draft, newDraft, parseTags, readDraft, writeDraft } from "./draft"
 
-type Status =
-  | { tone: "idle"; text: string }
-  | { tone: "busy"; text: string }
-  | { tone: "ok"; text: string }
-  | { tone: "error"; text: string }
+type Status = {
+  tone: "idle" | "busy" | "ok" | "error"
+  text: string
+  /** A saved fragment, shown as its reference chip. */
+  fragment?: string
+}
 
 const pad = (n: number) => String(n).padStart(2, "0")
 const stamp = (d: Date) =>
@@ -219,6 +222,12 @@ export function Capture({ close }: { close: () => void }) {
         <footer className="frag-foot">
           <span className="frag-status" data-tone={status.tone} role="status">
             {status.text || linked(draft)}
+            {status.fragment && (
+              <>
+                {" "}
+                <CiteText text={fragmentRef(status.fragment)} />
+              </>
+            )}
           </span>
           <span className="frag-hint">esc hide · ⌘↵ commit</span>
         </footer>

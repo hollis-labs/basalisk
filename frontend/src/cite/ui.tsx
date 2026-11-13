@@ -10,6 +10,7 @@ import {
   ListChecks,
   type LucideIcon,
   Maximize2,
+  Zap,
 } from "lucide-react"
 import {
   Children,
@@ -25,6 +26,7 @@ import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { openLink } from "../api/browser"
 import { parseTachHref } from "./core/tach"
+import { parseFragmentHref } from "./fragment"
 import {
   canResolve,
   hideCard,
@@ -51,6 +53,7 @@ const ICONS: Record<string, LucideIcon> = {
   "tether.plan": CircleDot,
   path: FileText,
   url: Link2,
+  "fragments.fragment": Zap,
 }
 const iconFor = (kind: string): LucideIcon => ICONS[kind] ?? Link2
 
@@ -173,7 +176,7 @@ const MARKDOWN: Components = {
   blockquote: wrap("blockquote"),
   // [label](tach:service/id) is a reference with the author's label; other links open outside.
   a({ href, children }) {
-    const ref = parseTachHref(href)
+    const ref = parseTachHref(href) ?? parseFragmentHref(href)
     if (ref)
       return <CiteChip refId={ref} label={typeof children === "string" ? children : undefined} />
     return (

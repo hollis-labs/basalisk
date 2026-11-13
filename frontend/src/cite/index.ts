@@ -25,6 +25,7 @@ import type {
   ResolveOutcome,
   Segment,
 } from "./core/types"
+import { createFragmentKind } from "./fragment"
 
 export type { RefEntity, RefIdentity, RefState, Segment }
 
@@ -40,6 +41,7 @@ for (const kind of [
   ...createTorqueKinds(),
   ...createTetherKinds(),
   createPathKind(),
+  createFragmentKind(), // fragment.ts
 ]) {
   registry.register(kind)
 }

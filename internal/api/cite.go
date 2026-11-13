@@ -84,13 +84,14 @@ type citeKind struct {
 }
 
 var citeKinds = map[string]citeKind{
-	"torque.task":    {regexp.MustCompile(`^CW-\d{8}-\d{4}$`), torqueTask},
-	"torque.epic":    {regexp.MustCompile(`^EP-\d{8}-\d{4}$`), torqueContainer("torque_epic_get", "Epic")},
-	"torque.project": {regexp.MustCompile(`^PRJ-\d{8}-\d{4}$`), torqueContainer("torque_project_get", "Project")},
-	"torque.sprint":  {regexp.MustCompile(`^SP-\d{8}-\d{4}$`), torqueContainer("torque_sprint_get", "Sprint")},
-	"torque.plan":    {regexp.MustCompile(`^PL-\d{8}-\d{4}$`), torqueContainer("torque_plan_get", "Plan")},
-	"tesseract.item": {regexp.MustCompile(`^[0-7][0-9A-HJKMNP-TV-Z]{25}$`), tesseractItem},
-	"tesseract.key":  {regexp.MustCompile(`^([a-z]{3,16}@)?[a-z][A-Za-z0-9_./-]{0,400}#[A-Za-z0-9_.:-]{1,160}$`), tesseractKey},
+	"torque.task":        {regexp.MustCompile(`^CW-\d{8}-\d{4}$`), torqueTask},
+	"torque.epic":        {regexp.MustCompile(`^EP-\d{8}-\d{4}$`), torqueContainer("torque_epic_get", "Epic")},
+	"torque.project":     {regexp.MustCompile(`^PRJ-\d{8}-\d{4}$`), torqueContainer("torque_project_get", "Project")},
+	"torque.sprint":      {regexp.MustCompile(`^SP-\d{8}-\d{4}$`), torqueContainer("torque_sprint_get", "Sprint")},
+	"torque.plan":        {regexp.MustCompile(`^PL-\d{8}-\d{4}$`), torqueContainer("torque_plan_get", "Plan")},
+	"tesseract.item":     {regexp.MustCompile(`^[0-7][0-9A-HJKMNP-TV-Z]{25}$`), tesseractItem},
+	"tesseract.key":      {regexp.MustCompile(`^([a-z]{3,16}@)?[a-z][A-Za-z0-9_./-]{0,400}#[A-Za-z0-9_.:-]{1,160}$`), tesseractKey},
+	"fragments.fragment": {regexp.MustCompile(`^[0-9a-f]{64}$`), fragmentCite}, // frag_cite.go
 }
 
 func (a *API) citeState(w http.ResponseWriter, _ *http.Request) {
@@ -107,7 +108,7 @@ func (a *API) citeState(w http.ResponseWriter, _ *http.Request) {
 // which the tools do not distinguish).
 func notFound(err error) bool {
 	var te *tetherlink.ToolError
-	return errors.As(err, &te) && (strings.Contains(te.Message, "not_found") || strings.Contains(te.Message, "not found") || strings.Contains(te.Message, `"deleted"`))
+	return errors.Is(err, errFragmentMissing) || errors.As(err, &te) && (strings.Contains(te.Message, "not_found") || strings.Contains(te.Message, "not found") || strings.Contains(te.Message, `"deleted"`))
 }
 
 func (c *citeResolver) one(ctx context.Context, kind, id string) (*citeEntity, error) {

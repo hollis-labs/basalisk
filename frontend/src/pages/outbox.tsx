@@ -1,6 +1,8 @@
 import { Button } from "@hollis-labs/design-components"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { request } from "../api/account"
+import { fragmentRef } from "../cite/fragment"
+import { CiteText } from "../cite/ui"
 import { Notice } from "../components/forms"
 import { useDesk } from "../desktop/context"
 
@@ -172,6 +174,9 @@ export function OutboxPage() {
               <p className="text-fg-muted">
                 Next attempt: {new Date(item.nextAttempt * 1000).toLocaleTimeString()}
               </p>
+            )}
+            {item.state === "saved" && item.fragmentID && (
+              <CiteText text={fragmentRef(item.fragmentID)} />
             )}
             {item.state === "saved" && item.fragmentURL && (
               <a href={item.fragmentURL} target="_blank" rel="noreferrer">

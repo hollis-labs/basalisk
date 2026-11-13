@@ -36,6 +36,19 @@ capture, the fragment is listed in the session's artifacts
 (`/api/activity/sessions/{id}/artifacts`), under the draft's session or, without one, the
 session it was saved in. While a draft belongs to a session the status line says so.
 
+## A saved fragment as a reference
+
+A saved fragment is a cite reference of kind `fragments.fragment`: `tach:fragment/<id>` (also as
+a Markdown link target) and links to FE's reader (`https://<fe>/sysop/reader/<id>`) become a chip
+with a preview card. Ids are 64 hex characters, so a bare id is never taken. The capture box
+shows the chip once a capture is saved, and so does the outbox.
+
+The server resolves it from FE's reader (`GET /v1/reader/items/{id}`) with the delivery
+credential: a token exchanged for `fragments-engine.read`, or in personal mode the integration's
+key. It does not go through the Tether gateway. The cite routes exist only when the gateway is
+configured (`basalisk.tether_mcp`), as for every other kind. FE serves the reader to loopback
+peers only, so this works where FE is reached through a proxy on its own host.
+
 ## Delivery modes
 
 - **Exchange**, when the five delivery keys are configured (`fe_integration_id`,

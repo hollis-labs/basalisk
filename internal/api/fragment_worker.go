@@ -32,6 +32,14 @@ type FragmentWorker struct {
 	// the FE integration's stored credential. Device captures never do; they need the
 	// exchange (DeliveryConfig).
 	direct *fecapture.Client
+	http   *http.Client // the client given, for reads (its transport, in tests a stub's)
+}
+
+func (w *FragmentWorker) httpTransport() http.RoundTripper {
+	if w.http == nil {
+		return nil
+	}
+	return w.http.Transport
 }
 
 // personalPrincipal is FE's principal for personal-mode captures, as fe-clipper's default.
@@ -43,7 +51,9 @@ const personalIssuer = "personal"
 func (s *Service) NewFragmentWorker(config DeliveryConfig, client *http.Client) (*FragmentWorker, error) {
 	if config == (DeliveryConfig{}) {
 		s.setFragMode("personal")
-		return &FragmentWorker{svc: s, direct: fecapture.NewDirect(client)}, nil
+		w := &FragmentWorker{svc: s, direct: fecapture.NewDirect(client), http: client}
+		fragReader.Store(w)
+		return w, nil
 	}
 	origin, err := pairing.Origin(config.PublicOrigin)
 	if err != nil || origin != config.PublicOrigin || config.IntegrationID == "" {
@@ -55,7 +65,9 @@ func (s *Service) NewFragmentWorker(config DeliveryConfig, client *http.Client) 
 	}
 	s.setDeliveryActivity(config.IntegrationID, "configured")
 	s.setFragMode("exchange")
-	return &FragmentWorker{svc: s, config: config, client: c}, nil
+	w := &FragmentWorker{svc: s, config: config, client: c, http: client}
+	fragReader.Store(w)
+	return w, nil
 }
 
 // Run bounds each attempt below the durable lease lifetime. Another process or
