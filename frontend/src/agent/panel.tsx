@@ -300,14 +300,18 @@ function ApprovalCard({ q }: { q: Approval }) {
           data-primary="true"
           onClick={() => void answer("once")}
         >
-          Once
+          {q.standing ? "Once" : "Allow"}
         </button>
-        <button type="button" className="desk-button" onClick={() => void answer("session")}>
-          This session
-        </button>
-        <button type="button" className="desk-button" onClick={() => void answer("always")}>
-          Always
-        </button>
+        {q.standing && (
+          <>
+            <button type="button" className="desk-button" onClick={() => void answer("session")}>
+              This session
+            </button>
+            <button type="button" className="desk-button" onClick={() => void answer("always")}>
+              Always
+            </button>
+          </>
+        )}
         <span className="agent-spacer" />
         <button type="button" className="desk-button" onClick={() => void answer("deny")}>
           No

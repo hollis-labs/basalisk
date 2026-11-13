@@ -59,6 +59,9 @@ const (
 	LevelRead  = "read"  // looks, changes nothing
 	LevelAct   = "act"   // changes what is on screen, and is undone as easily (open a window)
 	LevelWrite = "write" // changes data or reaches outside Basalisk: asks first
+	// LevelConfirm asks every time. No standing answer is offered or honoured: for a tool
+	// whose calls differ too much for one answer to cover the next (running a command).
+	LevelConfirm = "confirm"
 )
 
 // ToolSpec is a tool the model may call. The desktop page declares its tools with each
@@ -137,6 +140,13 @@ type toolAnswer struct {
 	isError bool
 }
 
+// pending is a call the page is running: where its answer goes, and where the page says
+// it is still at it.
+type pending struct {
+	answer chan toolAnswer
+	alive  chan struct{}
+}
+
 type run struct {
 	rt                *Runtime
 	id, owner, thread string
@@ -146,8 +156,8 @@ type run struct {
 	cancel            context.CancelCauseFunc
 
 	mu        sync.Mutex
-	waiting   map[string]chan toolAnswer // tool call id -> its answer from the page
-	approvals map[string]chan string     // approval id -> "once", "session", "always" or "deny"
+	waiting   map[string]*pending    // tool call id -> the call the page is running
+	approvals map[string]chan string // approval id -> "once", "session", "always" or "deny"
 
 	history []llmtypes.ChatMessage
 	in, out int // tokens, summed over the run's steps
@@ -172,7 +182,7 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 		if !toolName.MatchString(t.Name) || tools[t.Name].Name != "" {
 			return "", fmt.Errorf("tool name %q is not usable", t.Name)
 		}
-		if t.Level != LevelRead && t.Level != LevelAct {
+		if t.Level != LevelRead && t.Level != LevelAct && t.Level != LevelConfirm {
 			t.Level = LevelWrite // anything not declared harmless asks first
 		}
 		tools[t.Name] = t
@@ -183,7 +193,7 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 		return "", err
 	}
 	r := &run{rt: rt, id: newID("run"), owner: in.Owner, thread: thread, client: in.ClientID, tools: tools, defs: defs,
-		waiting: map[string]chan toolAnswer{}, approvals: map[string]chan string{}}
+		waiting: map[string]*pending{}, approvals: map[string]chan string{}}
 
 	rt.mu.Lock()
 	if rt.busy[thread] != "" {
@@ -304,13 +314,34 @@ func (rt *Runtime) ToolResult(owner, id, callID, content string, isError bool) e
 		return ErrNoRun
 	}
 	r.mu.Lock()
-	ch := r.waiting[callID]
+	p := r.waiting[callID]
 	delete(r.waiting, callID)
 	r.mu.Unlock()
-	if ch == nil {
+	if p == nil {
 		return errors.New("that tool call is not waiting for an answer")
 	}
-	ch <- toolAnswer{content: content, isError: isError}
+	p.answer <- toolAnswer{content: content, isError: isError}
+	return nil
+}
+
+// ToolAlive is the page saying it is still running a call (it may be waiting on the owner,
+// or on a slow page). A call is given up on only when the page has gone quiet. An error
+// means the run no longer waits for that call, so the page should not finish it.
+func (rt *Runtime) ToolAlive(owner, id, callID string) error {
+	r := rt.find(owner, id)
+	if r == nil {
+		return ErrNoRun
+	}
+	r.mu.Lock()
+	p := r.waiting[callID]
+	r.mu.Unlock()
+	if p == nil {
+		return errors.New("that tool call is not waiting for an answer")
+	}
+	select {
+	case p.alive <- struct{}{}:
+	default:
+	}
 	return nil
 }
 
@@ -552,9 +583,15 @@ func (r *run) keep(ctx context.Context, role string, blocks []llmtypes.ContentBl
 	}
 }
 
-// How long the page has to answer a tool call, and the owner a question.
+// How long the page may go quiet while it runs a tool call (it says "still at it" every
+// few seconds: ToolAlive), how long one call may take in all, and how long the owner has
+// to answer a question.
+var (
+	toolQuiet   = 45 * time.Second
+	toolLongest = 20 * time.Minute
+)
+
 const (
-	toolTimeout     = 90 * time.Second
 	approvalTimeout = 10 * time.Minute
 	maxToolResult   = 60_000 // characters handed back to the model from one call
 )
@@ -589,8 +626,11 @@ func (r *run) tool(ctx context.Context, call llmtypes.ToolUseBlock) (content str
 		r.emit(chatstream.Event{Verb: chatstream.VerbPartEnd, PartID: callPart, Final: input})
 		return fmt.Sprintf("There is no tool named %q.", call.Name), true
 	}
-	if spec.Level == LevelWrite && !r.allowed(ctx, call.Name) {
-		decision := r.ask(ctx, call, input)
+	if spec.Level == LevelConfirm || (spec.Level == LevelWrite && !r.allowed(ctx, call.Name)) {
+		decision := r.ask(ctx, call, input, spec.Level == LevelWrite)
+		if spec.Level == LevelConfirm && (decision == "session" || decision == "always") {
+			decision = "once" // no standing answer for this level, whatever the page sent
+		}
 		switch decision {
 		case "session":
 			r.rt.mu.Lock()
@@ -617,23 +657,34 @@ func (r *run) tool(ctx context.Context, call llmtypes.ToolUseBlock) (content str
 	}
 
 	// The call's final event carries who is to run it: the page that sent the message.
-	wait := make(chan toolAnswer, 1)
+	wait := &pending{answer: make(chan toolAnswer, 1), alive: make(chan struct{}, 1)}
 	r.mu.Lock()
 	r.waiting[call.ID] = wait
 	r.mu.Unlock()
 	r.emit(chatstream.Event{Verb: chatstream.VerbPartEnd, PartID: callPart, Final: input,
 		Ext: meta("basalisk.exec", "client", "basalisk.client", r.client, "basalisk.call", call.ID)})
-	timer := time.NewTimer(toolTimeout)
-	defer timer.Stop()
-	select {
-	case a := <-wait:
-		return a.content, a.isError
-	case <-timer.C:
-		r.forget(call.ID)
-		return "The desktop did not answer in time. Its window may be closed.", true
-	case <-ctx.Done():
-		r.forget(call.ID)
-		return "This did not run: the owner stopped the run.", true
+	quiet := time.NewTimer(toolQuiet)
+	defer quiet.Stop()
+	longest := time.NewTimer(toolLongest)
+	defer longest.Stop()
+	for {
+		select {
+		case a := <-wait.answer:
+			return a.content, a.isError
+		case <-wait.alive:
+			quiet.Reset(toolQuiet)
+		case <-quiet.C:
+			// Forgetting the call is what makes this safe: a late answer is refused, and the
+			// page's next "still at it" is told to stop.
+			r.forget(call.ID)
+			return "The desktop did not answer. Its window may be closed. Whether this ran is unknown; check before trying again.", true
+		case <-longest.C:
+			r.forget(call.ID)
+			return "This took too long and was given up on. Whether it ran is unknown; check before trying again.", true
+		case <-ctx.Done():
+			r.forget(call.ID)
+			return "The owner stopped the run while this was in progress. Whether it ran is unknown.", true
+		}
 	}
 }
 
@@ -651,13 +702,14 @@ func (r *run) allowed(ctx context.Context, tool string) bool {
 }
 
 // ask puts the permission question to the owner and waits for the answer.
-func (r *run) ask(ctx context.Context, call llmtypes.ToolUseBlock, input []byte) string {
+// standing says whether "this session" and "always" are on offer.
+func (r *run) ask(ctx context.Context, call llmtypes.ToolUseBlock, input []byte, standing bool) string {
 	id := newID("apr")
 	ch := make(chan string, 1)
 	r.mu.Lock()
 	r.approvals[id] = ch
 	r.mu.Unlock()
-	descriptor, _ := json.Marshal(map[string]any{"tool": call.Name, "input": json.RawMessage(input), "description": r.tools[call.Name].Description})
+	descriptor, _ := json.Marshal(map[string]any{"tool": call.Name, "input": json.RawMessage(input), "description": r.tools[call.Name].Description, "standing": standing})
 	expires := time.Now().Add(approvalTimeout).UTC()
 	r.emit(chatstream.Event{Verb: chatstream.VerbApprovalRequest, ApprovalID: id, CallID: call.ID,
 		Reason: "This changes something.", Descriptor: descriptor, Mode: chatstream.ApprovalInBand, ExpiresAt: &expires})

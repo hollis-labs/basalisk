@@ -5,10 +5,22 @@
  *
  * Levels: "read" looks and runs at once. "act" changes what is on screen and is undone as
  * easily (open a window); it runs at once too. "write" changes data or reaches outside, and
- * the owner is asked first (once, for this session, or always).
+ * the owner is asked first (once, for this session, or always). "confirm" is asked every
+ * time, with no standing answer: for a tool whose calls differ too much for one answer to
+ * cover the next (running a command).
  */
 import { allApps, allCommands, type DeskAPI } from "../desktop/registry"
 import type { DeskSnapshot, SnapshotWindow, ToolSpec } from "./api"
+
+/** What a running call is given besides its input. */
+export interface ToolContext {
+  /**
+   * Aborted when the run has stopped waiting for this call (the owner pressed Stop, or the
+   * run gave up). A tool that changes something after a wait (a question to the owner, a
+   * slow load) must check `signal.aborted` first and not make the change.
+   */
+  signal: AbortSignal
+}
 
 export interface AgentTool extends ToolSpec {
   /**
@@ -17,7 +29,11 @@ export interface AgentTool extends ToolSpec {
    */
   describe?: (input: Record<string, unknown>) => string
   /** Returns what the model is told. Throw to report a failure. */
-  run: (input: Record<string, unknown>, desk: DeskAPI) => unknown | Promise<unknown>
+  run: (
+    input: Record<string, unknown>,
+    desk: DeskAPI,
+    ctx: ToolContext,
+  ) => unknown | Promise<unknown>
 }
 
 const tools = new Map<string, AgentTool>()
@@ -49,11 +65,12 @@ export async function runTool(
   name: string,
   input: unknown,
   desk: DeskAPI,
+  signal: AbortSignal = new AbortController().signal,
 ): Promise<{ content: string; isError: boolean }> {
   const tool = tools.get(name)
   if (!tool) return { content: `The desktop has no tool named "${name}".`, isError: true }
   try {
-    const out = await tool.run((input ?? {}) as Record<string, unknown>, desk)
+    const out = await tool.run((input ?? {}) as Record<string, unknown>, desk, { signal })
     return {
       content: typeof out === "string" ? out : JSON.stringify(out ?? "done"),
       isError: false,

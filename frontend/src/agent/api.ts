@@ -62,8 +62,11 @@ export interface ToolSpec {
   name: string
   description: string
   input_schema: Record<string, unknown>
-  /** read: looks. act: changes what is on screen. write: changes data; asks first. */
-  level: "read" | "act" | "write"
+  /**
+   * read: looks. act: changes what is on screen. write: changes data; asks first, and the
+   * answer can stand (this session, always). confirm: asks every single time.
+   */
+  level: "read" | "act" | "write" | "confirm"
 }
 
 /** One chatstream/v1 event; only the fields the panel reads. */
@@ -84,7 +87,7 @@ export interface StreamEvent {
   final?: unknown
   approval_id?: string
   call_id?: string
-  descriptor?: { tool: string; input: unknown; description?: string }
+  descriptor?: { tool: string; input: unknown; description?: string; standing?: boolean }
   usage?: { uncached_input?: number; output?: number; total?: number }
   value?: Record<string, unknown>
   ext?: Record<string, unknown>
@@ -99,6 +102,9 @@ export const agentApi = {
   cancel: (run: string) => request<void>(`agent/runs/${run}/cancel`, "POST", {}),
   toolResult: (run: string, call_id: string, content: string, is_error: boolean) =>
     request<void>(`agent/runs/${run}/tool-results`, "POST", { call_id, content, is_error }),
+  /** "Still running this call." Rejects (409) once the run has stopped waiting for it. */
+  toolAlive: (run: string, call_id: string) =>
+    request<void>(`agent/runs/${run}/tool-alive`, "POST", { call_id }),
   approve: (run: string, approval_id: string, decision: Decision) =>
     request<void>(`agent/runs/${run}/approvals`, "POST", { approval_id, decision }),
 }

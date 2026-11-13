@@ -63,9 +63,16 @@ each call once.
 |---|---|---|
 | `read` | looks, changes nothing | no |
 | `act` | changes what is on screen, undone as easily (open or focus a window) | no |
-| `write` | changes data, or reaches outside Basalisk | yes |
+| `write` | changes data, or reaches outside Basalisk | yes; the answer can stand |
+| `confirm` | each call is its own decision (running a command) | yes, every time |
 
 A tool with no level, or an unknown one, is treated as `write`.
+
+While the page runs a call it tells the server every ten seconds that it is still at it,
+so a call that waits (on a question to the owner, on a slow page) is not given up on; a
+page that goes quiet for 45 seconds is. When the run stops waiting for a call (the owner
+pressed Stop, the run gave up), the call's `ctx.signal` is aborted and its result is not
+sent. A tool that changes something after a wait checks `ctx.signal.aborted` first.
 
 The desktop's own tools: `desktop_windows`, `window_context`, `desktop_apps` (read),
 `desktop_open`, `desktop_focus` (act), `desktop_run_command` (write: any palette command).
@@ -74,7 +81,8 @@ The desktop's own tools: `desktop_windows`, `window_context`, `desktop_apps` (re
 
 When a `write` tool is called, the run stops and the panel asks: **Once**, **This session**
 (until Basalisk restarts), **Always** (kept in `agent.db`, listed at `GET /api/agent/grants`,
-removed with `DELETE /api/agent/grants/{tool}`), or **No**. A "No" is told to the model as a
+removed with `DELETE /api/agent/grants/{tool}`), or **No**. A `confirm` tool offers only
+**Allow** and **No**, every time. A "No" is told to the model as a
 refusal it should not retry. A question nobody answers in ten minutes counts as no. The
 grant is per tool name.
 
@@ -101,6 +109,6 @@ never logged. Without a gateway and a model the panel opens and says what to set
 - Tool calls run one after another.
 - No compaction: a very long thread will eventually exceed the model's window. Start a
   new conversation.
-- If the page is reloaded while a tool call is waiting on it, that call times out (90 s)
-  and the model is told the desktop did not answer.
+- If the page is reloaded while it is running a tool call, the call is given up on after
+  45 seconds and the model is told the desktop did not answer.
 - The panel has a fixed width, and a floating window can sit partly under it.

@@ -36,6 +36,8 @@ export interface Approval {
   tool: string
   input: unknown
   description?: string
+  /** "This session" and "Always" are on offer (not for a tool that asks every time). */
+  standing: boolean
 }
 
 export interface Session {
@@ -79,6 +81,31 @@ const CLIENT = crypto.randomUUID()
 const ran = new Set<string>()
 let desk: DeskAPI | null = null
 let following: AbortController | null = null
+/** Calls this page is running now, so they can be told the run stopped waiting. */
+const inFlight = new Map<string, AbortController>()
+
+/**
+ * Run a call for the server, saying "still at it" every few seconds so a call that waits
+ * (on the owner, on a slow page) is not given up on. When the run stops waiting, the call
+ * is aborted and its result is not sent.
+ */
+async function execute(run: string, call: string, name: string, input: unknown, d: DeskAPI) {
+  const control = new AbortController()
+  inFlight.set(call, control)
+  const beat = window.setInterval(() => {
+    agentApi.toolAlive(run, call).catch((err) => {
+      if (err instanceof ApiError && (err.status === 409 || err.status === 404)) control.abort()
+    })
+  }, 10_000)
+  try {
+    const out = await runTool(name, input, d, control.signal)
+    if (!control.signal.aborted)
+      await agentApi.toolResult(run, call, out.content, out.isError).catch(() => undefined)
+  } finally {
+    window.clearInterval(beat)
+    inFlight.delete(call)
+  }
+}
 
 const patchItem = (id: string, change: (item: Item) => Item) =>
   set({ items: session.items.map((it) => (it.id === id ? change(it) : it)) })
@@ -178,6 +205,8 @@ export async function send(text: string): Promise<boolean> {
 }
 
 export function stop() {
+  // First, so a call that is waiting (on a question, say) cannot go on to change anything.
+  for (const c of inFlight.values()) c.abort()
   if (session.run) void agentApi.cancel(session.run).catch(() => undefined)
 }
 
@@ -260,9 +289,7 @@ async function follow(run: string) {
         if (!call || ran.has(call) || !desk) break
         ran.add(call)
         const name = session.items.find((it) => it.id === key(ev.part_id ?? ""))
-        void runTool(name?.kind === "tool" ? name.name : "", ev.final, desk).then((out) =>
-          agentApi.toolResult(run, call, out.content, out.isError).catch(() => undefined),
-        )
+        void execute(run, call, name?.kind === "tool" ? name.name : "", ev.final, desk)
         break
       }
       case "approval.request":
@@ -274,6 +301,7 @@ async function follow(run: string) {
               tool: ev.descriptor.tool,
               input: ev.descriptor.input,
               description: ev.descriptor.description,
+              standing: ev.descriptor.standing !== false,
             },
           })
         break
@@ -327,6 +355,8 @@ async function follow(run: string) {
     if (!control.signal.aborted)
       set({ error: "The connection to the agent was lost. Reopen the panel to pick it up." })
   }
+  // The run is over: nothing it asked this page to do may still change anything.
+  for (const c of inFlight.values()) c.abort()
   if (following === control) {
     following = null
     // Anything still marked running did not finish with the run.

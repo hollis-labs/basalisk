@@ -31,6 +31,7 @@ func (a *API) agentRoutes() []route {
 		route{"GET", "/api/agent/runs/{id}/events", r, a.agentEvents},
 		route{"POST", "/api/agent/runs/{id}/cancel", w, a.agentCancel},
 		route{"POST", "/api/agent/runs/{id}/tool-results", w, a.agentToolResult},
+		route{"POST", "/api/agent/runs/{id}/tool-alive", w, a.agentToolAlive},
 		route{"POST", "/api/agent/runs/{id}/approvals", w, a.agentApproval},
 		route{"GET", "/api/agent/grants", r, a.agentGrants},
 		route{"DELETE", "/api/agent/grants/{tool}", w, a.agentRevoke},
@@ -172,6 +173,26 @@ func (a *API) agentToolResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.agent.ToolResult(owner, id, in.CallID, in.Content, in.IsError); err != nil {
+		fail(w, 409, err.Error())
+		return
+	}
+	w.WriteHeader(204)
+}
+
+// agentToolAlive is the page saying it is still running a call. 409 tells it the run has
+// stopped waiting, so it must not go on to change anything.
+func (a *API) agentToolAlive(w http.ResponseWriter, r *http.Request) {
+	owner, id, ok := a.agentRun(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		CallID string `json:"call_id"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := a.agent.ToolAlive(owner, id, in.CallID); err != nil {
 		fail(w, 409, err.Error())
 		return
 	}

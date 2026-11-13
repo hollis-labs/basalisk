@@ -394,3 +394,83 @@ func TestNoModelConfigured(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+var runTool = ToolSpec{Name: "terminal_run", Description: "Run a command.", Level: LevelConfirm, InputSchema: map[string]any{"type": "object"}}
+
+func TestAConfirmToolAsksEveryTimeWhateverWasAnswered(t *testing.T) {
+	s := newStandIn(t,
+		toolReply("toolu_1", "terminal_run", `{"command":"ls"}`), textReply("Ran."),
+		toolReply("toolu_2", "terminal_run", `{"command":"rm x"}`), textReply("Ran again."),
+	)
+	rt := newRuntime(t, s)
+	for i, decision := range []string{"always", "session"} {
+		id, err := rt.Start(t.Context(), StartInput{Owner: "u1", Text: "run it", ClientID: "c1", Tools: []ToolSpec{runTool}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		asked, ran := false, false
+		follow(t, rt, id, func(e chatstream.Event) {
+			switch {
+			case e.Verb == chatstream.VerbApprovalRequest:
+				asked = true
+				if !strings.Contains(string(e.Descriptor), `"standing":false`) {
+					t.Errorf("a standing answer is on offer: %s", e.Descriptor)
+				}
+				_ = rt.Approve("u1", id, e.ApprovalID, decision)
+			case e.Verb == chatstream.VerbPartEnd && len(e.Ext) > 0:
+				ran = true
+				var call string
+				_ = json.Unmarshal(e.Ext["basalisk.call"], &call)
+				_ = rt.ToolResult("u1", id, call, "ok", false)
+			}
+		})
+		if !asked || !ran {
+			t.Fatalf("turn %d: asked=%v ran=%v", i, asked, ran)
+		}
+	}
+	if g, _ := rt.Store().Grants(t.Context(), "u1"); len(g) != 0 {
+		t.Fatalf("a grant was kept: %v", g)
+	}
+}
+
+func TestACallIsGivenUpOnlyWhenThePageGoesQuiet(t *testing.T) {
+	old := toolQuiet
+	toolQuiet = 150 * time.Millisecond
+	t.Cleanup(func() { toolQuiet = old })
+	s := newStandIn(t,
+		toolReply("toolu_1", "desktop_windows", `{}`), textReply("Slow but there."),
+		toolReply("toolu_2", "desktop_windows", `{}`), textReply("Gone."),
+	)
+	rt := newRuntime(t, s)
+
+	// A page that keeps saying "still at it" is waited for well past the quiet limit.
+	id, _ := rt.Start(t.Context(), StartInput{Owner: "u1", Text: "look", ClientID: "c1", Tools: []ToolSpec{lookTool}})
+	follow(t, rt, id, func(e chatstream.Event) {
+		if e.Verb == chatstream.VerbPartEnd && len(e.Ext) > 0 {
+			go func() {
+				for range 6 {
+					time.Sleep(60 * time.Millisecond)
+					if err := rt.ToolAlive("u1", id, "toolu_1"); err != nil {
+						t.Errorf("alive: %v", err)
+					}
+				}
+				if err := rt.ToolResult("u1", id, "toolu_1", "late but fine", false); err != nil {
+					t.Errorf("result: %v", err)
+				}
+			}()
+		}
+	})
+	if sent, _ := json.Marshal(s.bodies[1]["messages"]); !strings.Contains(string(sent), "late but fine") {
+		t.Fatalf("the answer did not reach the model: %s", sent)
+	}
+
+	// A page that says nothing is given up on, and its late answer is refused.
+	id, _ = rt.Start(t.Context(), StartInput{Owner: "u1", Text: "look again", ClientID: "c1", Tools: []ToolSpec{lookTool}})
+	follow(t, rt, id, nil)
+	if sent, _ := json.Marshal(s.bodies[3]["messages"]); !strings.Contains(string(sent), "did not answer") {
+		t.Fatalf("the model was not told: %s", sent)
+	}
+	if err := rt.ToolAlive("u1", id, "toolu_2"); err == nil {
+		t.Fatal("a call that was given up on still counts as waiting")
+	}
+}
