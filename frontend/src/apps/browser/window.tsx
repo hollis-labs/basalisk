@@ -363,11 +363,24 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     if (!available) return
     const win = slotRef.current?.closest<HTMLElement>("[data-win]")
     if (!win) return
+    // Not at once: when the native view is told to let go (the agent panel, ⌘J), WebKit
+    // focuses this window's element again on its own, and passing that on would take the
+    // keyboard straight back from whatever is being focused next. So only if the window
+    // still has the focus a moment later.
+    // (A timer, not animation frames, which do not run while the app is in the background.)
+    let timer = 0
     const onFocus = (e: FocusEvent) => {
-      if (e.target === win) void send({ op: "focus" }).catch(() => undefined)
+      if (e.target !== win) return
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        if (document.activeElement === win) void send({ op: "focus" }).catch(() => undefined)
+      }, 60)
     }
     win.addEventListener("focus", onFocus)
-    return () => win.removeEventListener("focus", onFocus)
+    return () => {
+      window.clearTimeout(timer)
+      win.removeEventListener("focus", onFocus)
+    }
   }, [available, send])
 
   const navigate = (input: string) => {
