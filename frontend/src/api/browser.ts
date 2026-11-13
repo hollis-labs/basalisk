@@ -1,3 +1,4 @@
+import { request } from "./account"
 /**
  * The native browser views (desktop app only). The page drives them over a WebKit message
  * channel the native layer installs; it hears back through the "basalisk:browser" DOM
@@ -71,6 +72,49 @@ export function openLink(url: string) {
     return
   }
   window.open(url, "_blank", "noopener")
+}
+
+// ---- The browser's data on the server: visited pages and zoom per site. ----
+
+export interface Visit {
+  url: string
+  title: string
+  last: string
+  count: number
+}
+
+let zoomCache: Promise<Record<string, number>> | null = null
+
+export const browserData = {
+  /** Zoom per host, fetched once per page. */
+  zooms(): Promise<Record<string, number>> {
+    zoomCache ??= request<{ zoom: Record<string, number> }>("browser/prefs")
+      .then((p) => p.zoom ?? {})
+      .catch(() => ({}))
+    return zoomCache
+  },
+  async setZoom(host: string, zoom: number) {
+    const z = await browserData.zooms()
+    if (zoom === 1) delete z[host]
+    else z[host] = zoom
+    await request("browser/prefs/zoom", "PUT", { host, zoom }).catch(() => undefined)
+  },
+  history: (q: string, limit = 8) =>
+    request<{ entries: Visit[] }>(`browser/history?q=${encodeURIComponent(q)}&limit=${limit}`).then(
+      (r) => r.entries ?? [],
+    ),
+  visit: (url: string, title: string) =>
+    request("browser/history", "POST", { url, title }).catch(() => undefined),
+}
+
+/** The host a zoom is remembered under ("" for pages without one). */
+export function hostOf(url: string): string {
+  try {
+    const u = new URL(url)
+    return u.protocol === "http:" || u.protocol === "https:" ? u.hostname.toLowerCase() : ""
+  } catch {
+    return ""
+  }
 }
 
 const SEARCH = "https://duckduckgo.com/?q="

@@ -19,6 +19,7 @@ func (a *API) browserRoutes() []route {
 	}
 	// Driving a page (navigating it, running script in it) is using it: write scope.
 	w := ScopeWrite
+	rts = append(rts, a.browserDataRoutes()...) // browserdata.go
 	return append(rts,
 		route{"GET", "/api/browser/{id}/snapshot", w, a.browserSnapshot},
 		route{"POST", "/api/browser/{id}/{op}", w, a.browserCommand},

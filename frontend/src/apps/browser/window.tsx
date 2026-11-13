@@ -4,7 +4,9 @@ import {
   BROWSER_EVENT,
   type BrowserEvent,
   type BrowserState,
+  browserData,
   type Frame,
+  hostOf,
   nativeBrowser,
   toURL,
 } from "../../api/browser"
@@ -18,7 +20,21 @@ import { FindBar } from "./find"
 
 const HOME = "https://duckduckgo.com/"
 /** The window's own shortcuts, which must work while the page has the keyboard. */
-const LOCAL_CHORDS = ["cmd+l", "cmd+[", "cmd+]", "cmd+r", "cmd+f", "cmd+g", "shift+cmd+g"]
+const LOCAL_CHORDS = [
+  "cmd+l",
+  "cmd+[",
+  "cmd+]",
+  "cmd+r",
+  "cmd+f",
+  "cmd+g",
+  "shift+cmd+g",
+  "cmd+=",
+  "shift+cmd+=",
+  "cmd+-",
+  "cmd+0",
+]
+/** Zoom steps, as Safari has them. */
+const ZOOMS = [0.5, 0.67, 0.75, 0.85, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 /** How often a visible view refreshes the picture shown while something covers it. */
 const SNAPSHOT_MS = 3000
 
@@ -79,6 +95,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   const findRef = useRef<HTMLInputElement>(null)
   const [shot, setShot] = useState("")
   const [covered, setCovered] = useState(false)
+  const [zoom, setZoom] = useState(1)
   const lastFrame = useRef("")
   const keys = useDeskSettings().keys
 
@@ -208,6 +225,35 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     return () => window.removeEventListener(BROWSER_EVENT, on)
   }, [desk, flash, winId])
 
+  // Each site keeps the zoom chosen for it.
+  const host = hostOf(state.url)
+  useEffect(() => {
+    if (!available || !host) return
+    let live = true
+    void browserData.zooms().then((z) => {
+      if (!live) return
+      const want = z[host] ?? 1
+      setZoom(want)
+      void send({ op: "zoom", zoom: want }).catch(() => undefined)
+    })
+    return () => {
+      live = false
+    }
+  }, [available, host, send])
+
+  const zoomTo = (next: number) => {
+    setZoom(next)
+    void send({ op: "zoom", zoom: next }).catch(() => undefined)
+    if (host) void browserData.setZoom(host, next)
+  }
+  const zoomStep = (dir: 1 | -1) => {
+    const next =
+      dir > 0
+        ? (ZOOMS.find((z) => z > zoom + 0.001) ?? ZOOMS[ZOOMS.length - 1])
+        : ([...ZOOMS].reverse().find((z) => z < zoom - 0.001) ?? ZOOMS[0])
+    zoomTo(next)
+  }
+
   // The window's args follow the page, so a restored desktop reopens it where it was.
   useEffect(() => {
     if (!state.url || state.loading || state.url === args.url) return
@@ -310,6 +356,16 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
       case "cmd+]":
         void send({ op: "forward" })
         return true
+      case "cmd+=":
+      case "shift+cmd+=":
+        zoomStep(1)
+        return true
+      case "cmd+-":
+        zoomStep(-1)
+        return true
+      case "cmd+0":
+        zoomTo(1)
+        return true
       case "cmd+r":
         void send({ op: "reload" })
         return true
@@ -408,6 +464,16 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
             }}
           />
         </form>
+        {zoom !== 1 && (
+          <button
+            type="button"
+            className="browser-zoom"
+            title="Actual size (⌘0)"
+            onClick={() => zoomTo(1)}
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+        )}
         {notice && <span className="browser-notice">{notice}</span>}
       </div>
       {finding && <FindBar inputRef={findRef} find={find} onClose={closeFind} />}

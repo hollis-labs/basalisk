@@ -87,6 +87,29 @@ and gives the keyboard back to the page. A field in the chrome (address, find) t
 keyboard by first asking the view to give it up (`blur`), since DOM focus alone leaves keys
 going to the native view.
 
+## Zoom
+
+⌘+ and ⌘- step through Safari's zoom levels, ⌘0 resets. The level is remembered per site host
+and applied whenever a window lands on that host; a badge in the chrome shows it when it is not
+100% (click to reset).
+
+## The browser's data
+
+Per person, in a private file beside the desk settings (`<owner>.browser.json`, mode 0600),
+never logged:
+
+```
+GET    /api/browser/prefs              -> {zoom: {host: level}}
+PUT    /api/browser/prefs/zoom         {host, zoom}   (1 forgets the host)
+GET    /api/browser/history?q=&limit=  -> {entries: [{url, title, last, count}]}
+POST   /api/browser/history            {url, title}   (http and https only, no fragment)
+DELETE /api/browser/history[?url=]     one page, or everything
+```
+
+History keeps the 5000 most recent pages. A visit to the same page within a minute updates its
+title without counting again. With a query, pages whose address or title hold every word are
+ranked by visits weighted for recency, and a host that starts with the query comes first.
+
 ## Links stay in the desktop
 
 In the desktop app, web links open in a Browser window: cite URL chips, links in rendered
