@@ -29,6 +29,7 @@ import { SessionsPage } from "../pages/sessions"
 import { ShellPage } from "../pages/shell"
 import { useSession } from "../session"
 import { TerminalSlot, useTerminalHost } from "../terminal/host"
+import "../terminal/agent"
 
 function Timezone({ children }: { children: (timezone: string) => ReactNode }) {
   return <>{children(useSession().profile.timezone)}</>

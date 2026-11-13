@@ -52,6 +52,9 @@ export function terminalTheme(): ITheme {
   }
 }
 
+/** The mounted terminals by session id, for the agent's tools (terminal/agent.ts). */
+export const liveTerminals = new Map<string, Terminal>()
+
 interface Props {
   id: string
   active: boolean
@@ -105,6 +108,7 @@ export function XTermView({ id, active, epoch, fontSize, keys, onExit }: Props) 
     }
     term.current = t
     fit.current = f
+    liveTerminals.set(id, t)
 
     let ws: WebSocket | null = null
     let closed = false
@@ -237,6 +241,7 @@ export function XTermView({ id, active, epoch, fontSize, keys, onExit }: Props) 
       onBinary.dispose()
       onResize.dispose()
       ws?.close()
+      liveTerminals.delete(id)
       t.dispose()
       term.current = null
       fit.current = null

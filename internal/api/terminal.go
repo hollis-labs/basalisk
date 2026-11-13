@@ -31,7 +31,19 @@ func (a *API) terminalRoutes() []route {
 		route{"PUT", "/api/terminal/sessions/{id}", w, a.terminalRename},
 		route{"DELETE", "/api/terminal/sessions/{id}", w, a.terminalClose},
 		route{"GET", "/api/terminal/sessions/{id}/ws", w, a.terminalAttach},
+		route{"GET", "/api/terminal/sessions/{id}/status", w, a.terminalStatus},
 	)
+}
+
+// terminalStatus says whether a program holds a shell's foreground, and its folder
+// (internal/terminal/proc.go): what the agent's terminal_run checks before typing.
+func (a *API) terminalStatus(w http.ResponseWriter, r *http.Request) {
+	st, err := a.term.Status(r.PathValue("id"))
+	if err != nil {
+		fail(w, 404, "No such terminal session.")
+		return
+	}
+	reply(w, 200, st)
 }
 
 func (a *API) terminalState(w http.ResponseWriter, _ *http.Request) {
