@@ -203,6 +203,7 @@ registerAgentTools([
           `The shell could not be opened${folder ? ` in ${folder}` : ""}: ${e instanceof Error ? e.message : e}`,
         )
       }
+      if (s.cwd) folders.set(s.id, s.cwd)
       adoptTerminal(s)
       show(desk)
       const ready = await mounted(s.id)
@@ -230,8 +231,10 @@ registerAgentTools([
         const cmd = typeof input.command === "string" ? input.command : ""
         const id = typeof input.shell_id === "string" ? input.shell_id : activeId()
         if (/[\r\n]/.test(cmd)) return "Refused when run: the command has more than one line"
+        const named = typeof input.shell_id === "string" && input.shell_id
         const where = folders.get(id)
-        return `Run \`${cmd.length > 80 ? `${cmd.slice(0, 79)}…` : cmd}\`${where ? ` in ${where}` : " in the active shell"}`
+        const place = where ? ` in ${where}` : named ? ` in shell ${id}` : " in the active shell"
+        return `Run \`${cmd.length > 80 ? `${cmd.slice(0, 79)}…` : cmd}\`${place}`
       } catch {
         return "Run a command in the terminal"
       }
