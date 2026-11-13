@@ -25,11 +25,24 @@ import (
 // The entity is the shape the preview card draws (title, status, a few fields); every kind
 // is projected onto it here, so the frontend has one card and one viewer for all of them.
 
-// EnableCite connects the Tether gateway the references resolve through.
+// EnableCite connects the Tether gateway the references resolve through. Fragments resolve
+// without it (frag_cite.go), so the routes exist when either can answer.
 func (a *API) EnableCite(link *tetherlink.Client) {
-	if link.Configured() {
+	if link.Configured() || fragReader.Load() != nil {
 		a.cite = &citeResolver{link: link, cache: map[string]citeCached{}}
 	}
+}
+
+// citeAvailable reports whether a kind can be resolved in this process: fragments through
+// the fragment reader, the rest through the gateway.
+func (a *API) citeAvailable(kind string) bool {
+	if a.cite == nil {
+		return false
+	}
+	if kind == "fragments.fragment" {
+		return fragReader.Load() != nil
+	}
+	return a.cite.link.Configured()
 }
 
 func (a *API) citeRoutes() []route {
@@ -96,12 +109,12 @@ var citeKinds = map[string]citeKind{
 
 func (a *API) citeState(w http.ResponseWriter, _ *http.Request) {
 	kinds := []string{}
-	if a.cite != nil {
-		for k := range citeKinds {
+	for k := range citeKinds {
+		if a.citeAvailable(k) {
 			kinds = append(kinds, k)
 		}
 	}
-	reply(w, 200, map[string]any{"enabled": a.cite != nil, "kinds": kinds})
+	reply(w, 200, map[string]any{"enabled": len(kinds) > 0, "kinds": kinds})
 }
 
 // notFound reports whether a tool error says the record does not exist (or may not be read,
@@ -138,7 +151,7 @@ func (c *citeResolver) one(ctx context.Context, kind, id string) (*citeEntity, e
 
 func (a *API) citeResolve(w http.ResponseWriter, r *http.Request) {
 	kind, ok := citeKinds[r.URL.Query().Get("kind")]
-	if !ok {
+	if !ok || !a.citeAvailable(r.URL.Query().Get("kind")) {
 		fail(w, 400, "Unknown reference kind.")
 		return
 	}
@@ -187,7 +200,7 @@ func (a *API) citeResolve(w http.ResponseWriter, r *http.Request) {
 func (a *API) citeRecord(w http.ResponseWriter, r *http.Request) {
 	name, id := r.URL.Query().Get("kind"), r.URL.Query().Get("id")
 	kind, ok := citeKinds[name]
-	if !ok || !kind.id.MatchString(id) {
+	if !ok || !a.citeAvailable(name) || !kind.id.MatchString(id) {
 		fail(w, 400, "Unknown reference.")
 		return
 	}

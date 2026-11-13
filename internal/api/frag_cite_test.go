@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/basalisk/internal/fecapture"
+	"github.com/hollis-labs/basalisk/internal/tetherlink"
 )
 
 const fragID = "00064016b0ca7d9c6613d8f2dfd3fca66149856604d107808548e1e13e6e5954"
@@ -85,4 +86,31 @@ func TestFragmentCiteExchange(t *testing.T) {
 	if err != nil || e.Title != "Brackets idea" || e.Body != "" {
 		t.Fatalf("%+v %v", e, err)
 	}
+}
+
+// Fragments resolve without the gateway: the cite routes exist and list only that kind.
+func TestCiteWithoutGatewayListsFragmentsOnly(t *testing.T) {
+	key := "personal-owner-token-0123456789abcdef"
+	srv := readerStub(t, key, false)
+	s, _ := newStore(t)
+	if _, err := s.NewFragmentWorker(DeliveryConfig{}, srv.Client()); err != nil {
+		t.Fatal(err)
+	}
+	s.api.EnableCite(tetherlink.New(nil))
+	c := &client{t: t, handler: s.api.Handler()}
+	c.signIn()
+	c.call("POST", "/api/integrations", map[string]any{"name": "FE", "provider": "fragments-engine", "baseUrl": srv.URL, "credential": key}, 201)
+	var st struct {
+		Enabled bool
+		Kinds   []string
+	}
+	_ = json.Unmarshal(c.call("GET", "/api/cite", nil, 200).Body.Bytes(), &st)
+	if !st.Enabled || len(st.Kinds) != 1 || st.Kinds[0] != "fragments.fragment" {
+		t.Fatalf("%+v", st)
+	}
+	body := c.call("GET", "/api/cite/resolve?kind=fragments.fragment&ids="+fragID, nil, 200).Body.String()
+	if !strings.Contains(body, "Brackets idea") {
+		t.Fatal(body)
+	}
+	c.call("GET", "/api/cite/resolve?kind=torque.task&ids=CW-20261113-0001", nil, 400)
 }

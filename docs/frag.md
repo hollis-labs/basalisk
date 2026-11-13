@@ -46,7 +46,8 @@ shows the chip once a capture is saved, and so does the outbox.
 The server resolves it from FE's reader (`GET /v1/reader/items/{id}`) with the delivery
 credential: a token exchanged for `fragments-engine.read`, or in personal mode the integration's
 key. It does not go through the Tether gateway. The cite routes exist only when the gateway is
-configured (`basalisk.tether_mcp`), as for every other kind. FE serves the reader to loopback
+configured (`basalisk.tether_mcp`) for the gateway kinds; fragments need only a delivery mode, and
+`/api/cite` lists only the kinds this process can resolve. FE serves the reader to loopback
 peers only, so this works where FE is reached through a proxy on its own host.
 
 ## Delivery modes
