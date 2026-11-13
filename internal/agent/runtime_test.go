@@ -194,7 +194,7 @@ func TestAPlainAnswerIsStreamedAndKept(t *testing.T) {
 		t.Fatalf("headers: %v", h)
 	}
 	sent, _ := json.Marshal(s.bodies[0])
-	for _, want := range []string{`"model":"test-model"`, `"stream":true`, `Focused: `, `notes window \"plan.md\" (id w1), file home:Notes/plan.md`, `the selected words`, `browser window \"Docs\" (id w2), page https://example.test/a`, `"text":"hi"`} {
+	for _, want := range []string{`"model":"test-model"`, `"cache_control":{"type":"ephemeral"}`, `"stream":true`, `Focused: `, `notes window \"plan.md\" (id w1), file home:Notes/plan.md`, `the selected words`, `browser window \"Docs\" (id w2), page https://example.test/a`, `"text":"hi"`} {
 		if !strings.Contains(string(sent), want) {
 			t.Errorf("request lacks %s\n%s", want, sent)
 		}

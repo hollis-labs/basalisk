@@ -62,7 +62,7 @@ func (g *Gateway) key() (string, error) {
 type wireRequest struct {
 	Model     string        `json:"model"`
 	MaxTokens int           `json:"max_tokens"`
-	System    string        `json:"system,omitempty"`
+	System    []wireBlock   `json:"system,omitempty"`
 	Messages  []wireMessage `json:"messages"`
 	Tools     []wireTool    `json:"tools,omitempty"`
 	Stream    bool          `json:"stream"`
@@ -80,11 +80,26 @@ type wireBlock struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   string          `json:"content,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
+	// CacheControl marks the end of a prefix the provider may cache (see cached).
+	CacheControl *cacheControl `json:"cache_control,omitempty"`
 }
+
+type cacheControl struct {
+	Type string `json:"type"`
+}
+
+// cached is the marker for "everything up to here is the same next time". A request is
+// tools, then the system prompt, then the messages; each turn repeats the one before it
+// and adds to the end. Marking the last tool, the system prompt and the last message lets
+// the provider read the repeated part from its cache at a fraction of the price instead
+// of processing the whole thread again on every step.
+var cached = &cacheControl{Type: "ephemeral"}
+
 type wireTool struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description,omitempty"`
-	InputSchema map[string]any `json:"input_schema"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description,omitempty"`
+	InputSchema  map[string]any `json:"input_schema"`
+	CacheControl *cacheControl  `json:"cache_control,omitempty"`
 }
 
 func wireMessages(in []llmtypes.ChatMessage) []wireMessage {
@@ -129,7 +144,14 @@ func (g *Gateway) request(ctx context.Context, req llmtypes.ChatRequest, stream 
 	if err != nil {
 		return nil, err
 	}
-	body := wireRequest{Model: req.Model, MaxTokens: req.MaxTokens, System: req.EffectiveSystemPrompt(), Messages: wireMessages(req.Messages), Stream: stream}
+	body := wireRequest{Model: req.Model, MaxTokens: req.MaxTokens, Messages: wireMessages(req.Messages), Stream: stream}
+	if sys := req.EffectiveSystemPrompt(); sys != "" {
+		body.System = []wireBlock{{Type: "text", Text: sys, CacheControl: cached}}
+	}
+	if n := len(body.Messages); n > 0 && stream {
+		last := body.Messages[n-1].Content
+		last[len(last)-1].CacheControl = cached
+	}
 	if body.Model == "" {
 		body.Model = g.cfg.Model
 	}
@@ -142,6 +164,9 @@ func (g *Gateway) request(ctx context.Context, req llmtypes.ChatRequest, stream 
 			schema = map[string]any{"type": "object", "properties": map[string]any{}}
 		}
 		body.Tools = append(body.Tools, wireTool{Name: t.Name, Description: t.Description, InputSchema: schema})
+	}
+	if n := len(body.Tools); n > 0 {
+		body.Tools[n-1].CacheControl = cached
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {

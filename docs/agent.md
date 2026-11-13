@@ -27,7 +27,9 @@ panel (frontend/src/agent)            server (internal/agent, internal/api/agent
 - **The model client is Basalisk's own** (`internal/agent/gateway.go`): the shared libs
   hold contracts and no HTTP client. It speaks the Anthropic Messages API, streamed, to
   `<agent_gateway_url>/v1/messages` with a bearer key, and sends the thread id as
-  `X-Station-Session`.
+  `X-Station-Session`. It marks the tools, the system prompt and the last message as
+  cache points, so each step reads the part of the thread it has already sent from the
+  provider's cache instead of paying for it again.
 - **Conversations live in their own SQLite file**, `agent.db` beside the app's database.
   Its schema moves forward by numbered steps (`PRAGMA user_version`), so it can change
   without touching the app's single migration.
@@ -97,8 +99,8 @@ never logged. Without a gateway and a model the panel opens and says what to set
 - No app tools yet: the agent can see which page or file a window shows and what is
   selected, but cannot read a whole note or page, or act inside an app.
 - Tool calls run one after another.
-- No prompt caching and no compaction: a very long thread will eventually exceed the
-  model's window. Start a new conversation.
+- No compaction: a very long thread will eventually exceed the model's window. Start a
+  new conversation.
 - If the page is reloaded while a tool call is waiting on it, that call times out (90 s)
   and the model is told the desktop did not answer.
 - The panel has a fixed width, and a floating window can sit partly under it.
