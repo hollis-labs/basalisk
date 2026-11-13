@@ -11,6 +11,7 @@ import {
   registerProvider,
 } from "../../desktop/registry"
 import { BrowserWindow } from "./window"
+import "./agent"
 import "./browser.css"
 
 registerApp({
