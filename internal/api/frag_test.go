@@ -229,3 +229,50 @@ func TestFragContextAndSessionArtifact(t *testing.T) {
 		t.Fatal(page)
 	}
 }
+
+// FE validates a capture's source link as an absolute http(s) URL. In personal mode there is
+// no public origin, so the link is built on the server's own; and a capture FE refused as
+// invalid is rebuilt on retry rather than sent again as it was.
+func TestFragNoteSourceLinkIsAbsolute(t *testing.T) {
+	f := newDeliveryFixture(t, false)
+	personal, err := f.s.NewFragmentWorker(DeliveryConfig{LocalOrigin: "http://127.0.0.1:8085"}, f.server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.s.db.Exec(`DELETE FROM integrations`)
+	f.peer.jwt = "personal-owner-token-0123456789abcdef"
+	f.c.call("POST", "/api/integrations", map[string]any{"name": "My FE", "provider": "fragments-engine", "baseUrl": f.server.URL, "credential": f.peer.jwt}, 201)
+	q := responseAs[fragmentSubmissionStatus](t, f.c.call("POST", "/api/frag/captures", fragIn("frag-capture-000077", "a note", "idea"), 202))
+	if err = personal.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.peer.manifests) != 1 {
+		t.Fatalf("manifests = %d", len(f.peer.manifests))
+	}
+	var sent struct {
+		Source struct {
+			SubmittedURL string `json:"submitted_url"`
+			CanonicalURL string `json:"canonical_url"`
+		} `json:"source"`
+	}
+	if err = json.Unmarshal([]byte(f.peer.manifests[0]), &sent); err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("http://127.0.0.1:8085/api/fragment-submissions/%d", q.Sequence)
+	if sent.Source.SubmittedURL != want || sent.Source.CanonicalURL != want {
+		t.Fatalf("source link = %q / %q, want %q", sent.Source.SubmittedURL, sent.Source.CanonicalURL, want)
+	}
+
+	// A row FE refused as invalid: retry clears the frozen manifest so it is built again.
+	if _, err = f.s.db.Exec(`UPDATE fragment_submissions SET state='needs_attention',code='capture_rejected',manifest='{"stale":true}',upstream_capture_id='basalisk-old' WHERE sequence=?`, q.Sequence); err != nil {
+		t.Fatal(err)
+	}
+	f.c.call("POST", fmt.Sprintf("/api/fragment-submissions/%d/retry", q.Sequence), nil, 200)
+	var manifest, upstream string
+	if err = f.s.db.QueryRow(`SELECT manifest,upstream_capture_id FROM fragment_submissions WHERE sequence=?`, q.Sequence).Scan(&manifest, &upstream); err != nil {
+		t.Fatal(err)
+	}
+	if manifest != "" || upstream != "" {
+		t.Fatalf("retry kept the refused manifest: %q %q", manifest, upstream)
+	}
+}

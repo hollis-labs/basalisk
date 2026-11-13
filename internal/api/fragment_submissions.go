@@ -288,7 +288,14 @@ func (a *API) discardFragmentSubmission(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *API) retryFragmentSubmission(w http.ResponseWriter, r *http.Request) {
-	result, err := a.svc.db.ExecContext(r.Context(), `UPDATE fragment_submissions SET state='queued',code='retry_requested',next_attempt=0,lease_token='',lease_until=0,updated_at=? WHERE sequence=? AND state IN ('queued','needs_attention') AND lease_until<=?`, time.Now().UTC().Format(timestampFormat), r.PathValue("id"), time.Now().Unix())
+	// A capture FE refused as invalid was never created there, so its frozen manifest is
+	// dropped and built again: otherwise a retry would send the same refused document. Any
+	// other failure keeps the manifest, which is what makes a resend idempotent.
+	result, err := a.svc.db.ExecContext(r.Context(), `UPDATE fragment_submissions SET
+		manifest=CASE WHEN code='capture_rejected' THEN '' ELSE manifest END,
+		upstream_capture_id=CASE WHEN code='capture_rejected' THEN '' ELSE upstream_capture_id END,
+		state='queued',code='retry_requested',next_attempt=0,lease_token='',lease_until=0,updated_at=?
+		WHERE sequence=? AND state IN ('queued','needs_attention') AND lease_until<=?`, time.Now().UTC().Format(timestampFormat), r.PathValue("id"), time.Now().Unix())
 	if err != nil {
 		fail(w, 503, "Capture storage unavailable.")
 		return

@@ -21,6 +21,10 @@ import (
 // Its separate ParentRef cannot fall back to an integration's legacy FE key.
 type DeliveryConfig struct {
 	IntegrationID, PublicOrigin string
+	// LocalOrigin is this server's own origin (http://127.0.0.1:8085). A note's source link
+	// is built on it when no public origin is configured (personal mode): FE requires an
+	// absolute http(s) URL there and refuses the capture otherwise.
+	LocalOrigin string
 	fecapture.Config
 }
 
@@ -49,12 +53,17 @@ const personalPrincipal = "local-user"
 const personalIssuer = "personal"
 
 func (s *Service) NewFragmentWorker(config DeliveryConfig, client *http.Client) (*FragmentWorker, error) {
+	// LocalOrigin is not delivery configuration: it is set in both modes, so it is put aside
+	// while deciding which mode this is.
+	local := config.LocalOrigin
+	config.LocalOrigin = ""
 	if config == (DeliveryConfig{}) {
 		s.setFragMode("personal")
-		w := &FragmentWorker{svc: s, direct: fecapture.NewDirect(client), http: client}
+		w := &FragmentWorker{svc: s, config: DeliveryConfig{LocalOrigin: local}, direct: fecapture.NewDirect(client), http: client}
 		fragReader.Store(w)
 		return w, nil
 	}
+	config.LocalOrigin = local
 	origin, err := pairing.Origin(config.PublicOrigin)
 	if err != nil || origin != config.PublicOrigin || config.IntegrationID == "" {
 		return nil, errors.New("fragment delivery requires an integration ID and canonical Basalisk public origin")
@@ -176,6 +185,20 @@ func (w *FragmentWorker) authorized(ctx context.Context, j deliveryJob) (string,
 	}
 	return origin, nil
 }
+
+// sourceOrigin is the origin a note's source link is built on: the public origin when one is
+// configured, else this server's own. Never empty, because FE validates the link as an
+// absolute URL.
+func (w *FragmentWorker) sourceOrigin() string {
+	switch {
+	case w.config.PublicOrigin != "":
+		return w.config.PublicOrigin
+	case w.config.LocalOrigin != "":
+		return w.config.LocalOrigin
+	}
+	return "http://localhost"
+}
+
 func (w *FragmentWorker) freeze(ctx context.Context, j *deliveryJob, origin string) error {
 	if j.manifest != "" {
 		return nil
@@ -187,7 +210,7 @@ func (w *FragmentWorker) freeze(ctx context.Context, j *deliveryJob, origin stri
 	j.upstream = "basalisk-" + token()
 	j.origin = origin
 	j.issuer, j.subject = w.issuer(), w.subject()
-	noteURL := w.config.PublicOrigin + "/api/fragment-submissions/" + strconv.FormatInt(j.sequence, 10)
+	noteURL := w.sourceOrigin() + "/api/fragment-submissions/" + strconv.FormatInt(j.sequence, 10)
 	tags := in.Tags
 	if tags == nil {
 		tags = []string{}

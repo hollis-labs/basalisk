@@ -70,6 +70,12 @@ func (b *basalisk) serve(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// A note's source link needs an absolute URL even with no public origin configured.
+	if hc, _ := app.Config["httphost"].(map[string]any); hc != nil {
+		if addr, _ := hc["addr"].(string); addr != "" {
+			cfg.Delivery.LocalOrigin = "http://" + addr
+		}
+	}
 	worker, err := svc.NewFragmentWorker(cfg.Delivery, nil)
 	if err != nil {
 		return err
