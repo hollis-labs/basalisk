@@ -8,7 +8,7 @@
 import type { LucideIcon } from "lucide-react"
 import type { ReactNode } from "react"
 import type { ShellStatus } from "../api/shell"
-import type { Rect, WMAction, WMState } from "./wm"
+import type { Rect, Win, WMAction, WMState } from "./wm"
 
 /** A file the file API can serve: a root id and a path inside it. */
 export interface FileRef {
@@ -91,6 +91,12 @@ export interface DeskAPI {
   geometry(winId: string): WindowGeometry | null
   /** Calls back after anything that can change a geometry (windows, layout, overlays). Returns the unsubscribe. */
   subscribe(fn: () => void): () => void
+  /**
+   * What a window is showing: its app and title, and whatever its app can say (the file, the
+   * page, the folder, the selection). The focused window when no id is given; null when
+   * there is none. This is what the agent and a capture mean by "where I am".
+   */
+  context(winId?: string): Promise<WindowContext | null>
 }
 
 export interface ConfirmOptions {
@@ -160,6 +166,7 @@ const commands = new Map<string, Command>()
 const providers = new Map<string, PaletteProvider>()
 const handlers: FileHandler[] = []
 const overlays = new Map<string, OverlayDef>()
+const describers = new Map<string, ContextDescriber>()
 
 export function registerApp(def: AppDef) {
   apps.set(def.id, def)
@@ -198,6 +205,34 @@ export interface OverlayDef {
   id: string
   render: (props: { close: () => void }) => ReactNode
 }
+
+/** What a window is showing, as far as its app can say. Small, and safe to send to the agent. */
+export interface WindowContext {
+  winId: string
+  app: string
+  title: string
+  /** The file the window shows or the folder it is in. */
+  file?: FileRef
+  /** The page a browser window is on. */
+  url?: string
+  /** The working folder of a terminal. */
+  cwd?: string
+  /** The text selected in the window, when there is one. */
+  selection?: string
+  /** Anything else the app wants known about its state. Keep it small. */
+  extra?: Record<string, unknown>
+}
+
+/** An app's own account of one of its windows. It adds to what the desktop already knows. */
+export type ContextDescriber = (
+  win: Win,
+) => Partial<WindowContext> | Promise<Partial<WindowContext>>
+
+/** Say how windows of an app describe themselves. One describer per app. */
+export function registerContext(app: string, describe: ContextDescriber) {
+  describers.set(app, describe)
+}
+export const contextDescriber = (app: string) => describers.get(app)
 
 export function registerOverlay(def: OverlayDef) {
   overlays.set(def.id, def)

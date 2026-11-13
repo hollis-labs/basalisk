@@ -27,6 +27,7 @@ import {
 import { ApiError, request } from "../api/account"
 import "../apps"
 import "./commands"
+import "../agent/contexts"
 import { SHELL_EVENT, type ShellEvent, type ShellStatus, shell } from "../api/shell"
 import { initCite, setCiteOpener, useCard } from "../cite"
 import { CiteCardLayer } from "../cite/ui"
@@ -41,9 +42,11 @@ import {
   allCommands,
   appById,
   type ConfirmOptions,
+  contextDescriber,
   type DeskAPI,
   handlerFor,
   overlayById,
+  type WindowContext,
 } from "./registry"
 import { loadSettings, updateSettings, useDeskSettings } from "./settings"
 import { applyDeskTheme, THEMES } from "./themes"
@@ -243,6 +246,34 @@ export function Desktop() {
             return { options, answer: resolve }
           })
         }),
+      async context(id) {
+        const st = stateRef.current
+        const win = st.wins.find((w) => w.id === (id ?? st.focus))
+        if (!win) return null
+        const out: WindowContext = {
+          winId: win.id,
+          app: win.app,
+          title: win.title.replace(/^● /, ""),
+        }
+        // What the window was opened with is the first thing known about it.
+        const args = win.args as { file?: { root?: unknown; path?: unknown }; url?: unknown }
+        if (typeof args.file?.root === "string" && typeof args.file.path === "string") {
+          out.file = { root: args.file.root, path: args.file.path }
+        }
+        if (typeof args.url === "string") out.url = args.url
+        // A selection made in the window's own DOM (a native view answers through its app).
+        const el = canvas.current?.querySelector(`[data-win="${win.id}"]`)
+        const selection = window.getSelection()
+        if (el && selection && !selection.isCollapsed && el.contains(selection.anchorNode)) {
+          out.selection = selection.toString().slice(0, 8000)
+        }
+        try {
+          Object.assign(out, await contextDescriber(win.app)?.(win))
+        } catch {
+          // The app could not say more; what the desktop knows stands.
+        }
+        return out
+      },
       subscribe(fn) {
         watchers.current.add(fn)
         return () => {

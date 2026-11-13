@@ -137,7 +137,9 @@ window when it closes; the overlay draws its own backdrop and handles its own ke
 Inside a window, `useDesk()` gives the desktop: `open(app, { args, key, title })`,
 `openFile({ root, path })` (opens the app registered for that file), `close`, `setTitle`,
 the window manager, the palette, the terminal toggle, the shell status, and
-`setDirty(winId, dirty)` (while set, closing the window asks first), and
+`setDirty(winId, dirty)` (while set, closing the window asks first),
+`context(winId?)` (what a window is showing: app, title, and the file, page, folder and
+selection as far as its app can say; an app adds to it with `registerContext`), and
 `confirm({ title, message, confirmLabel, danger })`, a yes/no dialog that resolves to a
 boolean. Use it instead of `window.confirm`: the desktop app's web view has no handler for
 JavaScript dialogs and answers "no" without showing anything. For content that is

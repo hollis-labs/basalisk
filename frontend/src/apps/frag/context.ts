@@ -5,7 +5,6 @@
  */
 import { request } from "../../api/account"
 import type { DeskAPI } from "../../desktop/registry"
-import { filesLocations } from "../files/model"
 
 export interface Moment {
   session?: { id: string; title: string; project: string; workstream: string; contextId: string }
@@ -44,36 +43,11 @@ async function session(): Promise<Moment["session"]> {
   }
 }
 
-async function terminalCwd(): Promise<string | undefined> {
-  try {
-    const st = await request<{ sessions: { id: string; cwd: string; exited: boolean }[] }>(
-      "terminal",
-    )
-    const active = window.localStorage.getItem("basalisk.terminal.active")
-    return st.sessions.find((s) => s.id === active && !s.exited)?.cwd
-  } catch {
-    return undefined
-  }
-}
-
-/** The focused window, described as far as its app can say. */
+/** The focused window, as the desktop describes it (registry.ts, DeskAPI.context). */
 async function focusedWindow(desk: DeskAPI): Promise<Moment["window"]> {
-  const st = desk.wmState()
-  const win = st.wins.find((w) => w.id === st.focus)
-  if (!win) return undefined
-  const out: NonNullable<Moment["window"]> = { app: win.app, title: win.title }
-  const args = (win.args ?? {}) as Record<string, unknown>
-  if (win.app === "files") {
-    const loc = filesLocations.get(win.id)
-    if (loc) out.file = loc
-  } else if (args.file && typeof args.file === "object") {
-    const f = args.file as { root?: unknown; path?: unknown }
-    if (typeof f.root === "string" && typeof f.path === "string")
-      out.file = { root: f.root, path: f.path }
-  }
-  if (win.app === "browser" && typeof args.url === "string") out.url = args.url
-  if (win.app === "terminal") out.cwd = await terminalCwd()
-  return out
+  const ctx = await desk.context()
+  if (!ctx) return undefined
+  return { app: ctx.app, title: ctx.title, file: ctx.file, url: ctx.url, cwd: ctx.cwd }
 }
 
 export async function moment(desk: DeskAPI): Promise<Moment> {
