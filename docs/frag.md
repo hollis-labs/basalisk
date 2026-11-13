@@ -1,7 +1,9 @@
 # Frag
 
 Quick capture into the Fragments Engine (FE), native to Basalisk. ⌥⇧F (command `frag.capture`)
-opens a capture box over the desktop: text, comma-separated tags, ⌘↩ to commit, Esc to hide it.
+opens a capture box over the desktop (headed `FRAG // BASALISK`, so it is never mistaken for the
+standalone Frag app): text, comma-separated tags, ⌘↩ to commit, Esc to hide it. The status line
+names where a capture is: "queued in Basalisk", then "saved to Fragments Engine →" and its chip.
 The draft is kept in this browser's local storage until it is committed, so hiding the box or
 reloading the page loses nothing.
 
@@ -65,9 +67,10 @@ not an agent API call, so it is not written to the shell log.
 
 The capture goes to FE as the same `fe.capture.v1` page manifest fe-clipper sends
 (`source_registration_id` `browser-capture`, the page's submitted and canonical addresses, the
-same item key), so a page clipped here and one clipped from the extension are one source. The
-body is never edited: the selection is a `highlight` annotation and the note a `capture_note`.
-Whole page plus selection, as fe-clipper does. No media yet. The capture id belongs to the page,
+same item key), so a page clipped here and one clipped from the extension are one source. What
+is sent is the selection when there is one (as the document body, with no separate highlight),
+and the whole page otherwise, never edited; the box says which ("sending: selection" or "sending:
+whole page") and shows it. The note is a `capture_note` annotation. No media yet. The capture id belongs to the page,
 note, selection, title and tags, so clipping the same page with the same note again is the same
 capture.
 

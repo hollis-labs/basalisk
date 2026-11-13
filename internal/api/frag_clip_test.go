@@ -76,10 +76,11 @@ func TestFragClipManifest(t *testing.T) {
 	if s.Registration != "browser-capture" || s.Submitted != "https://example.com/post?utm=1" || s.Canonical != "https://example.com/post" || s.ItemKey != "https://example.com/post" || s.Provider != "web" || s.Canon.Adapter != "generic" {
 		t.Fatalf("source: %+v", s)
 	}
-	if m.Document.Title != "A long read" || m.Document.Content.Body != "# A long read\n\nBody text." || m.Document.Language != "en" {
+	// A selection is what is sent: it is the body, and there is no highlight annotation.
+	if m.Document.Title != "A long read" || m.Document.Content.Body != "Body text" || m.Document.Language != "en" {
 		t.Fatalf("document: %+v", m.Document)
 	}
-	if len(m.Annotations) != 2 || m.Annotations[0].Kind != "highlight" || m.Annotations[0].Text != "Body text" || m.Annotations[1].Kind != "capture_note" || m.Annotations[1].Text != "worth a read" {
+	if len(m.Annotations) != 1 || m.Annotations[0].Kind != "capture_note" || m.Annotations[0].Text != "worth a read" {
 		t.Fatalf("annotations: %+v", m.Annotations)
 	}
 	if strings.Join(m.Extraction.Capabilities, ",") != "title,body" || len(m.Extraction.Warnings) != 1 || m.Extraction.Warnings[0].Code != "capture.adapter_warning" {
@@ -98,6 +99,36 @@ func TestFragClipManifest(t *testing.T) {
 	_ = json.Unmarshal(f.c.call("GET", "/api/frag/captures", nil, 200).Body.Bytes(), &list)
 	if len(list.Items) != 1 || list.Items[0].Title != "A long read" || list.Items[0].URL != "https://example.com/post?utm=1" || list.Items[0].Note != "worth a read" {
 		t.Fatalf("list: %+v", list.Items)
+	}
+}
+
+// Without a selection the whole page is sent, the body untouched.
+func TestFragClipWholePage(t *testing.T) {
+	f := newDeliveryFixture(t, false)
+	personal, _ := f.s.NewFragmentWorker(DeliveryConfig{}, f.server.Client())
+	f.s.db.Exec(`DELETE FROM integrations`)
+	f.peer.jwt = "personal-owner-token-0123456789abcdef"
+	f.c.call("POST", "/api/integrations", map[string]any{"name": "FE", "provider": "fragments-engine", "baseUrl": f.server.URL, "credential": f.peer.jwt}, 201)
+	in := clipIn("frag-clip-0000000009")
+	in["page"].(map[string]any)["selection"] = "   "
+	f.c.call("POST", "/api/frag/captures", in, 202)
+	for range 3 {
+		if err := personal.Once(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var m struct {
+		Document struct {
+			Content struct{ Body string }
+		}
+		Annotations []struct{ Kind string }
+		PageContext struct {
+			Selection bool `json:"selection_present"`
+		} `json:"page_context"`
+	}
+	_ = json.Unmarshal([]byte(f.peer.manifests[0]), &m)
+	if m.Document.Content.Body != "# A long read\n\nBody text." || len(m.Annotations) != 1 || m.Annotations[0].Kind != "capture_note" || m.PageContext.Selection {
+		t.Fatalf("%+v", m)
 	}
 }
 

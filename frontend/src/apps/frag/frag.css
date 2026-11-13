@@ -243,14 +243,24 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.frag-clip-what {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--desk-muted);
+}
+.frag-clip-what[data-selection="true"] {
+  color: var(--desk-accent-2);
+}
 .frag-clip-selection {
   margin: 0;
   padding: 6px 10px;
   border-left: 2px solid var(--desk-accent-2);
   color: var(--desk-fg-soft);
   font-size: 12.5px;
-  max-height: 5.5em;
+  max-height: 9rem;
   overflow: auto;
+  white-space: pre-wrap;
 }
 .frag-clip-body {
   margin: 0;

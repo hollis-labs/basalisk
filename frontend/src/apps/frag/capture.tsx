@@ -21,19 +21,20 @@ const stamp = (d: Date) =>
 /** What the status line says about where a queued capture is. */
 function described(c: FragCapture, state: FragState | null): Status {
   if (c.state === "saved")
-    return { tone: "ok", text: `saved → ${c.fragmentID?.slice(0, 8) ?? ""}…` }
+    return { tone: "ok", text: "saved to Fragments Engine →", fragment: c.fragmentID }
   if (c.state === "needs_attention")
     return {
       tone: "error",
       text: `needs attention · ${c.code.replaceAll("_", " ")} · see the outbox`,
     }
-  if (c.delivering) return { tone: "busy", text: "transmitting…" }
+  if (c.delivering)
+    return { tone: "busy", text: "queued in Basalisk · sending to Fragments Engine…" }
   if (state?.mode !== "exchange" && !state?.integration)
     return {
       tone: "ok",
-      text: "queued · add a Fragments Engine integration in Settings to deliver",
+      text: "queued in Basalisk · add a Fragments Engine integration in Settings to deliver",
     }
-  return { tone: "ok", text: "queued" }
+  return { tone: "ok", text: "queued in Basalisk" }
 }
 
 /** "session linked · <project>" while the draft belongs to a work session. */
@@ -125,7 +126,7 @@ export function Capture({ close }: { close: () => void }) {
     }
     saving.current = true
     let d = captureIdFor(draft)
-    setStatus({ tone: "busy", text: "queueing…" })
+    setStatus({ tone: "busy", text: "queueing in Basalisk…" })
     const atSave = await moment(desk).catch(() => ({}) as Moment)
     const send = (dd: Draft) =>
       frag.capture({
@@ -196,6 +197,8 @@ export function Capture({ close }: { close: () => void }) {
           <span className="frag-dot" aria-hidden="true" />
           <span className="frag-brand">FRAG</span>
           <span className="frag-sep">{"//"}</span>
+          <span className="frag-what">BASALISK</span>
+          <span className="frag-sep">·</span>
           <span className="frag-what">NEW_FRAGMENT</span>
           <span className="frag-time">{stamp(now)}</span>
         </header>

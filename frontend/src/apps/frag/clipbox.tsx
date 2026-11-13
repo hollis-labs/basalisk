@@ -92,7 +92,7 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
     if (saving.current) return
     saving.current = true
     let dd = idFor(d, page)
-    setStatus({ tone: "busy", text: "queueing…" })
+    setStatus({ tone: "busy", text: "queueing in Basalisk…" })
     const send = (x: ClipDraft) =>
       frag.capture({
         captureId: x.captureId,
@@ -118,8 +118,8 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
         tone: "ok",
         text:
           state?.mode !== "exchange" && !state?.integration
-            ? "clip queued · add a Fragments Engine integration in Settings to deliver"
-            : "clip queued",
+            ? "queued in Basalisk · add a Fragments Engine integration in Settings to deliver"
+            : "queued in Basalisk · it goes to Fragments Engine from the outbox",
       })
       window.setTimeout(close, 1000)
     } catch (e) {
@@ -146,7 +146,9 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
     }
   }
 
-  const words = page.markdown.trim() ? page.markdown.trim().split(/\s+/).length : 0
+  const selection = page.selection?.trim() ?? ""
+  const sent = selection || page.markdown.trim()
+  const words = sent ? sent.split(/\s+/).length : 0
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the overlay's own keys (Esc, ⌘↩)
     <div className="frag-layer" onKeyDown={onKey}>
@@ -168,7 +170,9 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
           <span className="frag-dot" aria-hidden="true" />
           <span className="frag-brand">FRAG</span>
           <span className="frag-sep">{"//"}</span>
-          <span className="frag-what">CLIP_PAGE</span>
+          <span className="frag-what">BASALISK</span>
+          <span className="frag-sep">·</span>
+          <span className="frag-what">CLIP</span>
           <span className="frag-time">{words} words</span>
         </header>
         <label className="frag-field frag-tags frag-title">
@@ -182,13 +186,19 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
         <div className="frag-clip-url">
           <CiteText text={page.submittedUrl} />
         </div>
-        {page.selection?.trim() && (
-          <blockquote className="frag-clip-selection">{page.selection.trim()}</blockquote>
+        {/* Exactly what is sent: the selection when there is one, else the whole page. */}
+        <div className="frag-clip-what" data-selection={!!selection}>
+          sending: {selection ? "selection" : "whole page"}
+        </div>
+        {selection ? (
+          <blockquote className="frag-clip-selection" title="What will be saved">
+            {selection}
+          </blockquote>
+        ) : (
+          <pre className="frag-clip-body" title="What will be saved">
+            {page.markdown.slice(0, 1800) || "(no article body found; the title and note are kept)"}
+          </pre>
         )}
-        <pre className="frag-clip-body" title="What will be saved">
-          {page.markdown.slice(0, 1800) ||
-            "(no article body found; the title, selection and note are kept)"}
-        </pre>
         <div className="frag-field frag-text frag-note">
           <textarea
             ref={noteRef}

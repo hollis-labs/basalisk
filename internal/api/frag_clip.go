@@ -12,8 +12,9 @@ import (
 // A page clipped in a Browser window: fe-clipper's extraction (Readability, turndown and its
 // site adapters, run in the page; frontend/public/clip/extract.js) queued as an owner capture
 // and delivered as the same fe.capture.v1 page manifest fe-clipper sends, so FE treats a page
-// clipped here and one clipped from a browser extension as the same source. The body is never
-// edited: the selection and the note travel as annotations. No media yet.
+// clipped here and one clipped from a browser extension as the same source. With a selection
+// the selection is what is sent, as the document body (the owner's choice); without one the
+// page's body, never edited. The note travels as an annotation. No media yet.
 
 const (
 	maxClipBody    = 512 * 1024
@@ -142,15 +143,17 @@ func pageManifest(upstream, principal, capturedAt string, p *fragPage, note stri
 	if clipLanguage.MatchString(p.Language) {
 		doc["language"] = p.Language
 	}
-	if p.Markdown != "" {
-		doc["content"] = map[string]string{"format": "markdown", "body": p.Markdown}
+	// What is sent: the selection when there is one, else the whole page.
+	selection := strings.TrimSpace(p.Selection)
+	body := p.Markdown
+	if selection != "" {
+		body = selection
+	}
+	if body != "" {
+		doc["content"] = map[string]string{"format": "markdown", "body": body}
 	}
 
 	annotations := []any{}
-	selection := strings.TrimSpace(p.Selection)
-	if selection != "" {
-		annotations = append(annotations, map[string]any{"annotation_id": "ann-" + token()[:16], "kind": "highlight", "text": selection, "selector": map[string]string{"exact": selection}})
-	}
 	if n := strings.TrimSpace(note); n != "" {
 		annotations = append(annotations, map[string]any{"annotation_id": "ann-" + token()[:16], "kind": "capture_note", "text": n})
 	}
