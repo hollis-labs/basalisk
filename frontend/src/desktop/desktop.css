@@ -1215,3 +1215,66 @@ button.desk-shortcut-chord:hover {
   text-transform: none;
   letter-spacing: normal;
 }
+
+/* ---- Notes: editing ---- */
+.notes-notice {
+  padding: 0 8px;
+  color: var(--desk-accent-2);
+  white-space: nowrap;
+}
+.notes-bar button:disabled {
+  opacity: 0.3;
+}
+.notes-conflict {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  font-size: 12.5px;
+}
+.notes-conflict span {
+  flex: 1;
+}
+.notes-edit {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+.notes-editor {
+  min-width: 0;
+  min-height: 0;
+  padding: 1.25rem 1.5rem 3rem;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: var(--desk-bg);
+  color: var(--desk-fg);
+  font-family: var(--desk-font);
+  font-size: 13px;
+  line-height: 1.65;
+  tab-size: 2;
+}
+.notes-preview {
+  display: none;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--desk-border);
+}
+/* Wide enough for both: source on the left, the page on the right. */
+@container (min-width: 880px) {
+  .notes-edit[data-preview="true"] {
+    grid-template-columns: 1fr 1fr;
+  }
+  .notes-edit[data-preview="true"] .notes-preview {
+    display: block;
+  }
+}
+
+.notes {
+  container-type: inline-size;
+}

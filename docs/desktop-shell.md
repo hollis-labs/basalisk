@@ -102,8 +102,11 @@ a `[label](tach:<service>/<id>)` link, a URL. The syntax is the one the Tether s
   to open it), and the palette (type or paste an id).
 - **Notes** (`frontend/src/apps/notes`) is the viewer: a markdown or text file through the
   file API, or a cited record, rendered with its references live. It registers as the
-  handler for `.md`, `.txt`, `.log` and similar, so `desk.openFile` lands there. Reading
-  only for now.
+  handler for `.md`, `.txt`, `.log` and similar, so `desk.openFile` lands there. A file can
+  be edited in place (a cited record cannot): source on the left and, for markdown in a wide
+  window, the rendered page on the right. ⌘S saves with `If-Match`, so a file that changed
+  on disk since it was read is not overwritten without asking. An unsaved edit is kept in
+  local storage with the version it started from, and is restored when the file is opened again.
 - The desktop app reads `$XDG_CONFIG_HOME/basalisk/basalisk.yaml` (else
   `~/.config/basalisk/basalisk.yaml`) when `SUBSTRATE_CONFIG` is not set.
 - `window.basalisk.desk` is the desktop API, for an agent driving the app through the
@@ -244,7 +247,8 @@ Other things learned:
 - No app icon.
 - Fragments Engine records are not cited yet (no id pattern or resolver), and Tether agents
   and file paths are detected but have no preview.
-- Notes cannot edit, and has no syntax highlighting in code blocks.
+- Notes edits in a plain text area (no syntax highlighting, no markdown shortcuts), cannot
+  create a new file, and closing a window with unsaved changes does not ask (the draft is kept).
 - One window per app: two terminals side by side need a second terminal window, which the
   deck does not support yet (tabs only).
 - The terminal has no search, no split panes and no configuration; font size is the one setting
