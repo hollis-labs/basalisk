@@ -72,6 +72,9 @@ export interface DeskAPI {
   /** Show or hide a registered overlay (toggles when `open` is not given). */
   toggleOverlay(id: string, open?: boolean): void
   overlayOpen(id: string): boolean
+  /** Show or hide a registered side panel (toggles when `open` is not given). One at a time. */
+  togglePanel(id: string, open?: boolean): void
+  panelOpen(id: string): boolean
   toggleTerminal(): void
   shellStatus(): ShellStatus | null
   setKiosk(on: boolean): void
@@ -167,6 +170,12 @@ const providers = new Map<string, PaletteProvider>()
 const handlers: FileHandler[] = []
 const overlays = new Map<string, OverlayDef>()
 const describers = new Map<string, ContextDescriber>()
+const panels = new Map<string, PanelDef>()
+
+export function registerPanel(def: PanelDef) {
+  panels.set(def.id, def)
+}
+export const panelById = (id: string) => panels.get(id)
 
 export function registerApp(def: AppDef) {
   apps.set(def.id, def)
@@ -203,6 +212,18 @@ export const allProviders = () => [...providers.values()]
  */
 export interface OverlayDef {
   id: string
+  render: (props: { close: () => void }) => ReactNode
+}
+
+/**
+ * Something that stays beside the windows while it is open (the agent). The windows are
+ * laid out in the room that is left; nothing is covered.
+ */
+export interface PanelDef {
+  id: string
+  title: string
+  /** Width in CSS pixels. */
+  width: number
   render: (props: { close: () => void }) => ReactNode
 }
 

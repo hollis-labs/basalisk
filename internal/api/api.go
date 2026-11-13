@@ -17,6 +17,7 @@ import (
 	"github.com/hollis-labs/substrate/apierr"
 	"github.com/hollis-labs/substrate/modules/httphost"
 
+	"github.com/hollis-labs/basalisk/internal/agent"
 	"github.com/hollis-labs/basalisk/internal/files"
 	"github.com/hollis-labs/basalisk/internal/macshell"
 	"github.com/hollis-labs/basalisk/internal/terminal"
@@ -42,6 +43,8 @@ type API struct {
 	deskDir string
 	// cite resolves references through the Tether gateway (cite.go); nil when none is configured.
 	cite *citeResolver
+	// agent is the AI core (agent.go); nil unless EnableAgent was called.
+	agent *agent.Runtime
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,
@@ -102,6 +105,7 @@ func (a *API) allRoutes() []route {
 	rts = append(rts, a.terminalRoutes()...)
 	rts = append(rts, a.filesRoutes()...)
 	rts = append(rts, a.browserRoutes()...)
+	rts = append(rts, a.agentRoutes()...) // agent.go
 	return append(rts, a.fragRoutes()...) // frag.go
 }
 

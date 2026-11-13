@@ -46,6 +46,7 @@ import {
   type DeskAPI,
   handlerFor,
   overlayById,
+  panelById,
   type WindowContext,
 } from "./registry"
 import { loadSettings, updateSettings, useDeskSettings } from "./settings"
@@ -141,6 +142,11 @@ export function Desktop() {
     answer: (yes: boolean) => void
   } | null>(null)
   const settings = useDeskSettings()
+  // The side panel that is open (registry.ts, registerPanel). Kept in the settings, so it
+  // is still there after a restart.
+  const panel = settings.panel && panelById(settings.panel) ? settings.panel : ""
+  const panelRef = useRef(panel)
+  panelRef.current = panel
 
   // What commands, apps and the palette may ask of the desktop. Stable for its lifetime.
   const desk = useMemo<DeskAPI>(() => {
@@ -195,6 +201,18 @@ export function Desktop() {
           return show ? [...current, id] : current.filter((o) => o !== id)
         }),
       overlayOpen: (id) => overlaysRef.current.includes(id),
+      togglePanel(id, open) {
+        const show = open ?? panelRef.current !== id
+        if (show === (panelRef.current === id) || (show && !panelById(id))) return
+        updateSettings({ panel: show ? id : "" })
+        if (show) return
+        // The keyboard goes back to the window it came from.
+        const focus = stateRef.current.focus
+        requestAnimationFrame(() =>
+          canvas.current?.querySelector<HTMLElement>(`[data-win="${focus}"]`)?.focus(),
+        )
+      },
+      panelOpen: (id) => panelRef.current === id,
       toggleTerminal() {
         // With a terminal window open the shortcut goes to it; otherwise it drops one down.
         const win = stateRef.current.wins.find((w) => w.app === "terminal")
@@ -522,45 +540,57 @@ export function Desktop() {
           </div>
         </header>
 
-        <div ref={canvas} className="desk-canvas">
-          {!state.wins.length && (
-            <div className="desk-empty" aria-hidden="true">
-              <span className="desk-empty-mark">basalisk</span>
-              <span>
-                {prettyChord(chordFor("palette.toggle", settings.keys))} commands ·{" "}
-                {prettyChord(chordFor("terminal.toggle", settings.keys))} terminal
-              </span>
-            </div>
-          )}
-          {ordered.map((w) => {
-            const rect = placed.get(w.id)
-            const app = appById(w.app)
-            if (!app) return null
-            return (
-              <WindowFrame
-                key={w.id}
-                win={w}
-                app={app}
-                rect={rect}
-                focused={state.focus === w.id}
-                layout={state.layout}
-                dropTarget={dropTarget === w.id}
-                dispatch={dispatch}
-                hitTest={hitTest}
-                onDropTarget={setDropTarget}
-                onMoving={onMoving}
-                onClose={desk.close}
+        <div className="desk-main">
+          <div ref={canvas} className="desk-canvas">
+            {!state.wins.length && (
+              <div className="desk-empty" aria-hidden="true">
+                <span className="desk-empty-mark">basalisk</span>
+                <span>
+                  {prettyChord(chordFor("palette.toggle", settings.keys))} commands ·{" "}
+                  {prettyChord(chordFor("terminal.toggle", settings.keys))} terminal
+                </span>
+              </div>
+            )}
+            {ordered.map((w) => {
+              const rect = placed.get(w.id)
+              const app = appById(w.app)
+              if (!app) return null
+              return (
+                <WindowFrame
+                  key={w.id}
+                  win={w}
+                  app={app}
+                  rect={rect}
+                  focused={state.focus === w.id}
+                  layout={state.layout}
+                  dropTarget={dropTarget === w.id}
+                  dispatch={dispatch}
+                  hitTest={hitTest}
+                  onDropTarget={setDropTarget}
+                  onMoving={onMoving}
+                  onClose={desk.close}
+                />
+              )
+            })}
+            {divider !== null && (
+              <div
+                className="desk-divider"
+                style={{ left: divider, width: GAP, top: GAP, bottom: GAP }}
+                onPointerDown={dragDivider}
+                role="separator"
+                aria-orientation="vertical"
               />
-            )
-          })}
-          {divider !== null && (
-            <div
-              className="desk-divider"
-              style={{ left: divider, width: GAP, top: GAP, bottom: GAP }}
-              onPointerDown={dragDivider}
-              role="separator"
-              aria-orientation="vertical"
-            />
+            )}
+          </div>
+          {panel && (
+            <aside
+              className="desk-panel"
+              data-panel={panel}
+              style={{ width: panelById(panel)?.width }}
+              aria-label={panelById(panel)?.title}
+            >
+              {panelById(panel)?.render({ close: () => desk.togglePanel(panel, false) })}
+            </aside>
           )}
         </div>
         {palette && <PaletteDialog desk={desk} onClose={() => setPalette(false)} />}

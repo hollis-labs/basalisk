@@ -10,6 +10,9 @@
 //	  tether_subject: ""         # principal the capture credential is minted for
 //	  tether_parent_ref: ""      # secret reference of the dedicated enrollment parent
 //	  tether_mcp: []             # command that starts a Tether MCP gateway on stdio; resolves cited records
+//	  agent_gateway_url: ""      # the agent's model gateway: an Anthropic-compatible base, requests go to <url>/v1/messages
+//	  agent_key_file: ""         # file holding the gateway's bearer key (default ~/.config/basalisk/agent-key)
+//	  agent_model: ""            # the model or gateway alias the agent uses
 //
 // Delivery stays off while all five delivery keys are empty. Setting some but not all, or an
 // invalid value, is refused when the worker is built (api.Service.NewFragmentWorker).
@@ -18,9 +21,11 @@ package settings
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"sort"
 	"strings"
 
+	"github.com/hollis-labs/basalisk/internal/agent"
 	"github.com/hollis-labs/basalisk/internal/api"
 )
 
@@ -34,6 +39,9 @@ type Settings struct {
 	// Empty means references are not resolved.
 	TetherMCP []string
 	Delivery  api.DeliveryConfig
+	// Agent is where the agent's model is (internal/agent). The agent answers only when the
+	// gateway and the model are both set.
+	Agent agent.Config
 }
 
 // Parse reads the block (nil for a missing one). An unknown key is an error, so a typo is
@@ -58,7 +66,8 @@ func Parse(raw any) (Settings, error) {
 		}
 		return strings.TrimSpace(t), nil
 	}
-	known := map[string]bool{"tether_mcp": true, "allowed_hosts": true, "fe_integration_id": true, "public_origin": true, "tether_issuer_url": true, "tether_subject": true, "tether_parent_ref": true}
+	known := map[string]bool{"tether_mcp": true, "allowed_hosts": true, "fe_integration_id": true, "public_origin": true, "tether_issuer_url": true, "tether_subject": true, "tether_parent_ref": true,
+		"agent_gateway_url": true, "agent_key_file": true, "agent_model": true}
 	var unknown []string
 	for k := range block {
 		if !known[k] {
@@ -83,6 +92,20 @@ func Parse(raw any) (Settings, error) {
 		return s, err
 	}
 	if s.Delivery.ParentRef, err = str("tether_parent_ref"); err != nil {
+		return s, err
+	}
+	if s.Agent.GatewayURL, err = str("agent_gateway_url"); err != nil {
+		return s, err
+	}
+	if s.Agent.GatewayURL != "" {
+		if u, perr := url.Parse(s.Agent.GatewayURL); perr != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			return s, fmt.Errorf("basalisk.agent_gateway_url must be an http(s) URL")
+		}
+	}
+	if s.Agent.KeyFile, err = str("agent_key_file"); err != nil {
+		return s, err
+	}
+	if s.Agent.Model, err = str("agent_model"); err != nil {
 		return s, err
 	}
 	switch argv := block["tether_mcp"].(type) {

@@ -14,6 +14,8 @@ export interface DeskSettings {
   keys: Record<string, string>
   /** Where Notes creates new notes (apps/notes); unset means the default it proposes. */
   notesFolder?: { root: string; path: string }
+  /** The side panel that is open (registry.ts, registerPanel); unset or "" when none is. */
+  panel?: string
 }
 
 const CACHE = "basalisk.desk.settings"

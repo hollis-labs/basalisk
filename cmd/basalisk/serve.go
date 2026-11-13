@@ -86,6 +86,7 @@ func (b *basalisk) serve(ctx context.Context) error {
 		if sq, _ := db["sqlite"].(map[string]any); sq != nil {
 			if p, _ := sq["path"].(string); filepath.IsAbs(p) {
 				a.SetDeskDir(filepath.Join(filepath.Dir(p), "desk"))
+				enableAgent(ctx, a, cfg.Agent, filepath.Join(filepath.Dir(p), "agent.db")) // agent.go
 			}
 		}
 	}
