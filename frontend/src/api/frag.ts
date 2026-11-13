@@ -29,6 +29,9 @@ export const frag = {
     draftAt: string
     submittedAt: string
     context?: unknown
+    /** A clipped page (apps/frag/clip.ts) and the note about it. */
+    page?: unknown
+    note?: string
   }) => request<FragCapture>("frag/captures", "POST", body),
   list: () => request<{ items: FragCapture[] }>("frag/captures").then((r) => r.items),
 }

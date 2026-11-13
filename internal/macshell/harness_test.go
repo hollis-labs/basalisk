@@ -7,6 +7,7 @@
 package macshell
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -131,6 +132,27 @@ func TestBrowserViews(t *testing.T) {
 	}
 	if _, err = DefaultBrowser().Command(map[string]any{"op": "find-clear", "id": "w1"}); err != nil {
 		t.Error(err)
+	}
+
+	// Frag's Clip: fe-clipper's extraction bundle runs in the view and reports the page.
+	if bundle, err := os.ReadFile("../../frontend/public/clip/extract.js"); err == nil {
+		if _, err = DefaultBrowser().Command(map[string]any{"op": "eval", "id": "w1", "js": string(bundle) + "\n;0"}); err != nil {
+			t.Fatal("clip bundle:", err)
+		}
+		var raw json.RawMessage
+		waitFor(t, "clip capture", func() bool {
+			raw, _ = DefaultBrowser().Command(map[string]any{"op": "eval", "id": "w1", "js": "(()=>{const c=window.__FE_CLIPPER_CAPTURE__;return c?JSON.stringify(c):null})()"})
+			return len(raw) > 4 && string(raw) != "null"
+		})
+		var text string
+		_ = json.Unmarshal(raw, &text)
+		var c struct {
+			Identity struct{ SubmittedURL string } `json:"identity"`
+			Document struct{ Title string }        `json:"document"`
+		}
+		if json.Unmarshal([]byte(text), &c) != nil || c.Document.Title != "Site One" || !strings.HasSuffix(c.Identity.SubmittedURL, "/site") {
+			t.Fatalf("clip capture: %s", text)
+		}
 	}
 
 	// A local file opens with read access to its folder.

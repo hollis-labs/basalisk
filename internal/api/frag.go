@@ -25,10 +25,13 @@ const ownerDevicePrefix = "owner:"
 
 func isOwnerCapture(device string) bool { return strings.HasPrefix(device, ownerDevicePrefix) }
 
-// ownerCapture is what an owner capture's row stores: the submission plus the context.
+// ownerCapture is what an owner capture's row stores: the submission plus the context, and
+// for a clipped page the page and the note (fragClip, frag_clip.go).
 type ownerCapture struct {
 	fragmentSubmission
 	OwnerContext json.RawMessage `json:"ownerContext,omitempty"`
+	Page         *fragPage       `json:"page,omitempty"`
+	Note         string          `json:"note,omitempty"`
 }
 
 func (a *API) fragRoutes() []route {
@@ -221,6 +224,9 @@ type fragCaptureIn struct {
 	DraftAt     string          `json:"draftAt"`
 	SubmittedAt string          `json:"submittedAt"`
 	Context     json.RawMessage `json:"context,omitempty"`
+	// A clipped page (frag_clip.go): the extraction, and the note written with it.
+	Page *fragPage `json:"page,omitempty"`
+	Note string    `json:"note,omitempty"`
 }
 
 // fragCapture queues one capture. The same captureId with the same content and tags answers
@@ -232,12 +238,23 @@ func (a *API) fragCapture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in fragCaptureIn
-	if !decodeLimit(w, r, &in, 128*1024) {
+	if !decodeLimit(w, r, &in, maxClipRequest) {
 		return
 	}
 	draft, e1 := time.Parse(time.RFC3339Nano, in.DraftAt)
 	submitted, e2 := time.Parse(time.RFC3339Nano, in.SubmittedAt)
-	if !validCaptureID(in.CaptureID) || !utf8.ValidString(in.Content) || strings.TrimSpace(in.Content) == "" || len(in.Content) > 64*1024 || strings.ContainsRune(in.Content, 0) || len(in.Tags) > 32 || e1 != nil || e2 != nil || draft.After(submitted) || submitted.After(time.Now().Add(30*time.Second)) {
+	if in.Page != nil {
+		// A page's text is its body; the note is the person's words about it.
+		if msg := validClip(in.Page, in.Note); msg != "" {
+			fail(w, 400, msg)
+			return
+		}
+		in.Content = in.Page.Markdown
+	} else if in.Note != "" {
+		fail(w, 400, "A note goes with a clipped page.")
+		return
+	}
+	if !validCaptureID(in.CaptureID) || !utf8.ValidString(in.Content) || (in.Page == nil && (strings.TrimSpace(in.Content) == "" || len(in.Content) > 64*1024)) || strings.ContainsRune(in.Content, 0) || len(in.Tags) > 32 || e1 != nil || e2 != nil || draft.After(submitted) || submitted.After(time.Now().Add(30*time.Second)) {
 		fail(w, 400, "Invalid capture (maximum 64 KiB and 32 tags).")
 		return
 	}
@@ -256,11 +273,13 @@ func (a *API) fragCapture(w http.ResponseWriter, r *http.Request) {
 	sub := fragmentSubmission{CaptureID: in.CaptureID, Content: in.Content, Tags: in.Tags, DraftAt: in.DraftAt, SubmittedAt: in.SubmittedAt}
 	ownerCtx := a.freezeOwnerContext(r.Context(), owner, device, in, &sub)
 	hashed, _ := json.Marshal(struct {
-		Content string   `json:"content"`
-		Tags    []string `json:"tags"`
-	}{sub.Content, sub.Tags})
+		Content string    `json:"content"`
+		Tags    []string  `json:"tags"`
+		Page    *fragPage `json:"page,omitempty"`
+		Note    string    `json:"note,omitempty"`
+	}{sub.Content, sub.Tags, in.Page, in.Note})
 	hash := digest(string(hashed))
-	stored, _ := json.Marshal(ownerCapture{sub, ownerCtx})
+	stored, _ := json.Marshal(ownerCapture{sub, ownerCtx, in.Page, in.Note})
 
 	tx, err := a.svc.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -329,6 +348,10 @@ func (a *API) fragCaptures(w http.ResponseWriter, r *http.Request) {
 		Content string          `json:"content"`
 		Tags    []string        `json:"tags"`
 		Context json.RawMessage `json:"context,omitempty"`
+		// A clipped page: its title and address (the body is not repeated here) and the note.
+		Title string `json:"title,omitempty"`
+		URL   string `json:"url,omitempty"`
+		Note  string `json:"note,omitempty"`
 	}
 	list := []item{}
 	for rows.Next() {
@@ -347,6 +370,10 @@ func (a *API) fragCaptures(w http.ResponseWriter, r *http.Request) {
 		var oc ownerCapture
 		if json.Unmarshal([]byte(payload), &oc) == nil { // a discarded row's payload is cleared
 			it.Content, it.Tags, it.Context = oc.Content, oc.Tags, oc.OwnerContext
+			if oc.Page != nil {
+				it.Title, it.URL, it.Note = oc.Page.Title, oc.Page.SubmittedURL, oc.Note
+				it.Content = truncateRunes(oc.Page.Markdown, 400)
+			}
 		}
 		list = append(list, it)
 	}

@@ -1,4 +1,13 @@
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, Lock, RotateCw, X } from "lucide-react"
+import {
+  ArrowLeft,
+  ArrowRight,
+  ExternalLink,
+  Globe,
+  Lock,
+  RotateCw,
+  Scissors,
+  X,
+} from "lucide-react"
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
 import {
   BROWSER_EVENT,
@@ -17,6 +26,7 @@ import { bindings, chordOf } from "../../desktop/keys"
 import type { FileRef } from "../../desktop/registry"
 import { useDeskSettings } from "../../desktop/settings"
 import { loadRoots } from "../files/browser"
+import { CLIP_EVENT, clipPage, setPendingClip } from "../frag/clip"
 import { FindBar } from "./find"
 
 const HOME = "https://duckduckgo.com/"
@@ -305,6 +315,28 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     })
   }
 
+  // Clip: extract this page and hand it to the Frag box (the button, or the frag.clip command).
+  const [clipping, setClipping] = useState(false)
+  const clip = useCallback(async () => {
+    if (clipping) return
+    setClipping(true)
+    try {
+      setPendingClip(await clipPage(winId))
+      desk.toggleOverlay("frag", true)
+    } catch (e) {
+      flash(e instanceof Error ? e.message : "Could not clip this page.")
+    } finally {
+      setClipping(false)
+    }
+  }, [clipping, desk, flash, winId])
+  useEffect(() => {
+    const on = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === winId) void clip()
+    }
+    window.addEventListener(CLIP_EVENT, on)
+    return () => window.removeEventListener(CLIP_EVENT, on)
+  }, [clip, winId])
+
   // The window's args follow the page, so a restored desktop reopens it where it was.
   useEffect(() => {
     if (!state.url || state.loading || state.url === args.url) return
@@ -584,6 +616,17 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
           </button>
         )}
         {notice && <span className="browser-notice">{notice}</span>}
+        {/^https?:/.test(state.url) && (
+          <button
+            type="button"
+            className="files-icon"
+            title="Clip this page to Frag (⌥⇧C)"
+            disabled={clipping || state.loading}
+            onClick={() => void clip()}
+          >
+            <Scissors size={15} strokeWidth={1.6} aria-label="Clip this page" />
+          </button>
+        )}
         {/^https?:/.test(state.url) && (
           <button
             type="button"

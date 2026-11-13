@@ -227,3 +227,45 @@
     animation: none;
   }
 }
+
+/* ---- Clip mode ---- */
+.frag-title {
+  --bracket: var(--desk-accent);
+}
+.frag-title input {
+  color: var(--desk-fg);
+  font-size: 14px;
+}
+.frag-clip-url {
+  font-size: 12px;
+  color: var(--desk-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.frag-clip-selection {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--desk-accent-2);
+  color: var(--desk-fg-soft);
+  font-size: 12.5px;
+  max-height: 5.5em;
+  overflow: auto;
+}
+.frag-clip-body {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 9rem;
+  overflow: auto;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--desk-bg) 70%, transparent);
+  color: var(--desk-muted);
+  font-family: var(--desk-font);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.frag-note textarea {
+  min-height: 4.5rem;
+}

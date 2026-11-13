@@ -50,6 +50,27 @@ configured (`basalisk.tether_mcp`) for the gateway kinds; fragments need only a 
 `/api/cite` lists only the kinds this process can resolve. FE serves the reader to loopback
 peers only, so this works where FE is reached through a proxy on its own host.
 
+## Clipping a page
+
+In a Browser window, the ✂ button or ⌥⇧C (command `frag.clip`) extracts the page and opens the
+box in clip mode: the title (editable), the address, the selection if there is one, a preview of
+the body, a note and tags (prefilled with `link`). ⌘↩ queues it like any capture.
+
+The extraction is fe-clipper's (Readability, turndown and its site adapters for YouTube, Reddit,
+X, Pinterest and Instagram), bundled into `frontend/public/clip/extract.js` by
+`scripts/build-clip-bundle.sh` from fe-clipper commit `beb449a270e061d5fc1c0df6e00997542fd49cf8`
+(licenses in `licenses/`; never edit the bundle, change the pin and rebuild). The window runs it
+in the page through the view's `eval` over the page channel: the window acting for the person,
+not an agent API call, so it is not written to the shell log.
+
+The capture goes to FE as the same `fe.capture.v1` page manifest fe-clipper sends
+(`source_registration_id` `browser-capture`, the page's submitted and canonical addresses, the
+same item key), so a page clipped here and one clipped from the extension are one source. The
+body is never edited: the selection is a `highlight` annotation and the note a `capture_note`.
+Whole page plus selection, as fe-clipper does. No media yet. The capture id belongs to the page,
+note, selection, title and tags, so clipping the same page with the same note again is the same
+capture.
+
 ## Delivery modes
 
 - **Exchange**, when the five delivery keys are configured (`fe_integration_id`,
@@ -69,7 +90,8 @@ row or sent to the page. `GET /api/frag` reports the mode and the integration in
 ```
 GET  /api/frag            -> {mode: exchange|personal|off, integration: {id, name} | null}
 POST /api/frag/captures   {captureId, content, tags, draftAt, submittedAt,
-                           context?: {draft?: {session?, window?}, save?: {window?}}}
+                           context?: {draft?: {session?, window?}, save?: {window?}},
+                           page?: {title, submittedUrl, canonicalUrl, markdown, selection, ...}, note?}
                           -> 202 queued | 200 the same capture | 409 the id has other text
 GET  /api/frag/captures   -> {items: [status + content, tags, context]}, newest first, 50
 ```

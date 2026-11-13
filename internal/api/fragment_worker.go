@@ -211,6 +211,17 @@ func (w *FragmentWorker) freeze(ctx context.Context, j *deliveryJob, origin stri
 		}
 		provenance["capture_metadata"] = in.Metadata
 	}
+	if isOwnerCapture(j.device) {
+		var oc ownerCapture
+		if json.Unmarshal([]byte(j.payload), &oc) == nil && oc.Page != nil {
+			raw, err := json.Marshal(pageManifest(j.upstream, j.subject, in.SubmittedAt, oc.Page, oc.Note, tags, provenance))
+			if err != nil {
+				return err
+			}
+			j.manifest = string(raw)
+			return w.update(ctx, *j, `manifest=?,delivery_origin=?,delivery_issuer=?,delivery_subject=?,upstream_capture_id=?`, j.manifest, j.origin, j.issuer, j.subject, j.upstream)
+		}
+	}
 	manifest := map[string]any{
 		"schema_version": "fe.capture.v1", "capture_id": j.upstream, "captured_at": in.SubmittedAt, "principal_id": j.subject,
 		"client":   map[string]string{"kind": "basalisk", "version": "1.0.0"},
