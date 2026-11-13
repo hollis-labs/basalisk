@@ -279,3 +279,37 @@
 .frag-note textarea {
   min-height: 4.5rem;
 }
+
+/* ---- Preview of the note (a view only; the typed text is what is sent) ---- */
+.frag-preview {
+  min-height: 9.5rem;
+  max-height: 40vh;
+  overflow: auto;
+  outline: none;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--desk-fg);
+}
+.frag-note .frag-preview {
+  min-height: 4.5rem;
+}
+.frag-preview-empty {
+  margin: 0;
+  color: var(--desk-muted);
+}
+.frag-text[data-preview="true"] {
+  --bracket: var(--desk-accent-2);
+}
+.frag-preview-toggle {
+  padding: 1px 8px;
+  border-radius: 10px;
+  color: var(--desk-muted);
+  font-family: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.frag-preview-toggle:hover,
+.frag-preview-toggle[data-on="true"] {
+  background: var(--desk-accent-soft);
+  color: var(--desk-accent);
+}

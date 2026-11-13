@@ -276,3 +276,30 @@ func TestFragNoteSourceLinkIsAbsolute(t *testing.T) {
 		t.Fatalf("retry kept the refused manifest: %q %q", manifest, upstream)
 	}
 }
+
+// What the person typed reaches FE byte for byte: markdown source, spaces and newlines kept.
+func TestFragContentReachesFEExactly(t *testing.T) {
+	f := newDeliveryFixture(t, false)
+	personal, _ := f.s.NewFragmentWorker(DeliveryConfig{}, f.server.Client())
+	f.s.db.Exec(`DELETE FROM integrations`)
+	f.peer.jwt = "personal-owner-token-0123456789abcdef"
+	f.c.call("POST", "/api/integrations", map[string]any{"name": "FE", "provider": "fragments-engine", "baseUrl": f.server.URL, "credential": f.peer.jwt}, 201)
+	typed := "  # Heading\n\n- **bold** item\n- see https://example.com/x  \n\n"
+	f.c.call("POST", "/api/frag/captures", fragIn("frag-capture-exact01", typed), 202)
+	for range 3 {
+		if err := personal.Once(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var m struct {
+		Document struct {
+			Content struct{ Format, Body string }
+		}
+	}
+	if len(f.peer.manifests) != 1 || json.Unmarshal([]byte(f.peer.manifests[0]), &m) != nil {
+		t.Fatal(f.peer.manifests)
+	}
+	if m.Document.Content.Body != typed || m.Document.Content.Format != "markdown" {
+		t.Fatalf("body %q", m.Document.Content.Body)
+	}
+}

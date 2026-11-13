@@ -6,6 +6,7 @@ import { useDesk } from "../../desktop/context"
 import type { ClipPage } from "./clip"
 import { type Moment, moment } from "./context"
 import { parseTags } from "./draft"
+import { NoteField, PreviewToggle, usePreview } from "./notefield"
 
 /** The note, tags and title for one page, kept while the box is away (per address). */
 interface ClipDraft {
@@ -70,6 +71,7 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
   const [state, setState] = useState<FragState | null>(null)
   const noteRef = useRef<HTMLTextAreaElement>(null)
   const saving = useRef(false)
+  const [preview, togglePreview] = usePreview()
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the box opens
   useEffect(() => {
@@ -139,6 +141,10 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
       e.preventDefault()
       e.stopPropagation()
       close()
+    } else if (e.metaKey && e.shiftKey && e.code === "KeyP") {
+      e.preventDefault()
+      e.stopPropagation()
+      togglePreview()
     } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       e.stopPropagation()
@@ -199,15 +205,15 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
             {page.markdown.slice(0, 1800) || "(no article body found; the title and note are kept)"}
           </pre>
         )}
-        <div className="frag-field frag-text frag-note">
-          <textarea
-            ref={noteRef}
-            value={d.note}
-            aria-label="Note"
-            placeholder="A note about this page (optional)…"
-            onChange={(e) => edit({ note: e.target.value })}
-          />
-        </div>
+        <NoteField
+          value={d.note}
+          onChange={(v) => edit({ note: v })}
+          textRef={noteRef}
+          label="Note"
+          placeholder="A note about this page (optional)…"
+          preview={preview}
+          className="frag-note"
+        />
         <label className="frag-field frag-tags">
           <span className="frag-tags-label">▸ tags</span>
           <input
@@ -221,6 +227,7 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
           <span className="frag-status" data-tone={status.tone} role="status">
             {status.text}
           </span>
+          <PreviewToggle on={preview} toggle={togglePreview} />
           <span className="frag-hint">esc hide · ⌘↵ clip</span>
         </footer>
       </section>

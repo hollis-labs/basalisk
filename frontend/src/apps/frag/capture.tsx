@@ -6,6 +6,7 @@ import { CiteText } from "../../cite/ui"
 import { useDesk } from "../../desktop/context"
 import { type Moment, moment } from "./context"
 import { captureIdFor, type Draft, newDraft, parseTags, readDraft, writeDraft } from "./draft"
+import { NoteField, PreviewToggle, usePreview } from "./notefield"
 
 type Status = {
   tone: "idle" | "busy" | "ok" | "error"
@@ -56,6 +57,7 @@ export function Capture({ close }: { close: () => void }) {
   const [pulse, setPulse] = useState(0)
   const textRef = useRef<HTMLTextAreaElement>(null)
   const saving = useRef(false)
+  const [preview, togglePreview] = usePreview()
 
   // A new draft remembers the moment it began (once; a kept draft keeps its own).
   // biome-ignore lint/correctness/useExhaustiveDependencies: read once, when the box opens
@@ -174,6 +176,10 @@ export function Capture({ close }: { close: () => void }) {
       e.preventDefault()
       e.stopPropagation()
       close() // the draft stays in storage
+    } else if (e.metaKey && e.shiftKey && e.code === "KeyP") {
+      e.preventDefault()
+      e.stopPropagation()
+      togglePreview()
     } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       e.stopPropagation()
@@ -202,16 +208,16 @@ export function Capture({ close }: { close: () => void }) {
           <span className="frag-what">NEW_FRAGMENT</span>
           <span className="frag-time">{stamp(now)}</span>
         </header>
-        <div className="frag-field frag-text" data-pulse={pulse % 2}>
-          <textarea
-            ref={textRef}
-            value={draft.content}
-            spellCheck
-            aria-label="Fragment"
-            placeholder="Write it down…"
-            onChange={(e) => edit({ content: e.target.value })}
-          />
-        </div>
+        <NoteField
+          value={draft.content}
+          onChange={(v) => edit({ content: v })}
+          textRef={textRef}
+          label="Fragment"
+          placeholder="Write it down…"
+          preview={preview}
+          className=""
+          pulse={pulse % 2}
+        />
         <label className="frag-field frag-tags">
           <span className="frag-tags-label">▸ tags</span>
           <input
@@ -232,6 +238,7 @@ export function Capture({ close }: { close: () => void }) {
               </>
             )}
           </span>
+          <PreviewToggle on={preview} toggle={togglePreview} />
           <span className="frag-hint">esc hide · ⌘↵ commit</span>
         </footer>
       </section>
