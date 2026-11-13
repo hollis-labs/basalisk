@@ -135,7 +135,7 @@ place and the step needs a person at the keyboard.
 Other things learned:
 
 - **cgo in process: go.** One binary, one signature for the grants, no socket protocol. The
-  Objective-C is about 450 lines beside the Go that wraps it. A Swift helper would only be
+  Objective-C is about 550 lines beside the Go that wraps it. A Swift helper would only be
   worth it if the tap had to outlive the app.
 - **Wails.** v3.1.0 is the current stable release; there is no v4 module. Tangent's shell
   (v3.0.0-beta.26) was removed from its main branch on 2026-11-12, so there is no shared shell
