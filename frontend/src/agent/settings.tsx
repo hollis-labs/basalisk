@@ -21,6 +21,8 @@ const APPS: Record<string, string> = {
   files: "Files",
   terminal: "Terminal",
   frag: "Frag",
+  tesseract: "Tesseract",
+  torque: "Torque",
 }
 const appOf = (name: string) => {
   const prefix = name.split("_")[0]
@@ -38,6 +40,8 @@ export function AgentSettings() {
   const [grants, setGrants] = useState<string[] | null>(null)
   const [grantError, setGrantError] = useState("")
   const [busy, setBusy] = useState("")
+  // Tools the server runs itself (Tether gateway): not in the page's toolSpecs().
+  const [serverTools, setServerTools] = useState<ReturnType<typeof toolSpecs>>([])
 
   const loadGrants = useCallback(() => {
     request<{ tools: string[] }>("agent/grants")
@@ -54,6 +58,9 @@ export function AgentSettings() {
       .then(setState)
       .catch((e) => setStateError(e instanceof Error ? e.message : "Could not reach the agent."))
     loadGrants()
+    request<{ tools: ReturnType<typeof toolSpecs> }>("agent/tools")
+      .then((r) => setServerTools(r.tools ?? []))
+      .catch(() => setServerTools([]))
   }, [loadGrants])
 
   const remove = async (tool: string) => {
@@ -69,7 +76,9 @@ export function AgentSettings() {
   }
 
   const groups = new Map<string, ReturnType<typeof toolSpecs>>()
-  for (const t of [...toolSpecs()].sort((a, b) => a.name.localeCompare(b.name))) {
+  const known = new Set(toolSpecs().map((t) => t.name))
+  const all = [...toolSpecs(), ...serverTools.filter((t) => !known.has(t.name))]
+  for (const t of all.sort((a, b) => a.name.localeCompare(b.name))) {
     const app = appOf(t.name)
     groups.set(app, [...(groups.get(app) ?? []), t])
   }
