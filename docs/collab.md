@@ -62,3 +62,28 @@ Files; "Review: mark up the file this window shows" brings a PDF or a mock here.
 Files are served as the Files app serves them: an opaque origin, no script. A mock is shown
 as it renders without script. The agent reads an artifact's marks as regions (fractions of
 the width and height) and times; it does not yet see the pixels.
+
+## Diagram
+
+Architecture and flow drawings. The body is JSON the agent can read and write:
+
+```json
+{"diagram": "v1",
+ "groups": [{"id": "server", "label": "Server"}],
+ "nodes": [{"id": "api", "label": "API", "kind": "service", "group": "server", "note": "…", "x": 286, "y": 60}],
+ "edges": [{"id": "app-api", "from": "app", "to": "api", "label": "HTTP"}]}
+```
+
+`kind` is one of service, store, queue, client, external, actor, note. A node written
+without `x` and `y` is placed in rows under what is already placed, so the agent need not
+lay anything out. Ids are stable; the comparison goes by id.
+
+On the canvas: double-click for a node, drag a node to move it, drag from the dot on a
+selected node to another node for an edge, Delete removes what is selected, the wheel zooms
+and dragging the background pans. The inspector edits the label, kind, group and note, and
+marks the node or edge. ⌘S saves a revision.
+
+**Compare** draws any revision against what is on the canvas: added in green, changed in
+amber (label, kind, group or note), removed in dashed red at its old place, only moved as
+dotted. Diagrams are not functional; they are a picture of how things fit, kept current by
+saving a revision when the thing changes.
