@@ -1,9 +1,11 @@
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
 import { ApiError } from "../../api/account"
 import { type FragCapture, type FragState, frag } from "../../api/frag"
+import { SCRATCH_CHANGED, scratch } from "../../api/scratch"
 import { fragmentRef } from "../../cite/fragment"
 import { CiteText } from "../../cite/ui"
 import { useDesk } from "../../desktop/context"
+import type { DeskAPI } from "../../desktop/registry"
 import { type Moment, moment } from "./context"
 import { captureIdFor, type Draft, newDraft, parseTags, readDraft, writeDraft } from "./draft"
 import { NoteField, PreviewToggle, tagsFieldProps, usePreview } from "./notefield"
@@ -44,12 +46,47 @@ function linked(d: Draft): string {
   return s ? `session linked · ${s.project || s.title}` : ""
 }
 
+/** Where the box sends what is written: Fragments Engine, or the owner's scratch. */
+export type Dest = "frag" | "scratch"
+const DEST_KEY = "basalisk.frag.dest"
+let pendingDest: Dest | null = null
+
+function readDest(): Dest {
+  if (pendingDest) {
+    const d = pendingDest
+    pendingDest = null
+    return d
+  }
+  try {
+    return window.localStorage.getItem(DEST_KEY) === "scratch" ? "scratch" : "frag"
+  } catch {
+    return "frag"
+  }
+}
+
+/** Open the capture box set to one destination (the Scratch shortcut). */
+export function openCaptureFor(desk: DeskAPI, dest: Dest) {
+  pendingDest = dest
+  if (desk.overlayOpen("frag")) desk.toggleOverlay("frag", false)
+  desk.toggleOverlay("frag", true)
+}
+
 /**
  * The capture box: text and tags, ⌘↩ queues the note on this Basalisk (delivery happens
- * behind it, so nothing is lost offline), Esc hides it and keeps the draft.
+ * behind it, so nothing is lost offline), Esc hides it and keeps the draft. It writes to
+ * Fragments Engine or, switched over (⌘⇧D), to the owner's scratch.
  */
 export function Capture({ close }: { close: () => void }) {
   const desk = useDesk()
+  const [dest, setDestState] = useState<Dest>(readDest)
+  const setDest = (d: Dest) => {
+    setDestState(d)
+    try {
+      window.localStorage.setItem(DEST_KEY, d)
+    } catch {
+      // Not kept.
+    }
+  }
   const [draft, setDraft] = useState<Draft>(readDraft)
   const [status, setStatus] = useState<Status>({ tone: "idle", text: "" })
   const [state, setState] = useState<FragState | null>(null)
@@ -127,6 +164,33 @@ export function Capture({ close }: { close: () => void }) {
       return
     }
     saving.current = true
+    if (dest === "scratch") {
+      // Scratch: kept as small items at once; tags tie every item written here.
+      try {
+        const tags = parseTags(draft.tags)
+        const text = tags.length ? `::config tag=${tags.join(" ")}\n${content}` : content
+        const { items } = await scratch.add(text, draft.context)
+        window.dispatchEvent(new Event(SCRATCH_CHANGED))
+        setStatus({
+          tone: "ok",
+          text: `kept in scratch · ${items.length} ${items.length === 1 ? "item" : "items"}`,
+        })
+        writeDraft(null)
+        setDraft(newDraft())
+        window.setTimeout(() => {
+          const current = readDraft()
+          if (!current.content && !current.tags) close()
+        }, 700)
+      } catch (e) {
+        setStatus({
+          tone: "error",
+          text: `${e instanceof Error ? e.message : "It could not be kept."} Your draft is kept.`,
+        })
+      } finally {
+        saving.current = false
+      }
+      return
+    }
     let d = captureIdFor(draft)
     setStatus({ tone: "busy", text: "queueing in Basalisk…" })
     const atSave = await moment(desk).catch(() => ({}) as Moment)
@@ -180,6 +244,10 @@ export function Capture({ close }: { close: () => void }) {
       e.preventDefault()
       e.stopPropagation()
       togglePreview()
+    } else if (e.metaKey && e.shiftKey && e.code === "KeyD") {
+      e.preventDefault()
+      e.stopPropagation()
+      setDest(dest === "scratch" ? "frag" : "scratch")
     } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       e.stopPropagation()
@@ -205,15 +273,38 @@ export function Capture({ close }: { close: () => void }) {
           <span className="frag-sep">{"//"}</span>
           <span className="frag-what">BASALISK</span>
           <span className="frag-sep">·</span>
-          <span className="frag-what">NEW_FRAGMENT</span>
+          <span className="frag-dest">
+            <button
+              type="button"
+              className="frag-dest-opt"
+              data-on={dest === "frag"}
+              title="Send to Fragments Engine (⌘⇧D switches)"
+              onClick={() => setDest("frag")}
+            >
+              NEW_FRAGMENT
+            </button>
+            <button
+              type="button"
+              className="frag-dest-opt"
+              data-on={dest === "scratch"}
+              title="Keep in scratch (⌘⇧D switches)"
+              onClick={() => setDest("scratch")}
+            >
+              SCRATCH
+            </button>
+          </span>
           <span className="frag-time">{stamp(now)}</span>
         </header>
         <NoteField
           value={draft.content}
           onChange={(v) => edit({ content: v })}
           textRef={textRef}
-          label="Fragment"
-          placeholder="Write it down…"
+          label={dest === "scratch" ? "Scratch" : "Fragment"}
+          placeholder={
+            dest === "scratch"
+              ? "Jot it down…  ::idea  ::follow-up  $ command  [] todo  +project @agent #tag"
+              : "Write it down…"
+          }
           preview={preview}
           className=""
           pulse={pulse % 2}
@@ -240,7 +331,10 @@ export function Capture({ close }: { close: () => void }) {
             )}
           </span>
           <PreviewToggle on={preview} toggle={togglePreview} />
-          <span className="frag-hint">esc hide · ⌘↵ commit</span>
+          <span className="frag-hint">
+            esc hide · ⌘⇧D {dest === "scratch" ? "fragment" : "scratch"} · ⌘↵{" "}
+            {dest === "scratch" ? "keep" : "commit"}
+          </span>
         </footer>
       </section>
     </div>

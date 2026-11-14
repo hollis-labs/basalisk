@@ -313,3 +313,27 @@
   background: var(--desk-accent-soft);
   color: var(--desk-accent);
 }
+
+/* Where the capture box sends what is written: a fragment, or scratch. */
+.frag-dest {
+  display: inline-flex;
+  gap: 2px;
+}
+.frag-dest-opt {
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  opacity: 0.45;
+  cursor: pointer;
+}
+.frag-dest-opt:hover {
+  opacity: 0.8;
+}
+.frag-dest-opt[data-on="true"] {
+  border-color: currentColor;
+  opacity: 1;
+}

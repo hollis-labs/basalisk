@@ -143,6 +143,7 @@ The rules that ship (`internal/agent/rules.json`; `/help` in the panel lists the
 | `/do <command title or id>`, or a palette command's title on its own ("Tile windows") | `desktop_run_command` (asks, like any use of it) |
 | `/run <command line>` | `terminal_run` (asks every time) |
 | `/task <what to do>` | `task_start`: a task agent takes it (see Task agents) |
+| `/s <text>` | `scratch_add`: kept in your scratch, word for word (docs/scratch.md) |
 | `/help` | the list |
 | `/new` | a new conversation (handled by the panel itself) |
 
