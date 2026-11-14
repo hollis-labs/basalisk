@@ -299,6 +299,17 @@ func cString(p *C.char) string {
 	return C.GoString(p)
 }
 
+// SetBadge implements Controller.
+func (s *Shell) SetBadge(text string) error {
+	if len(text) > 8 {
+		text = text[:8]
+	}
+	c := C.CString(text)
+	defer C.free(unsafe.Pointer(c))
+	C.bslSetBadge(c)
+	return nil
+}
+
 // Restart implements Controller.
 func (s *Shell) Restart() error {
 	switch C.bslRelaunch() {

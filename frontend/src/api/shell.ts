@@ -52,6 +52,7 @@ export const shell = {
   menuBar: (visible: boolean) => request<ShellStatus>("shell/menu-bar", "POST", { visible }),
   swallow: (on: boolean, combos: string[]) =>
     request<ShellStatus>("shell/swallow", "POST", { on, combos }),
+  badge: (text: string) => request<ShellStatus>("shell/badge", "POST", { text }),
   restart: () => request<ShellStatus>("shell/restart", "POST", {}),
   loginItem: (on: boolean) => request<ShellStatus>("shell/login-item", "POST", { on }),
   fixMinimized: (on: boolean) => request<ShellStatus>("shell/fix-minimized", "POST", { on }),

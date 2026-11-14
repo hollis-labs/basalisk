@@ -136,6 +136,17 @@ after every move.
 
 Not yet: slots the owner can define, and pointers gathered automatically.
 
+## Seen with the window put away (built)
+
+What waits on the owner is kept while the desktop page is up, whether or not the
+assistant's panel is open (`frontend/src/agent/attention.ts`): the bar shows "N for you"
+(it opens the panel), and in the desktop app the Dock icon carries the count
+(`POST /api/shell/badge`). An answer that came back to the assistant is a row in the strip;
+clicking it asks the assistant what came back.
+
+The desktop menu has **Restart Basalisk** with the running build, and after an install the
+bar shows **Update**: closing the window does not load a new build, restarting does.
+
 ## Knowing how things stand (built)
 
 - **Around.** The state of the owner's mail rides with their next message in an `<around>`

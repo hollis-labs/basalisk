@@ -4,64 +4,26 @@
  * held and counted; what asks for something else is with the assistant. Each card can say
  * where mail like it belongs from now on, which becomes a rule.
  */
-import { BellOff, BellRing, ChevronDown, ChevronRight, Inbox } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { BellOff, BellRing, ChevronDown, ChevronRight, CornerDownRight, Inbox } from "lucide-react"
+import { useState } from "react"
 import { request } from "../api/account"
-import { INBOX_CHANGED, type InboxItem, inbox } from "../api/inbox"
+import { type InboxItem, inbox } from "../api/inbox"
 import { useDesk } from "../desktop/context"
-
-interface Sorted {
-  id: string
-  account: string
-  provider: string
-  from: string
-  from_name?: string
-  kind: string
-  subject: string
-  start: string
-  at: string
-  class: string
-  ask?: InboxItem["ask"]
-  why?: string
-}
+import { refreshAttention, type Sorted, useAttention } from "./attention"
+import { send } from "./session"
 
 const who = (m: Sorted) => m.from_name || m.from.split("/").pop() || m.from
 const asItem = (m: Sorted) => ({ provider: m.provider, id: m.id, account: m.account }) as InboxItem
 
 export function NeedsStrip() {
   const desk = useDesk()
-  const [needs, setNeeds] = useState<Sorted[]>([])
-  const [held, setHeld] = useState<Sorted[]>([])
-  const [withBas, setWithBas] = useState(0)
-  const [on, setOn] = useState<boolean | null>(null)
+  const { on, needs, held, answers, withBas: handed } = useAttention()
+  const withBas = handed.length
+  const load = refreshAttention
   const [open, setOpen] = useState("")
   const [showHeld, setShowHeld] = useState(false)
   const [note, setNote] = useState("")
   const [said, setSaid] = useState("")
-
-  const load = useCallback(
-    () =>
-      request<{ needs: Sorted[]; held: Sorted[]; with_assistant: Sorted[]; answers?: Sorted[] }>(
-        "assist/needs",
-      )
-        .then((r) => {
-          setNeeds(r.needs ?? [])
-          setHeld(r.held ?? [])
-          setWithBas((r.with_assistant?.length ?? 0) + (r.answers?.length ?? 0))
-          setOn(true)
-        })
-        .catch(() => setOn((v) => v ?? false)),
-    [],
-  )
-  useEffect(() => {
-    void load()
-    const timer = window.setInterval(() => void load(), 30_000)
-    window.addEventListener(INBOX_CHANGED, load)
-    return () => {
-      window.clearInterval(timer)
-      window.removeEventListener(INBOX_CHANGED, load)
-    }
-  }, [load])
 
   const act = async (
     m: Sorted,
@@ -173,6 +135,21 @@ export function NeedsStrip() {
             </div>
           )}
         </div>
+      ))}
+      {answers.map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          className="needs-answer"
+          title="Ask Bas what came back"
+          onClick={() =>
+            void send(`What did ${who(m)} say about “${m.subject.replace(/^re:\s*/i, "")}”?`)
+          }
+        >
+          <CornerDownRight size={13} aria-hidden="true" />
+          <strong>{who(m)}</strong>
+          <span>answered: {m.subject.replace(/^re:\s*/i, "")}</span>
+        </button>
       ))}
       {(held.length > 0 || withBas > 0) && (
         <button type="button" className="needs-held" onClick={() => setShowHeld((s) => !s)}>

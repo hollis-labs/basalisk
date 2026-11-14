@@ -43,6 +43,9 @@ type Controller interface {
 	// Restart quits the app and starts it again from its bundle (to load a build installed
 	// under it).
 	Restart() error
+	// SetBadge puts a short text on the Dock icon ("" clears it): how many things wait on
+	// the owner while the window is put away.
+	SetBadge(text string) error
 	// RequestPermission shows the system prompt for "accessibility" or "input-monitoring".
 	RequestPermission(kind string) error
 	// Events returns the log entries after the given sequence number.

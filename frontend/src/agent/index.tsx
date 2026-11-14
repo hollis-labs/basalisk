@@ -11,6 +11,7 @@ import {
   registerPanel,
   registerStartup,
 } from "../desktop/registry"
+import { watchAttention } from "./attention"
 import { AgentPanel, FOCUS_EVENT, TaskWindow } from "./panel"
 import { noteContext, start } from "./session"
 import { startTasks } from "./tasks"
@@ -41,6 +42,7 @@ registerApp({
 // Task agents are followed from the moment the desktop is up, panel open or not: this
 // page runs the tools they ask for.
 registerStartup(startTasks)
+registerStartup(watchAttention)
 
 // The global summon chord (⌃⌥⌘J, the Mac shell): Basalisk has been brought forward from
 // another app; open the panel and put the keyboard in it.

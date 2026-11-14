@@ -572,6 +572,11 @@ int bslRelaunch(void) {
 	return 0;
 }
 
+void bslSetBadge(const char *text) {
+	NSString *label = text && text[0] ? [NSString stringWithUTF8String:text] : nil;
+	dispatch_async(dispatch_get_main_queue(), ^{ NSApp.dockTile.badgeLabel = label; });
+}
+
 // Start at login, as a login item of this app bundle (System Settings, General, Login Items).
 int bslLoginItem(void) {
 	if (@available(macOS 13.0, *)) {

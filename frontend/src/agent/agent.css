@@ -537,3 +537,25 @@
 .needs-reply button:disabled {
   opacity: 0.4;
 }
+
+.needs-answer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px dashed var(--desk-border);
+  border-radius: 7px;
+  text-align: left;
+}
+.needs-answer span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--desk-fg-soft);
+}
+.needs-answer:hover {
+  border-color: var(--desk-accent);
+}

@@ -60,6 +60,8 @@ char *bslRunningBuild(void);
 char *bslInstalledBuild(void);
 // Quit and start the app again from its bundle. Returns -1 when not run from a bundle.
 int bslRelaunch(void);
+// The Dock icon's badge: a short text, or "" for none.
+void bslSetBadge(const char *text);
 
 // bslSnapshotPNG renders the web view to a PNG. The caller frees *out. Returns the length,
 // or -1 when there is no web view or the snapshot failed or timed out.

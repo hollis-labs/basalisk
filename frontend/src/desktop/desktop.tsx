@@ -31,6 +31,7 @@ import { ApiError, request } from "../api/account"
 import "../apps"
 import "./commands"
 import "../agent/contexts"
+import { AttentionChip } from "../agent/chip"
 import { SHELL_EVENT, type ShellEvent, type ShellStatus, shell } from "../api/shell"
 import { InboxBell } from "../apps/inbox/bell"
 import { initCite, setCiteOpener, useCard } from "../cite"
@@ -558,6 +559,7 @@ export function Desktop() {
                   <span>Update</span>
                 </button>
               )}
+            <AttentionChip />
             <InboxBell />
             <button
               type="button"
