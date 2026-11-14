@@ -12,6 +12,7 @@ import {
   type StoryRound,
   type StoryScene,
   type StoryScript,
+  type StorySince,
   spoken,
   story,
 } from "../../api/story"
@@ -266,6 +267,8 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
   const [s, setS] = useState<StoryScript | null>(null)
   const [drafts, setDrafts] = useState<StoryNote[]>([])
   const [rounds, setRounds] = useState<StoryRound[]>([])
+  const [since, setSince] = useState<StorySince | null>(null)
+  const desk = useDesk()
   const [roundOpen, setRoundOpen] = useState(false)
   const [problem, setProblem] = useState("")
   const [error, setError] = useState("")
@@ -285,6 +288,7 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
         setS(r.script)
         setDrafts(r.drafts)
         setRounds(r.rounds ?? [])
+        setSince(r.since ?? null)
         setProblem(r.problem ?? "")
       } catch (e) {
         setError(message(e))
@@ -342,6 +346,31 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
     void act(() => story.order(s.key, next))
   }
   const scene = s.scene_list.find((x) => x.id === picked) ?? s.unused.find((x) => x.id === picked)
+  const changed = new Set(since?.changed ?? [])
+  const sinceSign = new Set(since?.since_sign ?? [])
+
+  // Sign-off: every scene approved (or, asked, the rest approved first).
+  const signOff = async () => {
+    const pending = s.scene_list.filter((x) => x.status !== "approved").map((x) => x.id)
+    const ok = await desk.confirm({
+      title: `Sign off "${s.title}"?`,
+      message: pending.length
+        ? `${pending.length} scene${pending.length === 1 ? " is" : "s are"} not approved yet (${pending.join(", ")}); they are approved now, as they are. Then every scene's revision is pinned, the script is kept in Tesseract, and the owners are told.`
+        : "Every scene's revision is pinned, the script is kept in Tesseract, and the owners are told.",
+      confirmLabel: "Sign off",
+    })
+    if (!ok) return
+    setError("")
+    try {
+      const r = await story.signOff(s.key, true)
+      setNotice(
+        `Signed off. ${r.kept ? `Kept in Tesseract at ${r.kept}. ` : ""}${r.mailed.length ? `Told ${r.mailed.join(", ")}. ` : ""}${r.not_mailed.length ? `Not mailed: ${r.not_mailed.join(", ")}. ` : ""}${r.problem ?? ""}`,
+      )
+    } catch (e) {
+      setError(message(e))
+    }
+    await load()
+  }
 
   return (
     <div className="story">
@@ -398,12 +427,28 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
         >
           <Plus size={13} /> Scene
         </button>
+        <button
+          type="button"
+          className="desk-button"
+          data-primary={s.stage !== "approved" || since?.stale_sign ? "true" : undefined}
+          disabled={s.scene_list.length === 0}
+          onClick={() => void signOff()}
+          title="Approve the script: pin every scene's revision and keep it in Tesseract"
+        >
+          {s.stage === "approved" && !since?.stale_sign ? "Signed off" : "Sign off"}
+        </button>
       </header>
       {(error || problem) && (
         <p className="story-problem" role="status">
           {error || `Showing the copy kept here: ${problem}`}
         </p>
       )}
+      {since?.stale_sign && (
+        <p className="story-problem" role="status">
+          Changed since sign-off: {since.since_sign.join(", ")}. Sign off again when it is right.
+        </p>
+      )}
+      {notice && !picked && <p className="story-status story-banner">{notice}</p>}
       <div className="story-split">
         <div className="story-grid">
           {s.scene_list.map((x, i) => (
@@ -459,6 +504,16 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
                   : x.sections.Narration?.split("\n")[0] || "—"}
               </div>
               <div className="story-scene-foot">
+                {changed.has(x.id) && (
+                  <span className="story-badge" title={`Revised since round ${since?.round}`}>
+                    changed
+                  </span>
+                )}
+                {sinceSign.has(x.id) && since?.signed_off && (
+                  <span className="story-badge" data-tone="warn" title="Revised since sign-off">
+                    since sign-off
+                  </span>
+                )}
                 {x.notes > 0 && (
                   <span>
                     {x.notes} note{x.notes === 1 ? "" : "s"}
@@ -550,6 +605,8 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
             scriptKey={s.key}
             scene={scene}
             notes={drafts.filter((n) => n.scene === scene.id)}
+            roundRev={since && changed.has(scene.id) ? since.round_revs[scene.id] || 0 : 0}
+            round={since?.round ?? 0}
             close={() => setPicked(null)}
             status={notice}
             setStatus={setNotice}
@@ -577,10 +634,15 @@ function SceneDetail({
   saved,
   status,
   setStatus,
+  roundRev,
+  round,
 }: {
   scriptKey: string
   scene: StoryScene
   notes: StoryNote[]
+  /** The revision the last round was sent on, when the scene changed since (else 0). */
+  roundRev: number
+  round: number
   close: () => void
   status: string
   setStatus: (s: string) => void
@@ -658,7 +720,26 @@ function SceneDetail({
           s
         </label>
         <span>spoken {clock(spoken(scene.words))}</span>
+        <span className="story-spacer" />
+        <button
+          type="button"
+          className="desk-button"
+          data-primary={scene.status !== "approved" ? "true" : undefined}
+          onClick={async () => {
+            setStatus("")
+            try {
+              await story.approve(scriptKey, scene.id, scene.rev, scene.status !== "approved")
+              setStatus(scene.status !== "approved" ? "Approved." : "Approval taken back.")
+            } catch (e) {
+              setStatus(message(e))
+            }
+            saved()
+          }}
+        >
+          {scene.status === "approved" ? "Approved ✓" : "Approve scene"}
+        </button>
       </div>
+      {roundRev > 0 && <Changes scene={scene} fromRev={roundRev} round={round} />}
       {scene.problem && <p className="story-problem">{scene.problem}</p>}
       {scene.frames.length > 0 && (
         <div className="story-frames">
@@ -1007,4 +1088,99 @@ function RoundPanel({
       )}
     </aside>
   )
+}
+
+/** What changed in a scene since the revision the last round was sent on, per section. */
+function Changes({ scene, fromRev, round }: { scene: StoryScene; fromRev: number; round: number }) {
+  const [before, setBefore] = useState<Record<string, string> | null>(null)
+  const [error, setError] = useState("")
+  useEffect(() => {
+    story
+      .item(scene.name, fromRev)
+      .then((it) => setBefore(sectionsOf(it.content)))
+      .catch((e) => setError(message(e)))
+  }, [scene.name, fromRev])
+  if (error) return <p className="story-problem">{error}</p>
+  if (!before) return null
+  const changedSections = SECTIONS.filter(
+    (sec) => (before[sec] ?? "").trim() !== (scene.sections[sec] ?? "").trim(),
+  )
+  return (
+    <section className="story-sec story-changes">
+      <h4>
+        Changed since round {round} (revision {fromRev} → {scene.rev})
+      </h4>
+      {changedSections.length === 0 && (
+        <div className="story-note-text">Only its details changed (title, duration or status).</div>
+      )}
+      {changedSections.map((sec) => (
+        <div key={sec} className="story-diff">
+          <b>{sec}</b>
+          <div className="story-note-text">
+            {diffWords(before[sec] ?? "", scene.sections[sec] ?? "").map((p, i) =>
+              p.op === "same" ? (
+                // biome-ignore lint/suspicious/noArrayIndexKey: parts of one fixed diff
+                <span key={i}>{p.text}</span>
+              ) : p.op === "del" ? (
+                // biome-ignore lint/suspicious/noArrayIndexKey: parts of one fixed diff
+                <del key={i}>{p.text}</del>
+              ) : (
+                // biome-ignore lint/suspicious/noArrayIndexKey: parts of one fixed diff
+                <ins key={i}>{p.text}</ins>
+              ),
+            )}
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+/** A scene item's sections, as internal/story reads them (headings "## …"). */
+function sectionsOf(content: string): Record<string, string> {
+  const body = content.replace(/^---\n[\s\S]*?\n---\n?/, "")
+  const out: Record<string, string> = {}
+  const norm = (h: string) => h.toLowerCase().replace(/[\s-]/g, "")
+  const parts = body.split(/^## +(.+?)\s*$/m)
+  for (let i = 1; i < parts.length; i += 2) {
+    const name = SECTIONS.find((s) => norm(s) === norm(parts[i]))
+    if (name) out[name] = (parts[i + 1] ?? "").replace(/^\n/, "").replace(/\n+$/, "")
+  }
+  return out
+}
+
+/** A word-level diff (longest common subsequence over words and the spaces between). */
+function diffWords(a: string, b: string): { op: "same" | "del" | "ins"; text: string }[] {
+  const x = a.split(/(\s+)/)
+  const y = b.split(/(\s+)/)
+  if (x.length * y.length > 400_000)
+    return [
+      { op: "del", text: a },
+      { op: "ins", text: b },
+    ]
+  const n = x.length
+  const m = y.length
+  const t: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0))
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      t[i][j] = x[i] === y[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1])
+  const out: { op: "same" | "del" | "ins"; text: string }[] = []
+  const push = (op: "same" | "del" | "ins", text: string) => {
+    const last = out[out.length - 1]
+    if (last && last.op === op) last.text += text
+    else out.push({ op, text })
+  }
+  let i = 0
+  let j = 0
+  while (i < n && j < m) {
+    if (x[i] === y[j]) {
+      push("same", x[i])
+      i++
+      j++
+    } else if (t[i + 1][j] >= t[i][j + 1]) push("del", x[i++])
+    else push("ins", y[j++])
+  }
+  while (i < n) push("del", x[i++])
+  while (j < m) push("ins", y[j++])
+  return out
 }

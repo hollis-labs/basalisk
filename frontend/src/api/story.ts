@@ -93,6 +93,25 @@ export interface SentRound {
   problem?: string
 }
 
+export interface StorySince {
+  round: number
+  round_revs: Record<string, number>
+  approved: Record<string, number>
+  changed: string[]
+  since_sign: string[]
+  signed_off: boolean
+  stale_sign: boolean
+}
+
+export interface Signed {
+  approved: Record<string, number>
+  pinned?: string
+  kept?: string
+  mailed: string[]
+  not_mailed: string[]
+  problem?: string
+}
+
 export interface StoryRevision {
   rev: number
   at: string
@@ -118,6 +137,7 @@ export const story = {
       script: StoryScript
       drafts: StoryNote[]
       rounds: StoryRound[]
+      since: StorySince
       sections: string[]
       problem?: string
     }>(`story/scripts/${enc(key)}${refresh ? "?refresh=1" : ""}`),
@@ -142,6 +162,13 @@ export const story = {
   dropNote: (key: string, id: string) =>
     request(`story/scripts/${enc(key)}/notes/${enc(id)}`, "DELETE"),
   send: (key: string) => request<SentRound>(`story/scripts/${enc(key)}/send`, "POST"),
+  approve: (key: string, id: string, baseRev: number, approve: boolean) =>
+    request<{ rev: number }>(`story/scripts/${enc(key)}/scenes/${enc(id)}/approve`, "POST", {
+      base_rev: baseRev,
+      approve,
+    }),
+  signOff: (key: string, all: boolean) =>
+    request<Signed>(`story/scripts/${enc(key)}/signoff`, "POST", { all }),
   log: (name: string) => request<{ revisions: StoryRevision[] }>(`story/log?name=${enc(name)}`),
   item: (name: string, rev: number) =>
     request<{ name: string; rev: number; content: string }>(

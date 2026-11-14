@@ -54,6 +54,7 @@ type API struct {
 	// story is the scripts and storyboards (story.go); nil unless EnableStory was called.
 	story     *story.Store
 	storyTell story.Notifier
+	storyKeep story.Archiver
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,

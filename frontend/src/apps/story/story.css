@@ -476,3 +476,35 @@
 .story-note[data-kind="suggestion"] .story-quote {
   text-decoration: line-through;
 }
+
+.story-badge {
+  font-size: 10.5px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--desk-accent);
+  color: var(--desk-accent);
+}
+.story-badge[data-tone="warn"] {
+  border-color: var(--color-warning, #f5a524);
+  color: var(--color-warning, #f5a524);
+}
+.story-banner {
+  padding: 6px 12px;
+}
+.story-changes {
+  border-left: 2px solid var(--desk-accent);
+  padding-left: 8px;
+}
+.story-diff {
+  font-size: 12.5px;
+  margin: 4px 0;
+}
+.story-diff del {
+  color: var(--color-danger, #e5484d);
+  text-decoration: line-through;
+}
+.story-diff ins {
+  color: var(--color-success, #30a46c);
+  text-decoration: none;
+  background: color-mix(in srgb, var(--color-success, #30a46c) 14%, transparent);
+}

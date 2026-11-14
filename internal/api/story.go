@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -13,8 +14,8 @@ import (
 
 // EnableStory turns the story routes on. tell (the Tether gateway) is how a sent round
 // reaches the team; nil means rounds are written but nobody is told.
-func (a *API) EnableStory(store *story.Store, tell story.Notifier) {
-	a.story, a.storyTell = store, tell
+func (a *API) EnableStory(store *story.Store, tell story.Notifier, keep story.Archiver) {
+	a.story, a.storyTell, a.storyKeep = store, tell, keep
 }
 
 func (a *API) storyRoutes() []route {
@@ -38,7 +39,58 @@ func (a *API) storyRoutes() []route {
 		{"PUT", "/api/story/scripts/{key}/notes/{id}", w, a.storyEditNote},
 		{"DELETE", "/api/story/scripts/{key}/notes/{id}", w, a.storyDropNote},
 		{"POST", "/api/story/scripts/{key}/send", w, a.storySend},
+		{"POST", "/api/story/scripts/{key}/scenes/{id}/approve", w, a.storyApprove},
+		{"POST", "/api/story/scripts/{key}/signoff", w, a.storySignOff},
 	}
+}
+
+func (a *API) storyApprove(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var in struct {
+		BaseRev int  `json:"base_rev"`
+		Approve bool `json:"approve"`
+	}
+	if !decodeLimit(w, r, &in, 4<<10) {
+		return
+	}
+	rev, err := a.story.ApproveScene(r.Context(), r.PathValue("key"), r.PathValue("id"), in.BaseRev, in.Approve)
+	if err != nil {
+		var c *story.Conflict
+		if errors.As(err, &c) {
+			reply(w, 409, map[string]any{"message": fmt.Sprintf("This scene changed in Caster meanwhile (now revision %d); look at it again before approving.", c.Rev), "conflict": true, "rev": c.Rev})
+			return
+		}
+		storyFail(w, err)
+		return
+	}
+	reply(w, 200, map[string]any{"rev": rev})
+}
+
+func (a *API) storySignOff(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var in struct {
+		All bool `json:"all"`
+	}
+	if !decodeLimit(w, r, &in, 4<<10) {
+		return
+	}
+	signed, err := a.story.SignOff(r.Context(), r.PathValue("key"), in.All, a.storyKeep, a.storyTell)
+	if err != nil {
+		var na *story.ErrNotAllApproved
+		if errors.As(err, &na) {
+			reply(w, 409, map[string]any{"message": err.Error(), "pending": na.Scenes})
+			return
+		}
+		storyFail(w, err)
+		return
+	}
+	reply(w, 200, signed)
 }
 
 func (a *API) storyAddNote(w http.ResponseWriter, r *http.Request) {
@@ -159,7 +211,7 @@ func (a *API) storyScript(w http.ResponseWriter, r *http.Request) {
 	}
 	drafts, _ := a.story.Drafts(r.Context(), key)
 	rounds, _ := a.story.Rounds(r.Context(), key)
-	out := map[string]any{"script": sc, "drafts": drafts, "rounds": rounds, "sections": story.Sections}
+	out := map[string]any{"script": sc, "drafts": drafts, "rounds": rounds, "since": a.story.SinceOf(r.Context(), sc), "sections": story.Sections}
 	if rerr != nil {
 		out["problem"] = rerr.Error()
 	}

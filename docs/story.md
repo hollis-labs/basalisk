@@ -124,6 +124,27 @@ text before the first heading, stay as they are.
   - It says who was told, and who was not (an owner that is not an address).
 - **Sent rounds** are listed in the panel with each note's state as the team left it.
 
+## Changes, approval and sign-off
+
+- **Changed since the round.** A scene revised after the last round was sent (its revision
+  is newer than the round's `revs`) has a "changed" badge. Its detail shows what changed in
+  each section against the revision the round was sent on, word by word.
+- **Approve scene** (in its detail) sets `status: approved` on the revision being looked at.
+  If the scene moved on meanwhile, nothing is written and the pane says to look again.
+- **Sign off** (the storyboard's header) asks first, naming the scenes not yet approved; it
+  approves those as they are, then:
+  - pins each listed scene's revision in the manifest (`approved: {s01: 2, …}`) and sets
+    `stage: approved`;
+  - snaps the manifest into CAS (`caster_snap`);
+  - writes the assembled script to Tesseract as one knowledge item:
+    `project/<project>/knowledge/scripts`, key `<script>`, kind `doc`, with the pinned
+    `cas://` as its pointer and each scene's `caster://…@rev` in the body. Never a `user/`
+    namespace.
+  - It tells the owners.
+- **Changed since sign-off.** A later revision of an approved scene marks the script as
+  changed since sign-off (a warning in the header, a badge on the scene). It does not stay
+  approved silently; sign off again when it is right.
+
 ## Keeping in step with Caster
 
 - **Read-back.** The board reads the namespace when it opens and every 25 s; an open script
@@ -150,4 +171,5 @@ text before the first heading, stay as they are.
 (409 when the scene moved on), `POST …/scenes/{id}/cut`, `POST …/scenes/{id}/restore`,
 `GET /api/story/log?name=`, `GET /api/story/item?name=&rev=`,
 `POST /api/story/scripts/{key}/notes` `{scene?, section?, kind, quote?, replace?, text?}`,
-`PUT …/notes/{id}` `{text?, replace?}`, `DELETE …/notes/{id}`, `POST …/send`.
+`PUT …/notes/{id}` `{text?, replace?}`, `DELETE …/notes/{id}`, `POST …/send`,
+`POST …/scenes/{id}/approve` `{base_rev, approve}`, `POST …/signoff` `{all}`.
