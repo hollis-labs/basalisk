@@ -16,11 +16,18 @@ export function anchorLabel(m: CollabMark): string {
   const a = m.anchor
   if (a.node) return `node ${a.node}`
   if (a.edge) return `edge ${a.edge}`
-  if (a.time !== undefined) {
+  if (a.x === undefined && a.time !== undefined) {
     const s = Math.floor(a.time)
     return `at ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
   }
-  if (a.x !== undefined) return a.page ? `page ${a.page}, a region` : "a region"
+  if (a.x !== undefined) {
+    const what = a.w ? "a region" : "a point"
+    const t =
+      a.time !== undefined
+        ? ` at ${Math.floor(a.time / 60)}:${String(Math.floor(a.time % 60)).padStart(2, "0")}`
+        : ""
+    return `${a.page ? `page ${a.page}, ` : ""}${what}${t}`
+  }
   if (a.selector) return a.selector
   if (a.line_start)
     return a.line_end && a.line_end !== a.line_start

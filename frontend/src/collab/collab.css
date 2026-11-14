@@ -405,3 +405,140 @@
 .collab-composer .collab-mono {
   font-family: var(--desk-mono, ui-monospace, monospace);
 }
+
+/* The Viewer: the artifact on a stage, a sheet over it to draw on. */
+.viewer-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 3px 9px;
+  border: 1px solid var(--desk-border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--desk-fg-soft);
+}
+.viewer-tool:hover,
+.viewer-tool[data-on="true"] {
+  border-color: var(--desk-accent);
+  color: var(--desk-accent);
+}
+.viewer-room {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  background: var(--desk-bg);
+}
+.viewer-stage {
+  position: relative;
+  margin: auto;
+  line-height: 0;
+  max-width: 100%;
+}
+.viewer-stage img,
+.viewer-stage video {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 220px);
+  border-radius: 6px;
+  user-select: none;
+}
+.viewer-stage[data-media="page"] {
+  width: 100%;
+  height: 100%;
+}
+.viewer-stage iframe {
+  width: 100%;
+  height: 100%;
+  min-height: 480px;
+  border: 0;
+  border-radius: 6px;
+  background: #fff;
+}
+.viewer-stage[data-media="audio"] {
+  width: min(560px, 100%);
+}
+.viewer-stage audio {
+  width: 100%;
+}
+.viewer-sheet {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.viewer-sheet[data-on="true"] {
+  pointer-events: auto;
+  cursor: crosshair;
+  touch-action: none;
+}
+.viewer-stage[data-media="video"] .viewer-sheet[data-on="true"],
+.viewer-stage[data-media="page"] .viewer-sheet[data-on="true"] {
+  outline: 2px dashed var(--desk-accent);
+  outline-offset: 2px;
+}
+.viewer-box {
+  position: absolute;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 2px solid var(--desk-accent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--desk-accent) 14%, transparent);
+  pointer-events: auto;
+  cursor: pointer;
+}
+.viewer-box[data-by="agent"] {
+  border-color: #b08cff;
+  background: color-mix(in srgb, #b08cff 16%, transparent);
+}
+.viewer-box[data-active="true"] {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--desk-accent) 45%, transparent);
+}
+.viewer-box[data-pin="true"] {
+  width: 0 !important;
+  height: 0 !important;
+  border: 0;
+  background: none;
+}
+.viewer-box i {
+  position: absolute;
+  top: -11px;
+  left: -11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--desk-accent);
+  color: var(--desk-bg);
+  font: 600 11px / 1 var(--desk-font);
+  font-style: normal;
+}
+.viewer-box[data-by="agent"] i {
+  background: #b08cff;
+}
+.viewer-draft {
+  border-style: dashed;
+  pointer-events: none;
+}
+.viewer-draft[data-pin="true"]::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px dashed var(--desk-accent);
+}
+.viewer-other {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: auto;
+  color: var(--desk-fg-soft);
+}

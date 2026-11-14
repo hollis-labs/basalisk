@@ -48,3 +48,17 @@ Code, content and plans. Review shows the text by line: select a passage, then c
 or suggest a replacement. Accepting a suggestion writes a new revision. Edit changes the
 text (⌘S saves). Compare shows any revision against the latest. "Draft: start one from what
 this window shows" makes a draft from the focused window's selection.
+
+## Viewer
+
+An artifact under review: an image, a video, a recording, a PDF or an HTML mock, opened from
+a file (`ref: file:<root>:<path>`). Drag a box on a picture, or click for a pin, and say what
+about it. A video or a page is marked the same way after **Mark**, which lays a sheet over it
+so the drag is not taken by its own controls; a video's marks remember the moment and are
+drawn only near it. **Note** marks the whole thing. The artifact is made in Caster when it is
+first marked; opening the same file again finds it. Pictures, video and sound open here from
+Files; "Review: mark up the file this window shows" brings a PDF or a mock here.
+
+Files are served as the Files app serves them: an opaque origin, no script. A mock is shown
+as it renders without script. The agent reads an artifact's marks as regions (fractions of
+the width and height) and times; it does not yet see the pixels.
