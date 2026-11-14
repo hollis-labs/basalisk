@@ -170,7 +170,13 @@ func (b *basalisk) serve(ctx context.Context) error {
 					go watch.Run(ctx)
 				}
 				a.EnableAssist(log, watch)
-				deps := agent.OwnerDeps{Watch: watch, Link: link, DevAddress: cfg.DevAddress,
+				// The assistant's own mailbox, for what it asks other seats as itself.
+				var own *inbox.Inbox
+				if urn := agentRT.Config().URN; urn != "" && watch != nil {
+					own = inbox.New(&inbox.Tether{Link: link, Addresses: []string{urn}})
+					agentRT.AddAmbient(agent.OwnAnswers(own, watch))
+				}
+				deps := agent.OwnerDeps{Watch: watch, Link: link, Own: own, DevAddress: cfg.DevAddress,
 					Tasks: func(ctx context.Context) []agent.Task { return agentRT.TasksOf(ctx, a.AssistOwner()) }}
 				agentRT.AddTools(agent.OwnerTools(ownerMail, log, deps))
 				if watch != nil {

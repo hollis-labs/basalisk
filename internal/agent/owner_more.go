@@ -22,6 +22,9 @@ type OwnerDeps struct {
 	}
 	// Tasks are the assistant's own background runs, newest first.
 	Tasks func(ctx context.Context) []Task
+	// Own is the assistant's own mailbox (its address, not the owner's), for asking other
+	// seats something as itself. Nil: it has no address of its own.
+	Own *inbox.Inbox
 	// DevAddress is who builds Basalisk: where a request for something configuration cannot
 	// do is sent. Empty: the tool says it has nowhere to send it.
 	DevAddress string
@@ -245,6 +248,45 @@ func moreOwnerTools(mail *inbox.Inbox, log *assist.Log, d OwnerDeps, record func
 			})
 	}
 
+	if d.Own != nil && d.Link != nil {
+		tools = append(tools, ServerTool{
+			Spec: ToolSpec{Name: "consult", Level: LevelAct,
+				Description: "Ask another seat something as yourself, from your own address (not the owner's): the architect about a design, an app's lead about how its part works, a seat about what it meant. Give the seat by its handle or name (archie, chief, a lead's name; tether_registry_search finds them) and the question, with enough context to answer without asking back. It carries no authority: it is a question from the owner's assistant, and says so. It runs at once. The answer comes back to you in an <around> block with a later message; tell the owner you have asked and go on. To have something done, or to speak for the owner, use owner_send or chief_delegate instead.",
+				InputSchema: obj(map[string]any{"seat": str("The seat's handle, name or address."), "subject": str("One line."), "question": str("The question, with the context needed to answer it."), "about": str("task:<id> or topic:<slug>, when there is one.")}, "seat", "subject", "question")},
+			Run: func(ctx context.Context, in map[string]any) (string, error) {
+				get := func(k string) string { s, _ := in[k].(string); return strings.TrimSpace(s) }
+				if get("question") == "" {
+					return "", errors.New("ask something")
+				}
+				to := get("seat")
+				if !strings.HasPrefix(to, "msg://") {
+					found, err := seatAddress(ctx, d.Link, strings.TrimPrefix(to, "@"))
+					if err != nil {
+						return "", err
+					}
+					to = found
+				}
+				p, account, ok := d.Own.First()
+				if !ok {
+					return "", errors.New("you have no address of your own to ask from")
+				}
+				if err := record(ctx, assist.Entry{Kind: "consult", Summary: fmt.Sprintf("Asked %s: “%s”", get("seat"), clip(get("subject"), 100)), With: to, Detail: map[string]any{"subject": get("subject"), "body": clip(get("question"), 4000)}}); err != nil {
+					return "", err
+				}
+				extra := map[string]any{"kind": "question", "attention": "agent", "asked_by": "Chrispian's assistant in Basalisk, as itself", "authority": "none: a question, not an instruction from Chrispian"}
+				if re := get("about"); re != "" {
+					extra["re"] = re
+				}
+				id, err := p.Send(ctx, account, inbox.Outgoing{To: to, Kind: "request", Subject: get("subject"), Body: get("question") + "\n\n(From Chrispian's assistant in Basalisk, asking as itself. This is a question, not an instruction from him.)", Extra: extra})
+				if err != nil {
+					return "", err
+				}
+				sent(ctx, id, "consult", get("subject"), to)
+				return out(map[string]any{"asked": to, "sent": id, "note": "The answer comes back to you in an <around> block."})
+			},
+		})
+	}
+
 	tools = append(tools, ServerTool{
 		Spec: ToolSpec{Name: "dev_request", Level: LevelWrite,
 			Description: "Ask whoever builds Basalisk for something you cannot do with your tools, your notes or the owner's rules: a new tool, a new kind of rule or filter, a fix to how you or an app behaves. Use it when the owner asks for a change to Basalisk itself, or when you keep being unable to do something they want. Say what is wanted, what happens today, and what done would look like. It is sent in the owner's name and recorded; the owner is asked first unless they chose Always.",
@@ -302,5 +344,62 @@ func seatAddress(ctx context.Context, link interface {
 			return r.URN, nil
 		}
 	}
-	return "", fmt.Errorf("no seat named @%s was found in the registry", handle)
+	if len(rows) == 1 {
+		return rows[0].URN, nil
+	}
+	var names []string
+	for i, r := range rows {
+		if i == 8 {
+			break
+		}
+		names = append(names, r.Name)
+	}
+	if len(names) > 0 {
+		return "", fmt.Errorf("no seat is named exactly %q; the registry has: %s. Give one of those names, or its address", handle, strings.Join(names, ", "))
+	}
+	return "", fmt.Errorf("no seat named %q was found in the registry", handle)
+}
+
+// OwnAnswers is an ambient source: replies that came to the assistant's own address to what
+// it asked as itself (consult). Each is told once and marked read; it stays in the mailbox.
+func OwnAnswers(own *inbox.Inbox, watch *assist.Watcher) AmbientSource {
+	return func(ctx context.Context) string {
+		items, sources := own.List(ctx, inbox.Filter{UnreadOnly: true, Limit: 40})
+		for _, s := range sources {
+			if s.Error != "" {
+				return ""
+			}
+		}
+		var b strings.Builder
+		other := 0
+		for _, it := range items {
+			about, ok := "", false
+			if it.InReplyTo != "" {
+				about, ok = watch.Asked(ctx, it.InReplyTo)
+			}
+			if !ok {
+				other++
+				continue
+			}
+			name := it.FromName
+			if name == "" {
+				name = it.From
+			}
+			fmt.Fprintf(&b, "- %s answered what you asked (%s):\n%s\n", name, about, clip(strings.TrimSpace(it.Body), 3000))
+			if p, err := own.Provider(it.Provider, it.Account); err == nil {
+				_ = p.MarkRead(ctx, it.Account, it.ID)
+			}
+		}
+		text := ""
+		if b.Len() > 0 {
+			text = "Answers to what you asked other seats as yourself (each is told to you once; it stays in your own mailbox):\n" + strings.TrimRight(b.String(), "\n")
+		}
+		if other > 0 {
+			if text != "" {
+				text += "\n"
+			}
+			text += fmt.Sprintf("Your own mailbox has %d other unread message(s) (tether_message_list).", other)
+		}
+		return text
+	}
 }

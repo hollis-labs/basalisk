@@ -384,3 +384,9 @@ func (w *Watcher) Brief(ctx context.Context) string {
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
+
+// Asked says what a message the assistant sent was about, and whether it sent it.
+func (w *Watcher) Asked(ctx context.Context, id string) (about string, ok bool) {
+	err := w.Log.db.QueryRowContext(ctx, `SELECT about FROM sent WHERE id=?`, id).Scan(&about)
+	return about, err == nil
+}

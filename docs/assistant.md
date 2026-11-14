@@ -140,6 +140,12 @@ history, what the assistant looked up).
 
 ## Handing work on (built)
 
+- **`consult`** (runs at once): the assistant asks another seat a question as itself, from
+  its own address (`basalisk.agent_urn`), by handle or name; the message says it carries no
+  authority of the owner's. The answer comes to the assistant's own mailbox and is told to
+  it once in the `<around>` block (`agent.OwnAnswers`). This is how it reaches the architect
+  about a design or a lead about its app without the owner being asked.
+
 - **`chief_delegate`** (asks first): makes a Torque task in the create-task shape (Goal,
   Context, Scope in and out, Acceptance, Evidence, Classification), tagged `seat-chief`,
   and sends @chief a request naming it. @chief is found in the registry by its handle.
