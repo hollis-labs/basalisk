@@ -1,7 +1,7 @@
 /**
  * The agent's tools for Frag: the recent captures, and capturing a note through the same
  * durable queue as the capture box (it is queued in Basalisk first and delivered behind it).
- * No delete or retry.
+ * A capture the agent makes says so: a closing line in the note, and a tag. No delete or retry.
  */
 import { registerAgentTools } from "../../agent/tools"
 import { ApiError } from "../../api/account"
@@ -37,6 +37,10 @@ function stateOf(c: FragCapture) {
   }
 }
 
+/** What marks a capture as the agent's, in the note itself and as a tag on it. */
+const AGENT_LINE = "_Captured by the Basalisk agent._"
+const AGENT_TAG = "agent-generated"
+
 // HTML is not kept: a capture is markdown or plain text at rest.
 const HTML =
   /<\/?(html|head|body|div|span|p|br|script|style|table|tr|td|ul|ol|li|a|img|h[1-6])\b[^>]*>/i
@@ -71,7 +75,7 @@ registerAgentTools([
     name: "frag_capture",
     level: "write",
     description:
-      "Save a note to Frag (the owner's Fragments Engine) the way the capture box does: queued in Basalisk and delivered behind it, with the moment's context. Markdown or plain text, not HTML. A title becomes the first line as a heading; a source address is added at the end.",
+      "Save a note to Frag (the owner's Fragments Engine) the way the capture box does: queued in Basalisk and delivered behind it, with the moment's context. Markdown or plain text, not HTML. A title becomes the first line as a heading; a source address is added at the end. The note is marked as captured by the agent (a closing line and the tag agent-generated); do not add that yourself.",
     input_schema: object(
       {
         text: str("The note, in markdown or plain text."),
@@ -100,7 +104,7 @@ registerAgentTools([
       const url = typeof input.source_url === "string" ? input.source_url.trim() : ""
       if (url && !/^https?:\/\/\S+$/i.test(url))
         throw new Error("source_url must be a full http:// or https:// address.")
-      const content = [title ? `# ${title}` : "", text, url ? `Source: <${url}>` : ""]
+      const content = [title ? `# ${title}` : "", text, url ? `Source: <${url}>` : "", AGENT_LINE]
         .filter(Boolean)
         .join("\n\n")
       const at = await moment(desk).catch(() => ({}) as Moment)
@@ -111,7 +115,7 @@ registerAgentTools([
         c = await frag.capture({
           captureId: d.captureId,
           content,
-          tags: [],
+          tags: [AGENT_TAG],
           draftAt: d.draftAt,
           submittedAt: new Date().toISOString(),
           context: {

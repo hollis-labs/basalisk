@@ -100,31 +100,34 @@ function guard(file: FileRef) {
   return showing
 }
 
-// Agent instruction files: the owner edits them himself, whatever the place.
+// Agent instruction files steer other agents, so a change to one is put to the owner each
+// time, whatever standing permission the tool has.
 const INSTRUCTION_FILES = new Set(["claude.md", "agents.md", "gemini.md", "skill.md"])
 const INSTRUCTION_DIRS = new Set([".claude", ".codex", ".gemini", ".agents"])
+const MARKDOWN = /\.(md|markdown|mdx)$/i
 
 /**
- * Before any write: never an agent instruction file; outside the notes folder, the owner is
- * asked each time (a standing grant covers the notes folder only).
+ * Before any write. A markdown file may be changed wherever it is, on the tool's own
+ * permission. Two cases are put to the owner each time: an agent instruction file, and a
+ * file outside the notes folder that is not markdown.
  */
 async function allowed(file: FileRef, desk: DeskAPI) {
   const parts = file.path.toLowerCase().split("/")
-  if (INSTRUCTION_FILES.has(parts[parts.length - 1]) || parts.some((p) => INSTRUCTION_DIRS.has(p)))
-    throw new Error(
-      `${file.path} is an agent instruction file (CLAUDE.md, AGENTS.md, GEMINI.md, SKILL.md, or in .claude/.codex/.gemini/.agents). The owner edits these himself; do not try to change it.`,
-    )
-  if (inFolder(file, await notesFolder())) return
+  const instruction =
+    INSTRUCTION_FILES.has(parts[parts.length - 1]) || parts.some((p) => INSTRUCTION_DIRS.has(p))
+  if (!instruction && (MARKDOWN.test(file.path) || inFolder(file, await notesFolder()))) return
   const yes = await desk.confirm({
     title: "Let the agent change this file?",
-    message: `${file.root}:${file.path}\n\nIt is outside your notes folder.`,
+    message: `${file.root}:${file.path}\n\n${
+      instruction
+        ? "It is an agent instruction file: other agents read it as their instructions."
+        : "It is outside your notes folder and is not a markdown file."
+    }`,
     confirmLabel: "Change it",
     danger: true,
   })
   if (!yes)
-    throw new Error(
-      `The owner declined the change to ${file.root}:${file.path} (outside the notes folder). Do not retry it.`,
-    )
+    throw new Error(`The owner declined the change to ${file.root}:${file.path}. Do not retry it.`)
 }
 
 /** A run that stopped waiting for this call must not see it change anything. */
@@ -248,7 +251,7 @@ registerAgentTools([
     name: "notes_write",
     level: "write",
     description:
-      "Replace a note's whole text, or create the note if it does not exist (folders too; .md is added to a name without an extension). A window showing the note shows the new text. Refused if a window has unsaved edits to it. Outside the notes folder the owner is asked each time; agent instruction files (CLAUDE.md, AGENTS.md, SKILL.md, .claude/…) are refused. To change part of a note, use notes_edit.",
+      "Replace a note's whole text, or create the note if it does not exist (folders too; .md is added to a name without an extension). A window showing the note shows the new text. Refused if a window has unsaved edits to it. Any markdown file can be changed, in the notes folder or not (give root and path). The owner is asked each time for an agent instruction file (CLAUDE.md, AGENTS.md, SKILL.md, .claude/…) and for a file outside the notes folder that is not markdown. To change part of a note, use notes_edit.",
     input_schema: object({ ...WHICH, text: str("The note's new text (markdown).") }, ["text"]),
     describe: (input) => `Replace the text of ${noteLabel(input)} (or create it)`,
     run: async (input, desk, ctx) => {
@@ -286,7 +289,7 @@ registerAgentTools([
     name: "notes_edit",
     level: "write",
     description:
-      "Change one passage of a note: old_text must occur exactly once in it (include enough around it to make it unique); it is replaced by new_text. A window showing the note shows the change. Refused if a window has unsaved edits to it. Outside the notes folder the owner is asked each time; agent instruction files (CLAUDE.md, AGENTS.md, SKILL.md, .claude/…) are refused.",
+      "Change one passage of a note: old_text must occur exactly once in it (include enough around it to make it unique); it is replaced by new_text. A window showing the note shows the change. Refused if a window has unsaved edits to it. Any markdown file can be changed, in the notes folder or not (give root and path). The owner is asked each time for an agent instruction file (CLAUDE.md, AGENTS.md, SKILL.md, .claude/…) and for a file outside the notes folder that is not markdown.",
     input_schema: object(
       {
         ...WHICH,
