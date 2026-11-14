@@ -57,6 +57,7 @@ type ReflexSet struct {
 	store *Store
 
 	mu      sync.Mutex
+	about   map[string]string // name -> what the file says it is for
 	defs    []reflexes.Reflex
 	stamp   string
 	problem string
@@ -89,7 +90,7 @@ func (rs *ReflexSet) Problem() string {
 	return rs.problem
 }
 
-func parseReflexes(raw []byte) ([]reflexes.Reflex, error) {
+func parseReflexes(raw []byte, about map[string]string) ([]reflexes.Reflex, error) {
 	var file struct {
 		Reflexes []reflexDef `json:"reflexes"`
 	}
@@ -129,6 +130,7 @@ func parseReflexes(raw []byte) ([]reflexes.Reflex, error) {
 		if _, err := reflexes.EvaluateTrigger(d.TriggerKind, string(d.Trigger), probe); err != nil {
 			return nil, fmt.Errorf("reflex %q: trigger: %w", d.Name, err)
 		}
+		about[d.Name] = d.About
 		status := "active"
 		if d.Disabled {
 			status = "disabled"
@@ -158,14 +160,16 @@ func (rs *ReflexSet) load() {
 		return
 	}
 	rs.stamp = stamp
-	defs, err := parseReflexes(defaultReflexes)
+	about := map[string]string{}
+	defs, err := parseReflexes(defaultReflexes, about)
 	if err != nil {
 		slog.Error("agent: the built-in reflexes do not parse", "err", err)
 		defs = []reflexes.Reflex{}
 	}
 	problem := ""
 	if len(own) > 0 {
-		mine, err := parseReflexes(own)
+		mineAbout := map[string]string{}
+		mine, err := parseReflexes(own, mineAbout)
 		if err != nil {
 			problem = fmt.Sprintf("%s is not in use: %v", rs.file, err)
 			slog.Warn("agent: the owner's reflexes are not in use", "file", rs.file, "err", err)
@@ -173,6 +177,7 @@ func (rs *ReflexSet) load() {
 			named := map[string]bool{}
 			for _, m := range mine {
 				named[m.Name] = true
+				about[m.Name] = mineAbout[m.Name]
 			}
 			kept := mine
 			for _, d := range defs {
@@ -183,7 +188,7 @@ func (rs *ReflexSet) load() {
 			defs = kept
 		}
 	}
-	rs.defs, rs.problem = defs, problem
+	rs.defs, rs.problem, rs.about = defs, problem, about
 }
 
 // Candidates is the engine's Source: the active reflexes, with when each last fired.
@@ -297,4 +302,36 @@ func reflexState(thread, text string, deskContext json.RawMessage, prior []Messa
 		}
 	}
 	return st
+}
+
+// ReflexInfo is one reflex, for the interface to list.
+type ReflexInfo struct {
+	Name            string `json:"name"`
+	About           string `json:"about"`
+	Action          string `json:"action"` // inject_reminder or halt_session
+	Enabled         bool   `json:"enabled"`
+	CooldownSeconds int64  `json:"cooldown_seconds"`
+	FiredCount      int64  `json:"fired_count"`
+	LastFiredAt     string `json:"last_fired_at"`
+}
+
+// List are the reflexes in use, with when each last fired, and the owner's file.
+func (rs *ReflexSet) List(ctx context.Context) (list []ReflexInfo, file string) {
+	list = []ReflexInfo{}
+	if rs == nil {
+		return list, ""
+	}
+	rs.mu.Lock()
+	rs.load()
+	defs, about := append([]reflexes.Reflex(nil), rs.defs...), rs.about
+	rs.mu.Unlock()
+	for _, d := range defs {
+		info := ReflexInfo{Name: d.Name, About: about[d.Name], Action: d.ActionKind, Enabled: d.Status == "active"}
+		if d.RecurrenceOverrideSeconds != nil {
+			info.CooldownSeconds = *d.RecurrenceOverrideSeconds
+		}
+		info.FiredCount, info.LastFiredAt = rs.store.reflexFired(ctx, d.ID)
+		list = append(list, info)
+	}
+	return list, rs.file
 }

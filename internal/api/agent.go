@@ -34,6 +34,7 @@ func (a *API) agentRoutes() []route {
 		route{"POST", "/api/agent/runs/{id}/tool-alive", w, a.agentToolAlive},
 		route{"POST", "/api/agent/runs/{id}/approvals", w, a.agentApproval},
 		route{"GET", "/api/agent/tools", r, a.agentTools},
+		route{"GET", "/api/agent/automation", r, a.agentAutomation},
 		route{"GET", "/api/agent/grants", r, a.agentGrants},
 		route{"DELETE", "/api/agent/grants/{tool}", w, a.agentRevoke},
 	)
@@ -223,6 +224,17 @@ func (a *API) agentApproval(w http.ResponseWriter, r *http.Request) {
 // agentTools lists the tools the server runs itself (the page knows its own).
 func (a *API) agentTools(w http.ResponseWriter, r *http.Request) {
 	reply(w, 200, map[string]any{"tools": a.agent.ServerTools(r.Context())})
+}
+
+// agentAutomation lists what runs without the model: the router's rules and the reflexes,
+// with the files the owner's own go in and why either file is not in use.
+func (a *API) agentAutomation(w http.ResponseWriter, r *http.Request) {
+	rules, rulesFile := a.agent.Router().Rules()
+	list, reflexFile := a.agent.Reflexes().List(r.Context())
+	reply(w, 200, map[string]any{
+		"rules": rules, "rules_file": rulesFile, "rules_problem": a.agent.Router().Problem(),
+		"reflexes": list, "reflexes_file": reflexFile, "reflexes_problem": a.agent.Reflexes().Problem(),
+	})
 }
 
 func (a *API) agentGrants(w http.ResponseWriter, r *http.Request) {

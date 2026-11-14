@@ -316,3 +316,28 @@ func help(rules []librouter.Rule) string {
 	lines = append(lines, "- /new: put this conversation away and start a new one.")
 	return "These run directly, without the model:\n\n" + strings.Join(lines, "\n") + "\n\nAnything else is answered by the model."
 }
+
+// RuleInfo is one rule, for the interface to list.
+type RuleInfo struct {
+	ID     string `json:"id"`
+	Target string `json:"target"`
+	// Help is the rule's line for /help ("" when it has none).
+	Help string `json:"help"`
+}
+
+// Rules are the rules in use, in the order they are tried, and the owner's file.
+func (r *Router) Rules() (rules []RuleInfo, file string) {
+	rules = []RuleInfo{}
+	if r == nil {
+		return rules, ""
+	}
+	r.mu.Lock()
+	r.load()
+	defer r.mu.Unlock()
+	for _, rule := range r.rules {
+		if !rule.Disabled {
+			rules = append(rules, RuleInfo{ID: rule.ID, Target: rule.Target, Help: strings.TrimSpace(rule.Params["_help"])})
+		}
+	}
+	return rules, r.file
+}

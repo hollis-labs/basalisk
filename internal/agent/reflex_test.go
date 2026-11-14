@@ -145,6 +145,23 @@ func TestTheOwnersReflexesReplaceByNameAndABrokenFileIsSaidNotUsed(t *testing.T)
 	if got := names(off); got != "mine" || off.Problem() != "" {
 		t.Fatalf("replaced: %s (%s)", got, off.Problem())
 	}
+	// The listing has both, the replaced one as switched off.
+	list, file := off.List(t.Context())
+	if len(list) != 2 || !strings.HasSuffix(file, "agent-reflexes.json") {
+		t.Fatalf("list: %+v (%s)", list, file)
+	}
+	for _, r := range list {
+		if r.Enabled != (r.Name == "mine") {
+			t.Errorf("list: %+v", r)
+		}
+	}
+	shipped, _ := NewReflexes("", rt.Store()).List(t.Context())
+	if len(shipped) != 1 || shipped[0].About == "" || shipped[0].CooldownSeconds != 3600 || shipped[0].Action != "inject_reminder" {
+		t.Errorf("shipped listing: %+v", shipped)
+	}
+	if rules, _ := NewRouter("").Rules(); len(rules) < 5 || rules[0].ID != "help" {
+		t.Errorf("rules listing: %+v", rules)
+	}
 	for _, bad := range []string{
 		`{"reflexes":[{"name":"x","trigger":{"kind":"user_regex_window","pattern":"("},"action_kind":"inject_reminder","action":{"body":"x"}}]}`,
 		`{"reflexes":[{"name":"x","trigger":{"kind":"no_such_kind"},"action_kind":"inject_reminder","action":{"body":"x"}}]}`,

@@ -225,6 +225,10 @@ typed them (not the `<desktop>` block). Token counts per message are not kept, s
 The engine's other action kinds (dispatch to an agent, schedule, send a message) and its
 event and interval triggers are not wired: nothing here starts a turn by itself yet.
 
+`GET /api/agent/automation` lists both: the rules in the order they are tried, the
+reflexes with how often and when each last fired, the two files your own go in, and why
+either file is not in use.
+
 ## Permission
 
 When a `write` tool is called, the run stops and the panel asks: **Once**, **This session**
