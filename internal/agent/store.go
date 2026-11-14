@@ -74,6 +74,12 @@ var migrations = []string{
 		fired_count INTEGER NOT NULL DEFAULT 0,
 		last_fired_at TEXT NOT NULL DEFAULT ''
 	);`,
+	// A task thread: how it stands, its last report, when the main thread was told of it,
+	// and who started it (agent, owner, or trigger:<name>).
+	`ALTER TABLE threads ADD COLUMN state TEXT NOT NULL DEFAULT '';
+	ALTER TABLE threads ADD COLUMN result TEXT NOT NULL DEFAULT '';
+	ALTER TABLE threads ADD COLUMN reported_at TEXT NOT NULL DEFAULT '';
+	ALTER TABLE threads ADD COLUMN origin TEXT NOT NULL DEFAULT '';`,
 }
 
 // OpenStore opens (and creates or upgrades) the file at path.
@@ -112,6 +118,7 @@ func OpenStore(ctx context.Context, path string) (*Store, error) {
 	}
 	// A run that was in flight when the app last stopped did not finish.
 	_, _ = db.ExecContext(ctx, `UPDATE runs SET status='error', reason='Basalisk stopped while this was running.', finished_at=? WHERE status='running'`, now())
+	_, _ = db.ExecContext(ctx, `UPDATE threads SET state='stopped', result='Basalisk stopped while this was running.', reported_at='' WHERE kind='task' AND state='running'`)
 	return &Store{db: db}, nil
 }
 
@@ -272,5 +279,108 @@ func (s *Store) Grants(ctx context.Context, owner string) ([]string, error) {
 // Revoke takes a standing permission back.
 func (s *Store) Revoke(ctx context.Context, owner, tool string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM grants WHERE owner=? AND tool=?`, owner, tool)
+	return err
+}
+
+// Task states.
+const (
+	TaskRunning = "running"
+	TaskDone    = "done"
+	TaskFailed  = "failed"
+	TaskStopped = "stopped"
+)
+
+// Task is a task thread: one agent's work on one thing, beside the running thread.
+type Task struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	State     string `json:"state"`
+	Result    string `json:"result"`
+	Origin    string `json:"origin"`
+	ParentID  string `json:"parent_id,omitempty"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+	// Reported says the running thread has been told how it ended.
+	Reported bool `json:"reported"`
+}
+
+func (s *Store) newTask(ctx context.Context, owner, parent, title, origin string) (string, error) {
+	id := newID("thr")
+	t := now()
+	_, err := s.db.ExecContext(ctx, `INSERT INTO threads(id, owner, kind, parent_id, title, state, origin, created_at, updated_at) VALUES(?,?,'task',?,?,?,?,?,?)`,
+		id, owner, parent, title, TaskRunning, origin, t, t)
+	return id, err
+}
+
+const taskColumns = `id, title, state, result, origin, parent_id, created_at, updated_at, reported_at`
+
+func scanTask(row interface{ Scan(...any) error }) (Task, error) {
+	var t Task
+	var reported string
+	err := row.Scan(&t.ID, &t.Title, &t.State, &t.Result, &t.Origin, &t.ParentID, &t.CreatedAt, &t.UpdatedAt, &reported)
+	t.Reported = reported != ""
+	return t, err
+}
+
+// Task is one of the owner's tasks (ok false when there is none by that id).
+func (s *Store) Task(ctx context.Context, owner, id string) (Task, bool) {
+	t, err := scanTask(s.db.QueryRowContext(ctx, `SELECT `+taskColumns+` FROM threads WHERE id=? AND owner=? AND kind='task' AND archived_at=''`, id, owner))
+	return t, err == nil
+}
+
+// Tasks are the owner's tasks that have not been put away, newest first.
+func (s *Store) Tasks(ctx context.Context, owner string, limit int) ([]Task, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+taskColumns+` FROM threads WHERE owner=? AND kind='task' AND archived_at='' ORDER BY created_at DESC LIMIT ?`, owner, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Task{}
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) taskRunning(ctx context.Context, id string) {
+	_, _ = s.db.ExecContext(ctx, `UPDATE threads SET state=?, updated_at=? WHERE id=? AND kind='task'`, TaskRunning, now(), id)
+}
+
+func (s *Store) setTask(ctx context.Context, id, state, result string) {
+	// A new state is news: the running thread is told again.
+	_, _ = s.db.ExecContext(ctx, `UPDATE threads SET state=?, result=?, reported_at='', updated_at=? WHERE id=?`, state, result, now(), id)
+}
+
+// unreported are the owner's tasks that have ended and that the running thread has not
+// been told about, oldest first; they are marked as told.
+func (s *Store) unreported(ctx context.Context, owner string) []Task {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+taskColumns+` FROM threads WHERE owner=? AND kind='task' AND state NOT IN ('', 'running') AND reported_at='' ORDER BY updated_at LIMIT 8`, owner)
+	if err != nil {
+		return nil
+	}
+	var out []Task
+	for rows.Next() {
+		if t, err := scanTask(rows); err == nil {
+			out = append(out, t)
+		}
+	}
+	_ = rows.Close()
+	for _, t := range out {
+		s.markReported(ctx, t.ID)
+	}
+	return out
+}
+
+func (s *Store) markReported(ctx context.Context, id string) {
+	_, _ = s.db.ExecContext(ctx, `UPDATE threads SET reported_at=? WHERE id=? AND reported_at=''`, now(), id)
+}
+
+// ArchiveTask puts a task away. Nothing is deleted.
+func (s *Store) ArchiveTask(ctx context.Context, owner, id string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE threads SET archived_at=? WHERE id=? AND owner=? AND kind='task' AND archived_at=''`, now(), id, owner)
 	return err
 }

@@ -33,6 +33,8 @@ func (a *API) agentRoutes() []route {
 		route{"POST", "/api/agent/runs/{id}/tool-results", w, a.agentToolResult},
 		route{"POST", "/api/agent/runs/{id}/tool-alive", w, a.agentToolAlive},
 		route{"POST", "/api/agent/runs/{id}/approvals", w, a.agentApproval},
+		route{"GET", "/api/agent/tasks", r, a.agentTasks},
+		route{"DELETE", "/api/agent/tasks/{id}", w, a.agentTaskClose},
 		route{"GET", "/api/agent/tools", r, a.agentTools},
 		route{"GET", "/api/agent/automation", r, a.agentAutomation},
 		route{"GET", "/api/agent/grants", r, a.agentGrants},
@@ -56,8 +58,17 @@ func (a *API) agentThread(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "Please sign in.")
 		return
 	}
-	thread, err := a.agent.Store().MainThread(r.Context(), owner)
-	if err != nil {
+	// ?id= names a task's thread; without it, the running thread.
+	thread := r.URL.Query().Get("id")
+	var task *agent.Task
+	if thread != "" {
+		t, ok := a.agent.Store().Task(r.Context(), owner, thread)
+		if !ok {
+			fail(w, 404, "There is no such task.")
+			return
+		}
+		task = &t
+	} else if thread, err = a.agent.Store().MainThread(r.Context(), owner); err != nil {
 		fail(w, 500, "The conversation could not be read.")
 		return
 	}
@@ -66,7 +77,57 @@ func (a *API) agentThread(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "The conversation could not be read.")
 		return
 	}
-	reply(w, 200, map[string]any{"thread_id": thread, "messages": msgs, "active_run": a.agent.ActiveRun(thread)})
+	out := map[string]any{"thread_id": thread, "messages": msgs, "active_run": a.agent.ActiveRun(thread)}
+	if task != nil {
+		out["task"] = task
+	}
+	reply(w, 200, out)
+}
+
+// agentTasks lists the owner's task agents, newest first, each with its run if one is going.
+func (a *API) agentTasks(w http.ResponseWriter, r *http.Request) {
+	owner, err := a.ownerID(r)
+	if err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	tasks, err := a.agent.Store().Tasks(r.Context(), owner, 50)
+	if err != nil {
+		fail(w, 500, "The tasks could not be read.")
+		return
+	}
+	type row struct {
+		agent.Task
+		ActiveRun string `json:"active_run"`
+	}
+	out := make([]row, 0, len(tasks))
+	for _, t := range tasks {
+		out = append(out, row{Task: t, ActiveRun: a.agent.ActiveRun(t.ID)})
+	}
+	reply(w, 200, map[string]any{"tasks": out})
+}
+
+// agentTaskClose puts a task away. One that is still running is stopped first by its run.
+func (a *API) agentTaskClose(w http.ResponseWriter, r *http.Request) {
+	owner, err := a.ownerID(r)
+	if err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	id := r.PathValue("id")
+	if _, ok := a.agent.Store().Task(r.Context(), owner, id); !ok {
+		fail(w, 404, "There is no such task.")
+		return
+	}
+	if a.agent.ActiveRun(id) != "" {
+		fail(w, 409, "The task is still running. Stop it first.")
+		return
+	}
+	if err := a.agent.Store().ArchiveTask(r.Context(), owner, id); err != nil {
+		fail(w, 500, "The task could not be put away.")
+		return
+	}
+	w.WriteHeader(204)
 }
 
 // agentNewThread puts the running thread away; the next message starts a fresh one.
@@ -99,11 +160,13 @@ func (a *API) agentTurn(w http.ResponseWriter, r *http.Request) {
 		Context  json.RawMessage  `json:"context"`
 		Tools    []agent.ToolSpec `json:"tools"`
 		Hints    agent.Hints      `json:"hints"`
+		// Thread: a task's thread, for a follow-up to its agent. Empty: the running thread.
+		Thread string `json:"thread"`
 	}
 	if !decodeLimit(w, r, &in, 512<<10) {
 		return
 	}
-	id, err := a.agent.Start(r.Context(), agent.StartInput{Owner: owner, Text: in.Text, ClientID: in.ClientID, Context: in.Context, Tools: in.Tools, Hints: in.Hints})
+	id, err := a.agent.Start(r.Context(), agent.StartInput{Owner: owner, Text: in.Text, ClientID: in.ClientID, Context: in.Context, Tools: in.Tools, Hints: in.Hints, Thread: in.Thread})
 	switch {
 	case errors.Is(err, agent.ErrNotReady):
 		fail(w, 503, "No model is configured for the agent.")

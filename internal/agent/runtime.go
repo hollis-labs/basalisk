@@ -87,6 +87,8 @@ type StartInput struct {
 	Tools   []ToolSpec
 	// Hints are what the page has by name (apps, commands), for the router's rules.
 	Hints Hints
+	// Thread is the task thread the message is for; "" is the owner's running thread.
+	Thread string
 }
 
 // Errors a caller can tell apart.
@@ -112,6 +114,7 @@ type Runtime struct {
 	sources []ToolSource               // where the server's own tools come from (AddTools)
 	router  *Router                    // rules tried before the model (SetRouter); nil: none
 	reflex  *ReflexSet                 // standing rules over the conversation (SetReflexes); nil: none
+	pages   map[string]page            // owner -> the desktop page as last seen (for tasks)
 }
 
 // SetReflexes gives the agent its reflexes. Call before serving.
@@ -164,7 +167,7 @@ func (rt *Runtime) AddTools(src ToolSource) {
 // ServerTools are the server's own tools as of now, for the interface to list.
 func (rt *Runtime) ServerTools(ctx context.Context) []ToolSpec {
 	out := []ToolSpec{}
-	for _, t := range rt.serverTools(ctx) {
+	for _, t := range append(rt.taskTools(), rt.serverTools(ctx)...) {
 		out = append(out, t.Spec)
 	}
 	return out
@@ -198,7 +201,7 @@ func New(ctx context.Context, cfg Config, store *Store, provider llmcontracts.Pr
 		// A finished run can be replayed for a while: a page that reloads mid-answer catches up.
 		streamhub.WithRetainAfterClose(10*time.Minute))
 	return &Runtime{cfg: cfg.withDefaults(), store: store, provider: provider, hub: hub, base: ctx,
-		runs: map[string]*run{}, busy: map[string]string{}, session: map[string]map[string]bool{}}
+		runs: map[string]*run{}, busy: map[string]string{}, session: map[string]map[string]bool{}, pages: map[string]page{}}
 }
 
 // Config is the configuration in use (the key file's path, never its content).
@@ -240,6 +243,8 @@ type run struct {
 	route             *Route   // what the router decided for this message; nil: the model answers
 	declined          bool     // the last tool call was refused by the owner (or nobody answered)
 	fired             []string // the reflexes that fired on this message
+	task              bool     // this is a task agent's run, in a task thread
+	lastText          string   // the last thing the agent said (a task's report)
 	prefix            int      // how large the last model request was, with its answer
 
 	mu        sync.Mutex
@@ -263,11 +268,27 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	if text == "" {
 		return "", errors.New("the message is empty")
 	}
+	// A message for a task thread goes to that task's agent.
+	isTask := in.Thread != ""
+	if isTask {
+		if _, ok := rt.store.Task(ctx, in.Owner, in.Thread); !ok {
+			return "", errors.New("there is no such task")
+		}
+	} else if in.ClientID != "" {
+		// What this page can do, for tasks started later with no page at hand.
+		rt.mu.Lock()
+		rt.pages[in.Owner] = page{client: in.ClientID, tools: in.Tools, context: in.Context}
+		rt.mu.Unlock()
+	}
 	tools := map[string]ToolSpec{}
 	var defs []llmtypes.ToolDefinition
 	// The server's own tools first: a page cannot take one of their names.
 	server := map[string]ServerTool{}
-	for _, t := range rt.serverTools(ctx) {
+	own := rt.serverTools(ctx)
+	if !isTask {
+		own = append(rt.taskTools(), own...)
+	}
+	for _, t := range own {
 		server[t.Spec.Name] = t
 		tools[t.Spec.Name] = t.Spec
 		defs = append(defs, llmtypes.ToolDefinition{Name: t.Spec.Name, Description: t.Spec.Description, InputSchema: t.Spec.InputSchema})
@@ -282,15 +303,21 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 		tools[t.Name] = t
 		defs = append(defs, llmtypes.ToolDefinition{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema})
 	}
-	thread, err := rt.store.MainThread(ctx, in.Owner)
-	if err != nil {
-		return "", err
+	thread := in.Thread
+	if !isTask {
+		var err error
+		if thread, err = rt.store.MainThread(ctx, in.Owner); err != nil {
+			return "", err
+		}
 	}
-	r := &run{rt: rt, id: newID("run"), owner: in.Owner, thread: thread, client: in.ClientID, tools: tools, defs: defs, server: server,
+	r := &run{rt: rt, id: newID("run"), owner: in.Owner, thread: thread, client: in.ClientID, tools: tools, defs: defs, server: server, task: isTask,
 		waiting: map[string]*pending{}, approvals: map[string]chan string{}}
-	// The rules first. A rule that names a tool this message did not come with is no route.
-	if route := rt.Router().Route(ctx, text, in.Context, in.Hints); route != nil && (route.Tool == "" || tools[route.Tool].Name != "") {
-		r.route = route
+	// The rules first, for the running thread (a task's brief is for its agent, whatever it
+	// says). A rule that names a tool this message did not come with is no route.
+	if !isTask {
+		if route := rt.Router().Route(ctx, text, in.Context, in.Hints); route != nil && (route.Tool == "" || tools[route.Tool].Name != "") {
+			r.route = route
+		}
 	}
 
 	rt.mu.Lock()
@@ -319,6 +346,9 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 		release()
 		return "", err
 	}
+	if isTask {
+		rt.store.taskRunning(ctx, thread) // a follow-up sets a task that had ended going again
+	}
 
 	for _, m := range prior {
 		r.history = append(r.history, llmtypes.ChatMessage{Role: m.Role, ContentBlocks: m.Blocks})
@@ -332,10 +362,16 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	if where := describeContext(in.Context); where != "" {
 		blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: where})
 	}
+	// Task agents that have ended since the running thread was last told.
+	if !isTask {
+		if ended := tasksBlock(rt.store.unreported(ctx, in.Owner)); ended != "" {
+			blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: ended})
+		}
+	}
 	blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: text})
 	// The reflexes, for a message the router did not take: a reminder goes to the model
 	// with the message; a halt answers it here.
-	if r.route == nil {
+	if r.route == nil && !isTask {
 		for _, f := range rt.Reflexes().Evaluate(ctx, reflexState(thread, text, in.Context, prior, rt.store.lastPrefix(ctx, thread))) {
 			r.fired = append(r.fired, f.Name)
 			if f.Halt != "" {
@@ -560,7 +596,7 @@ func (r *run) execute(ctx context.Context) {
 				Stream: func(ctx context.Context) (<-chan llmtypes.StreamEvent, error) {
 					return rt.provider.StreamChat(ctx, llmtypes.ChatRequest{
 						Model: rt.cfg.Model, MaxTokens: rt.cfg.MaxTokens,
-						SystemPrompt: systemPrompt(), Messages: r.history, Tools: r.defs,
+						SystemPrompt: r.system(), Messages: r.history, Tools: r.defs,
 					})
 				},
 				Sink: turn.TurnSink{
@@ -629,6 +665,9 @@ func (r *run) execute(ctx context.Context) {
 			}
 			if len(blocks) > 0 {
 				r.keep(ctx, "assistant", blocks)
+			}
+			if s.res.Text != "" {
+				r.lastText = s.res.Text
 			}
 			if len(s.res.ToolUseBlocks) == 0 {
 				switch s.res.StopReason {
@@ -704,7 +743,16 @@ func (r *run) direct(ctx context.Context) bool {
 	r.emit(chatstream.Event{Verb: chatstream.VerbPartDelta, PartID: part, Text: say})
 	r.emit(chatstream.Event{Verb: chatstream.VerbPartEnd, PartID: part})
 	r.keep(ctx, "assistant", []llmtypes.ContentBlock{{Type: "text", Text: say}})
+	r.lastText = say
 	return true
+}
+
+// system is what this run's agent is told about itself.
+func (r *run) system() string {
+	if r.task {
+		return systemPrompt() + taskPrompt
+	}
+	return systemPrompt()
 }
 
 // end closes the run: its record and the stream's last event.
@@ -713,6 +761,22 @@ func (r *run) end(ctx context.Context, finish chatstream.FinishReason, failure e
 	bg := context.WithoutCancel(ctx)
 	if r.prefix > 0 {
 		rt.store.setPrefix(bg, r.id, r.prefix)
+	}
+	if r.task {
+		// How the task stands now, and its report: the agent's last message.
+		state, report := TaskDone, r.lastText
+		switch {
+		case errors.Is(context.Cause(ctx), errCancelled), ctx.Err() != nil:
+			state = TaskStopped
+			if report == "" {
+				report = "It was stopped before it reported."
+			}
+		case failure != nil:
+			state, report = TaskFailed, strings.TrimSpace(report+"\n\nIt failed: "+plain(failure))
+		case finish != chatstream.FinishStop:
+			report = strings.TrimSpace(report + "\n\n(It stopped at a limit before finishing: " + string(finish) + ".)")
+		}
+		rt.store.setTask(bg, r.thread, state, report)
 	}
 	switch {
 	case errors.Is(context.Cause(ctx), errCancelled):
@@ -841,7 +905,7 @@ func (r *run) tool(ctx context.Context, call llmtypes.ToolUseBlock) (content str
 	// A tool of the server's own runs here.
 	if st, ok := r.server[call.Name]; ok {
 		r.emit(chatstream.Event{Verb: chatstream.VerbPartEnd, PartID: callPart, Final: input, Ext: meta("basalisk.exec", "server")})
-		toolCtx, cancel := context.WithTimeout(ctx, serverToolTimeout)
+		toolCtx, cancel := context.WithTimeout(context.WithValue(ctx, runKey{}, r), serverToolTimeout)
 		defer cancel()
 		args := call.Input
 		if args == nil {

@@ -144,6 +144,27 @@
         "_help": "/run <command line>: run it in a terminal. You are asked first, every time."
       },
       "auto": true
+    },
+    {
+      "id": "task",
+      "when": [
+        {
+          "field": "slash",
+          "op": "eq",
+          "value": "task"
+        },
+        {
+          "field": "arg",
+          "op": "exists"
+        }
+      ],
+      "target": "tool:task_start",
+      "params": {
+        "brief": "{arg}",
+        "_say": "Started a task agent on it. It works in the background; its window shows how it is going.",
+        "_help": "/task <what to do>: hand it to a task agent that works in the background."
+      },
+      "auto": true
     }
   ]
 }
