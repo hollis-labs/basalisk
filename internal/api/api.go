@@ -21,6 +21,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/files"
 	"github.com/hollis-labs/basalisk/internal/macshell"
 	"github.com/hollis-labs/basalisk/internal/scratch"
+	"github.com/hollis-labs/basalisk/internal/story"
 	"github.com/hollis-labs/basalisk/internal/terminal"
 )
 
@@ -50,6 +51,8 @@ type API struct {
 	scratch     *scratch.Store
 	scratchSync *scratch.Syncer
 	scratchLink scratch.Putter // the Tether gateway, for making a Torque task of an item
+	// story is the scripts and storyboards (story.go); nil unless EnableStory was called.
+	story *story.Store
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,
@@ -112,6 +115,7 @@ func (a *API) allRoutes() []route {
 	rts = append(rts, a.browserRoutes()...)
 	rts = append(rts, a.agentRoutes()...)   // agent.go
 	rts = append(rts, a.scratchRoutes()...) // scratch.go
+	rts = append(rts, a.storyRoutes()...)   // story.go
 	return append(rts, a.fragRoutes()...)   // frag.go
 }
 

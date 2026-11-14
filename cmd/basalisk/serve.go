@@ -25,6 +25,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/macshell"
 	"github.com/hollis-labs/basalisk/internal/scratch"
 	"github.com/hollis-labs/basalisk/internal/settings"
+	"github.com/hollis-labs/basalisk/internal/story"
 	"github.com/hollis-labs/basalisk/internal/terminal"
 	"github.com/hollis-labs/basalisk/internal/tetherlink"
 	"github.com/hollis-labs/basalisk/internal/webui"
@@ -115,6 +116,24 @@ func (b *basalisk) serve(ctx context.Context) error {
 			if agentRT != nil {
 				agentRT.AddTools(agent.ScratchTools(store, syncer.Kick, a.ScratchAuto))
 			}
+		}
+	}
+	// Story: scripts and storyboards, kept in Caster's "story" namespace through the same
+	// gateway, with a working copy beside the database (internal/story).
+	if scratchPath != "" {
+		var caster story.Caster
+		if link.Configured() {
+			caster = story.GatewayCaster{Link: link}
+		}
+		storyPath := filepath.Join(filepath.Dir(scratchPath), "story.db")
+		if store, err := story.Open(ctx, storyPath, caster); err != nil {
+			slog.Warn("story is off: its store could not be opened", "path", storyPath, "err", err)
+		} else {
+			a.EnableStory(store)
+			go func() {
+				<-ctx.Done()
+				_ = store.Close()
+			}()
 		}
 	}
 	if agentRT != nil {
