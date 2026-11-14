@@ -19,6 +19,7 @@ import {
   work,
 } from "../api/work"
 import { CiteText } from "../cite/ui"
+import { useDesk } from "../desktop/context"
 import { ymd } from "./calendar"
 import { ago, diffWords, kindIcon, label, message } from "./util"
 
@@ -233,6 +234,22 @@ export function Detail({
         <TagsRow tags={d.tags} set={(tags) => void save({ tags })} />
       </section>
 
+      {(d.task || ["task", "feature", "exploration"].includes(d.kind)) && (
+        <section className="work-sec">
+          <h4>Torque</h4>
+          <TorqueRow
+            ws={ws}
+            id={id}
+            task={d.task}
+            kind={k?.label ?? d.kind}
+            title={d.title}
+            sent={() => {
+              void load()
+              changed()
+            }}
+          />
+        </section>
+      )}
       <section className="work-sec">
         <h4>Links</h4>
         <Links
@@ -943,6 +960,87 @@ function Links({
           ))}
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * A planner task's Torque task: send it (once; a second send finds the same task) and see
+ * its status as Torque has it now.
+ */
+function TorqueRow({
+  ws,
+  id,
+  task,
+  kind,
+  title,
+  sent,
+}: {
+  ws: string
+  id: string
+  task?: string
+  kind: string
+  title: string
+  sent: () => void
+}) {
+  const desk = useDesk()
+  const [st, setSt] = useState<{ id: string; title?: string; status?: string } | null>(null)
+  const [problem, setProblem] = useState("")
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (!task) return setSt(null)
+    let live = true
+    work
+      .torqueStatus(ws, id)
+      .then((r) => {
+        if (!live) return
+        setSt(r.task)
+        setProblem(r.problem ?? "")
+      })
+      .catch((e) => live && setProblem(message(e)))
+    return () => {
+      live = false
+    }
+  }, [ws, id, task])
+  if (task)
+    return (
+      <div className="work-torque">
+        <CiteText text={task} />
+        {st?.status && (
+          <span className="work-torque-status" data-status={st.status}>
+            {label(st.status)}
+          </span>
+        )}
+        {problem && <span className="work-dim">{problem}</span>}
+      </div>
+    )
+  return (
+    <div className="work-torque">
+      <button
+        type="button"
+        className="desk-button"
+        disabled={busy}
+        onClick={async () => {
+          const yes = await desk.confirm({
+            title: `Send “${title}” to Torque?`,
+            message: `One Torque task is made from this ${kind.toLowerCase()} (its text and a link back here), and its id is kept on it. Nothing else in Torque changes.`,
+            confirmLabel: "Send",
+          })
+          if (!yes) return
+          setBusy(true)
+          try {
+            await work.sendToTorque(ws, id)
+            setProblem("")
+          } catch (e) {
+            setProblem(message(e))
+          }
+          setBusy(false)
+          sent()
+        }}
+      >
+        Send to Torque
+      </button>
+      {problem && <span className="work-problem-inline">{problem}</span>}
     </div>
   )
 }

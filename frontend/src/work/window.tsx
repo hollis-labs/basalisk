@@ -125,6 +125,8 @@ function NewWorkspace({ presets, done }: { presets: WorkPreset[]; done: (ws?: st
   const [name, setName] = useState("")
   const [about, setAbout] = useState("")
   const [preset, setPreset] = useState(presets[0]?.id ?? "")
+  const templates = presets.find((p) => p.id === preset)?.templates ?? []
+  const [template, setTemplate] = useState("")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   useEffect(() => {
@@ -133,7 +135,8 @@ function NewWorkspace({ presets, done }: { presets: WorkPreset[]; done: (ws?: st
   const save = async () => {
     setBusy(true)
     try {
-      const r = await work.create(slug(name || title), title.trim(), preset, about)
+      const r = await work.create(slug(name || title), title.trim(), preset, about, template)
+      if (r.problem) setError(r.problem)
       done(r.workspace)
     } catch (e) {
       setError(message(e))
@@ -171,6 +174,22 @@ function NewWorkspace({ presets, done }: { presets: WorkPreset[]; done: (ws?: st
           {presets.map((p) => (
             <option key={p.id} value={p.id}>
               {p.label}
+            </option>
+          ))}
+        </select>
+      )}
+      {templates.length > 0 && (
+        <select
+          className="work-select"
+          value={template}
+          onChange={(e) => setTemplate(e.target.value)}
+          aria-label="Start from a template"
+          title={templates.find((t) => t.id === template)?.about ?? "An empty workspace"}
+        >
+          <option value="">Empty</option>
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
             </option>
           ))}
         </select>

@@ -30,6 +30,8 @@ func (a *API) workRoutes() []route {
 		{"PUT", "/api/work/{ws}/items/{id}", w, a.workEdit},
 		{"PUT", "/api/work/{ws}/items/{id}/move", w, a.workMove},
 		{"PUT", "/api/work/{ws}/items/{id}/place", w, a.workPlace},
+		{"POST", "/api/work/{ws}/items/{id}/torque", w, a.workSendTorque},
+		{"GET", "/api/work/{ws}/items/{id}/torque", r, a.workTorqueStatus},
 		{"POST", "/api/work/{ws}/items/{id}/cut", w, a.workCut},
 		{"POST", "/api/work/{ws}/items/{id}/restore", w, a.workRestore},
 		{"DELETE", "/api/work/{ws}/notes/{id}", w, a.workDropNote},
@@ -87,7 +89,7 @@ func (a *API) workNew(w http.ResponseWriter, r *http.Request) {
 	if !a.workOwner(w, r) {
 		return
 	}
-	var in struct{ Workspace, Title, Preset, About string }
+	var in struct{ Workspace, Title, Preset, About, Template string }
 	if !decodeLimit(w, r, &in, 32<<10) {
 		return
 	}
@@ -99,6 +101,13 @@ func (a *API) workNew(w http.ResponseWriter, r *http.Request) {
 		}
 		fail(w, 400, err.Error())
 		return
+	}
+	// A starting tree (Planner templates): the workspace exists either way.
+	if in.Template != "" {
+		if err := a.work.ApplyTemplate(r.Context(), slug, in.Template); err != nil {
+			reply(w, 201, map[string]any{"workspace": slug, "problem": "the template was not all made: " + err.Error()})
+			return
+		}
 	}
 	reply(w, 201, map[string]any{"workspace": slug})
 }
@@ -202,6 +211,50 @@ func (a *API) workMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, 200, map[string]any{"rev": rev})
+}
+
+// workSendTorque makes the item's Torque task once ({task, created}).
+func (a *API) workSendTorque(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	task, created, err := a.work.SendToTorque(r.Context(), r.PathValue("ws"), r.PathValue("id"))
+	if err != nil {
+		switch {
+		case errors.Is(err, work.ErrNoCaster), errors.Is(err, work.ErrNotFound):
+			workFail(w, err)
+		case errors.Is(err, work.ErrNoTorque):
+			fail(w, 503, err.Error())
+		case task != "":
+			reply(w, 502, map[string]any{"message": err.Error(), "task": task})
+		default:
+			fail(w, 400, err.Error())
+		}
+		return
+	}
+	reply(w, 200, map[string]any{"task": task, "created": created})
+}
+
+// workTorqueStatus is the item's Torque task as Torque has it now.
+func (a *API) workTorqueStatus(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	d, ok, err := a.work.Detail(r.Context(), r.PathValue("ws"), r.PathValue("id"))
+	if err != nil || !ok {
+		workFail(w, work.ErrNotFound)
+		return
+	}
+	if d.Task == "" {
+		reply(w, 200, map[string]any{"task": nil})
+		return
+	}
+	st, err := a.work.TorqueStatus(r.Context(), d.Task)
+	if err != nil {
+		reply(w, 200, map[string]any{"task": map[string]any{"id": d.Task}, "problem": err.Error()})
+		return
+	}
+	reply(w, 200, map[string]any{"task": st})
 }
 
 // workPlace puts an item in the outline: {parent, before, view}.

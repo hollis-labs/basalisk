@@ -21,6 +21,9 @@ type fakeCaster struct {
 	mu   sync.Mutex
 	revs map[string][]string // ns/name -> contents, revision i+1 at i
 	puts int
+	// Torque: tasks made, and what each was made with.
+	tasks int
+	made  []map[string]any
 }
 
 func newFake() *fakeCaster { return &fakeCaster{revs: map[string][]string{}} }
@@ -594,5 +597,77 @@ func TestCanvasLayout(t *testing.T) {
 	}
 	if !strings.Contains(f.latest("w-novel", ViewName(outline)), "order:") {
 		t.Errorf("order lost:\n%s", f.latest("w-novel", ViewName(outline)))
+	}
+}
+
+// Torque in the fake: tasks made and read through Call.
+func (f *fakeCaster) Call(_ context.Context, tool string, args map[string]any) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	switch tool {
+	case "torque_task_create":
+		f.tasks++
+		id := fmt.Sprintf("CW-TEST-%04d", f.tasks)
+		f.made = append(f.made, args)
+		return []byte(fmt.Sprintf(`{"data":{"ID":%q}}`, id)), nil
+	case "torque_task_get":
+		return []byte(fmt.Sprintf(`{"data":{"id":%q,"title":"t","status":"todo"}}`, args["id"])), nil
+	}
+	return nil, fmt.Errorf("no tool %s", tool)
+}
+
+func TestPlannerTemplateAndTorque(t *testing.T) {
+	ctx := context.Background()
+	s, f := open(t)
+	if _, err := s.NewWorkspace(ctx, "launch", "Launch", "planner", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ApplyTemplate(ctx, "launch", "software"); err != nil {
+		t.Fatal(err)
+	}
+	sp, _, _ := s.Open(ctx, "launch")
+	if len(sp.Items) != 14 || len(sp.Kinds) != 10 || len(sp.Views) != 5 {
+		t.Fatalf("items %d kinds %d views %d", len(sp.Items), len(sp.Kinds), len(sp.Views))
+	}
+	by := map[string]Card{}
+	for _, c := range sp.Items {
+		by[c.Title] = c
+	}
+	plan := by["Version 1 plan"]
+	if plan.Parent != by["Ship version 1"].ID || len(plan.Children) != 3 {
+		t.Fatalf("plan %+v", plan)
+	}
+	if by["Discovery"].Stage != "active" || by["Pricing model"].Stage != "open" {
+		t.Errorf("stages %s %s", by["Discovery"].Stage, by["Pricing model"].Stage)
+	}
+	core := by["The core workflow"]
+	if len(core.Links) != 2 {
+		t.Errorf("core links %+v", core.Links)
+	}
+	// Send a task: one Torque task, its id kept; a second send makes none.
+	task := by["CI and deploys"].ID
+	id, created, err := s.SendToTorque(ctx, "launch", task)
+	if err != nil || !created || id != "CW-TEST-0001" {
+		t.Fatalf("send: %s %v %v", id, created, err)
+	}
+	if !strings.Contains(f.latest("w-launch", ItemName(task)), "task: CW-TEST-0001") {
+		t.Errorf("id not kept:\n%s", f.latest("w-launch", ItemName(task)))
+	}
+	if !strings.Contains(fmt.Sprint(f.made[0]["description"]), "caster://w-launch/i."+task) {
+		t.Errorf("description %v", f.made[0]["description"])
+	}
+	id2, created2, err := s.SendToTorque(ctx, "launch", task)
+	if err != nil || created2 || id2 != id || f.tasks != 1 {
+		t.Fatalf("second send: %s %v %v (made %d)", id2, created2, err, f.tasks)
+	}
+	if _, _, err := s.SendToTorque(ctx, "launch", by["Ship version 1"].ID); err == nil {
+		t.Error("a goal was sent to Torque")
+	}
+	st, err := s.TorqueStatus(ctx, id)
+	if err != nil || st.Status != "todo" {
+		t.Errorf("status %+v %v", st, err)
+	}
+	if err := s.ApplyTemplate(ctx, "launch", "nope"); err == nil {
+		t.Error("an unknown template was taken")
 	}
 }

@@ -142,6 +142,8 @@ export interface WorkPreset {
   label: string
   kinds: WorkKind[]
   views: WorkView[]
+  /** Starting trees (Planner). */
+  templates?: { id: string; label: string; about: string }[]
 }
 
 export interface WorkSpace {
@@ -178,8 +180,21 @@ export const work = {
     request<{ workspaces: Workspace[]; presets: WorkPreset[]; problem?: string }>(
       `work?app=${enc(app)}${refresh ? "&refresh=1" : ""}`,
     ),
-  create: (workspace: string, title: string, preset: string, about: string) =>
-    request<{ workspace: string }>("work", "POST", { workspace, title, preset, about }),
+  create: (workspace: string, title: string, preset: string, about: string, template = "") =>
+    request<{ workspace: string; problem?: string }>("work", "POST", {
+      workspace,
+      title,
+      preset,
+      about,
+      template,
+    }),
+  /** Make the item's Torque task (once: a second send returns the same task). */
+  sendToTorque: (ws: string, id: string) =>
+    request<{ task: string; created: boolean }>(`work/${enc(ws)}/items/${enc(id)}/torque`, "POST"),
+  torqueStatus: (ws: string, id: string) =>
+    request<{ task: { id: string; title?: string; status?: string } | null; problem?: string }>(
+      `work/${enc(ws)}/items/${enc(id)}/torque`,
+    ),
   open: (ws: string, refresh = false) =>
     request<{ space: WorkSpace; relations: string[]; problem?: string }>(
       `work/${enc(ws)}${refresh ? "?refresh=1" : ""}`,

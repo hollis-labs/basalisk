@@ -11,6 +11,8 @@ type Preset struct {
 	Label string `json:"label"`
 	Kinds []Kind `json:"kinds"`
 	Views []View `json:"views"`
+	// Templates: starting trees a new workspace can be made with (templates.go).
+	Templates []TemplateInfo `json:"templates,omitempty"`
 }
 
 var contentStages = []string{"idea", "outline", "draft", "review", "scheduled", "published"}
@@ -111,10 +113,63 @@ func writerPreset() Preset {
 	}
 }
 
+var workStages = []string{"proposed", "planned", "active", "done", "dropped"}
+
+func plannerFields() []Field {
+	return []Field{
+		{Key: "due", Label: "Due", Type: "date"},
+		{Key: "owner", Label: "Owner", Type: "text"},
+		{Key: "outcome", Label: "Outcome", Type: "text"},
+	}
+}
+
+// plannerPreset: the strategy level above Torque: goals, plans and their phases, milestones,
+// features, ideas and explorations, tasks (which can be sent to Torque), decisions, risks.
+func plannerPreset() Preset {
+	inPlan := []string{"phase", "milestone", "feature", "task", "decision", "risk", "exploration", "idea"}
+	return Preset{
+		ID: "planner", App: "planner", Label: "Planner",
+		Kinds: []Kind{
+			{Kind: "goal", Label: "Goal", Plural: "Goals", Icon: "target", Color: "violet",
+				Stages: workStages, Fields: plannerFields(), Sections: []string{"Why", "Measure", "Notes"},
+				Children: []string{"plan"}},
+			{Kind: "plan", Label: "Plan", Plural: "Plans", Icon: "map", Color: "blue",
+				Stages: workStages, Fields: plannerFields(), Sections: []string{"Summary", "Scope", "Notes"},
+				Children: inPlan},
+			{Kind: "phase", Label: "Phase", Plural: "Phases", Icon: "layers", Color: "slate",
+				Stages: workStages, Fields: plannerFields(), Sections: []string{"Summary", "Notes"},
+				Children: []string{"milestone", "feature", "task", "decision", "risk", "exploration", "idea"}},
+			{Kind: "milestone", Label: "Milestone", Plural: "Milestones", Icon: "flag", Color: "amber",
+				Stages: workStages, Fields: plannerFields(), Sections: []string{"Done when", "Notes"}},
+			{Kind: "feature", Label: "Feature", Plural: "Features", Icon: "package", Color: "teal",
+				Stages: workStages, Fields: plannerFields(), Sections: []string{"Summary", "Scope", "Notes"},
+				Children: []string{"task"}},
+			{Kind: "task", Label: "Task", Plural: "Tasks", Icon: "check", Color: "green",
+				Stages: workStages, Fields: plannerFields(), Sections: []string{"What", "Done when", "Notes"}},
+			{Kind: "exploration", Label: "Exploration", Plural: "Explorations", Icon: "search", Color: "violet",
+				Stages: workStages, Fields: plannerFields(), Sections: []string{"Question", "Findings", "Notes"}},
+			{Kind: "idea", Label: "Idea", Plural: "Ideas", Icon: "lightbulb", Color: "amber",
+				Stages: workStages, Fields: plannerFields(), Sections: []string{"Pitch", "Notes"}},
+			{Kind: "decision", Label: "Decision", Plural: "Decisions", Icon: "git-branch", Color: "blue",
+				Stages: []string{"open", "decided"}, Fields: plannerFields(), Sections: []string{"Question", "Options", "Decision", "Notes"}},
+			{Kind: "risk", Label: "Risk", Plural: "Risks", Icon: "alert-triangle", Color: "red",
+				Stages: []string{"open", "mitigated", "closed"}, Fields: plannerFields(), Sections: []string{"Risk", "Mitigation", "Notes"}},
+		},
+		Views: []View{
+			{View: "outline", Title: "Plan", Kinds: []string{}},
+			{View: "board", Title: "Board", Kinds: []string{"milestone", "feature", "task", "exploration", "idea"}, GroupBy: "stage"},
+			{View: "calendar", Title: "Calendar", Kinds: []string{}, DateFld: "due"},
+			{View: "flow", Title: "Dependencies", Kinds: []string{}, Rel: []string{"depends-on", "leads-to"}},
+			{View: "board", Title: "Decisions and risks", Kinds: []string{"decision", "risk"}, GroupBy: "kind"},
+		},
+		Templates: TemplateInfos(),
+	}
+}
+
 // Presets is every preset by id.
 func Presets() map[string]Preset {
 	out := map[string]Preset{}
-	for _, p := range []Preset{contentPreset(), writerPreset()} {
+	for _, p := range []Preset{contentPreset(), writerPreset(), plannerPreset()} {
 		out[p.ID] = p
 	}
 	return out

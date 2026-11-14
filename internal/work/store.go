@@ -497,6 +497,18 @@ func (s *Store) Open(ctx context.Context, ws string) (Space, bool, error) {
 	})
 	w.Items = len(items)
 	views := s.Views(ctx, w.NS)
+	// Views in the preset's order (the one a workspace opens on first); others after, by title.
+	if p, ok := Presets()[w.Preset]; ok {
+		at := func(v View) int {
+			for i, pv := range p.Views {
+				if pv.View == v.View && pv.Title == v.Title {
+					return i
+				}
+			}
+			return len(p.Views)
+		}
+		sort.SliceStable(views, func(i, j int) bool { return at(views[i]) < at(views[j]) })
+	}
 	return Space{Workspace: w, Kinds: list, Items: items, Views: views, Default: defaultView(w.Preset, views)}, true, nil
 }
 

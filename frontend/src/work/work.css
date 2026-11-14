@@ -1076,3 +1076,23 @@
   border-radius: 9px;
   background: var(--desk-surface);
 }
+
+/* A planner task's Torque task */
+.work-torque {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.work-torque-status {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--desk-border);
+  font-size: 11px;
+  color: var(--desk-fg-soft);
+}
+.work-torque-status[data-status="done"] {
+  color: var(--desk-fg);
+  border-color: var(--desk-accent);
+}

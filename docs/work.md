@@ -9,7 +9,7 @@ the task is CW-20261114-0076. It generalizes Story (`docs/story.md`), which stay
 
 Built so far: step 1 (the engine, Board, Detail, the Content app), step 2 (Calendar, the
 publication log, material by reference) and step 3 (Outline, the Writer app, links both
-ways), step 4 (Canvas) and step 5 (Flow). Planner, and rounds and agents follow.
+ways), step 4 (Canvas), step 5 (Flow) and step 6 (Planner). Rounds and agents follow.
 
 ## Where it is kept
 
@@ -238,6 +238,29 @@ stay as they are.
   source item. Clicking a node opens its detail.
 - A new Writer workspace gets a **Plot** flow (chapters, scenes, characters, locations;
   leads to and appears in).
+
+## Step 6: Planner
+
+- The Planner app (Apps menu) is the strategy level above Torque. Kinds: `goal` (holds
+  plans), `plan` (holds phases and anything planned), `phase`, `milestone`, `feature` (holds
+  tasks), `task`, `exploration`, `idea`, `decision`, `risk`. Work stages `proposed → planned
+  → active → done`, plus `dropped`; a decision `open → decided`; a risk `open → mitigated →
+  closed`. Fields `due` (date), `owner`, `outcome`. (The assistant's overview reads these
+  stages and `due`.)
+- Views: **Plan** (the outline; it opens on it), **Board**, **Calendar** (by `due`),
+  **Dependencies** (a flow of depends-on and leads-to) and **Decisions and risks** (a board
+  by kind). A workspace's tabs follow its preset's order, views added later after them.
+- **Templates**: a new Planner workspace can start from Software product, Book or SaaS launch
+  (`internal/work/templates.go`): a goal, a plan, three phases in order (one leads to the
+  next) with features, tasks, milestones, a decision and a risk, and the dependencies that
+  matter. They are ordinary items. `POST /api/work` takes `template`.
+- **Send to Torque** (a task, a feature or an exploration; the detail's Torque section, after
+  a confirmation): one Torque task is made (`torque_task_create`: the title, the item's text
+  and a link back, `caster://w-<workspace>/i.<id>`, tag `from-planner`) and its id is kept in
+  the item's `task`. The item is read again under the store's lock first, so a second send,
+  from anywhere, finds the task and makes none. The detail then shows the task (a Cite chip)
+  and its status from `torque_task_get`. Nothing else of Torque's is changed.
+  `POST /api/work/{ws}/items/{id}/torque` `{task, created}`, `GET` the status.
 
 ## Keeping in step with Caster
 
