@@ -170,7 +170,12 @@ func (b *basalisk) serve(ctx context.Context) error {
 					go watch.Run(ctx)
 				}
 				a.EnableAssist(log, watch)
-				agentRT.AddTools(agent.OwnerTools(ownerMail, log))
+				deps := agent.OwnerDeps{Watch: watch, Link: link, DevAddress: cfg.DevAddress,
+					Tasks: func(ctx context.Context) []agent.Task { return agentRT.TasksOf(ctx, a.AssistOwner()) }}
+				agentRT.AddTools(agent.OwnerTools(ownerMail, log, deps))
+				if watch != nil {
+					agentRT.AddAmbient(watch.Brief)
+				}
 				go func() {
 					<-ctx.Done()
 					_ = log.Close()

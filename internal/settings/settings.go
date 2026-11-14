@@ -42,7 +42,10 @@ type Settings struct {
 	// InboxAddresses are the owner's Tether addresses, whose mail the inbox shows
 	// (internal/inbox). Empty means the operator address alone.
 	InboxAddresses []string
-	Delivery       api.DeliveryConfig
+	// DevAddress is who builds this Basalisk: where the assistant sends a request for
+	// something configuration cannot do. Empty: it tells the owner instead.
+	DevAddress string
+	Delivery   api.DeliveryConfig
 	// Agent is where the agent's model is (internal/agent). The agent answers only when the
 	// gateway and the model are both set.
 	Agent agent.Config
@@ -71,7 +74,7 @@ func Parse(raw any) (Settings, error) {
 		return strings.TrimSpace(t), nil
 	}
 	known := map[string]bool{"tether_mcp": true, "allowed_hosts": true, "fe_integration_id": true, "public_origin": true, "tether_issuer_url": true, "tether_subject": true, "tether_parent_ref": true,
-		"agent_gateway_url": true, "agent_key_file": true, "agent_model": true, "agent_urn": true, "inbox_addresses": true}
+		"agent_gateway_url": true, "agent_key_file": true, "agent_model": true, "agent_urn": true, "inbox_addresses": true, "dev_address": true}
 	var unknown []string
 	for k := range block {
 		if !known[k] {
@@ -130,6 +133,12 @@ func Parse(raw any) (Settings, error) {
 		}
 	default:
 		return s, fmt.Errorf("basalisk.tether_mcp must be a list of strings (a command and its arguments)")
+	}
+	if s.DevAddress, err = str("dev_address"); err != nil {
+		return s, err
+	}
+	if s.DevAddress != "" && !strings.HasPrefix(s.DevAddress, "msg://") {
+		return s, fmt.Errorf("basalisk.dev_address must be a Tether address (msg://…)")
 	}
 	switch list := block["inbox_addresses"].(type) {
 	case nil:

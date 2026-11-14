@@ -32,6 +32,9 @@ const (
 	ClassBas    = "bas"
 	ClassDigest = "digest"
 	ClassSettle = "settle"
+	// ClassAnswer is a reply to something the assistant asked in the owner's name: it goes
+	// back to the assistant, which asked, not to the owner as new mail.
+	ClassAnswer = "answer"
 )
 
 // Mail is a message the watcher has sorted.
@@ -89,6 +92,7 @@ CREATE TABLE IF NOT EXISTS mail (
   kind TEXT NOT NULL, subject TEXT NOT NULL, start TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, class TEXT NOT NULL,
   ask TEXT NOT NULL DEFAULT '', why TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'open', seen_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS mail_open ON mail(state, class);
+CREATE TABLE IF NOT EXISTS sent (id TEXT PRIMARY KEY, kind TEXT NOT NULL, about TEXT NOT NULL DEFAULT '', to_addr TEXT NOT NULL DEFAULT '', at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS rules (
   id INTEGER PRIMARY KEY AUTOINCREMENT, from_addr TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT '',
   subject_has TEXT NOT NULL DEFAULT '', class TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);`
@@ -214,6 +218,12 @@ func (w *Watcher) Sweep(ctx context.Context) (int, error) {
 			continue
 		}
 		class, why := Classify(it, rules)
+		if it.InReplyTo != "" && class != ClassSettle {
+			var asked string
+			if db.QueryRowContext(ctx, `SELECT about FROM sent WHERE id=?`, it.InReplyTo).Scan(&asked) == nil {
+				class, why = ClassAnswer, "an answer to: "+asked
+			}
+		}
 		state := "open"
 		if known == 0 {
 			// The first sweep: what was already waiting is left as the owner had it.
@@ -316,3 +326,61 @@ func (w *Watcher) Run(ctx context.Context) {
 }
 
 var _ = sql.ErrNoRows
+
+// Sent remembers a message the assistant sent in the owner's name, so the answer to it is
+// known for what it is when it comes.
+func (w *Watcher) Sent(ctx context.Context, id, kind, about, to string) {
+	if id == "" {
+		return
+	}
+	_, _ = w.Log.db.ExecContext(ctx, `INSERT OR IGNORE INTO sent(id,kind,about,to_addr,at) VALUES(?,?,?,?,?)`, id, kind, about, to, time.Now().UTC().Format(time.RFC3339))
+}
+
+// Brief is the state of the owner's mail in a few lines, for the assistant to carry: what
+// needs the owner, the answers that came to what it asked, and how much is held. "" when
+// there is nothing waiting.
+func (w *Watcher) Brief(ctx context.Context) string {
+	needs, _ := w.Open(ctx, ClassNeeds)
+	answers, _ := w.Open(ctx, ClassAnswer)
+	held, _ := w.Open(ctx, ClassDigest)
+	with, _ := w.Open(ctx, ClassBas)
+	if len(needs)+len(answers)+len(held)+len(with) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	line := func(m Mail, text bool) {
+		fmt.Fprintf(&b, "- %s: %q (account %s, id %s)", nameOr(m), m.Subject, m.Account, m.ID)
+		if m.Why != "" {
+			b.WriteString(" [" + m.Why + "]")
+		}
+		if text && m.Start != "" {
+			b.WriteString("\n  " + strings.ReplaceAll(m.Start, "\n", " "))
+		}
+		b.WriteString("\n")
+	}
+	if len(answers) > 0 {
+		fmt.Fprintf(&b, "Answers to what you asked for the owner (%d). Use them; tell the owner what they asked to know; settle each with owner_mail_settle when used:\n", len(answers))
+		for i, m := range answers {
+			if i == 8 {
+				break
+			}
+			line(m, true)
+		}
+	}
+	if len(needs) > 0 {
+		fmt.Fprintf(&b, "Waiting on the owner to decide (%d); they see these as cards above the chat:\n", len(needs))
+		for i, m := range needs {
+			if i == 8 {
+				break
+			}
+			line(m, false)
+		}
+	}
+	if len(with) > 0 {
+		fmt.Fprintf(&b, "With you in the background: %d request(s).\n", len(with))
+	}
+	if len(held) > 0 {
+		fmt.Fprintf(&b, "Held, not shown to the owner: %d message(s) that only tell (owner_inbox lists them).\n", len(held))
+	}
+	return strings.TrimRight(b.String(), "\n")
+}

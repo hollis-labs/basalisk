@@ -371,6 +371,12 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	if where := describeContext(in.Context); where != "" {
 		blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: where})
 	}
+	// What changed around the owner since the thread was last told (their mail, mostly).
+	if !isTask {
+		if around := rt.ambientBlock(ctx, thread); around != "" {
+			blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: around})
+		}
+	}
 	// Which kind of work the owner is in, when it has changed (slots.go).
 	if !isTask {
 		if slot := rt.slotBlock(ctx, thread, in.Context, tools); slot != "" {

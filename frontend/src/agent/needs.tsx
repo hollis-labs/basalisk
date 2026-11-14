@@ -41,11 +41,13 @@ export function NeedsStrip() {
 
   const load = useCallback(
     () =>
-      request<{ needs: Sorted[]; held: Sorted[]; with_assistant: Sorted[] }>("assist/needs")
+      request<{ needs: Sorted[]; held: Sorted[]; with_assistant: Sorted[]; answers?: Sorted[] }>(
+        "assist/needs",
+      )
         .then((r) => {
           setNeeds(r.needs ?? [])
           setHeld(r.held ?? [])
-          setWithBas(r.with_assistant?.length ?? 0)
+          setWithBas((r.with_assistant?.length ?? 0) + (r.answers?.length ?? 0))
           setOn(true)
         })
         .catch(() => setOn((v) => v ?? false)),

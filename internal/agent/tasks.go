@@ -216,3 +216,12 @@ func (rt *Runtime) SeePage(owner, client string, tools []ToolSpec, deskContext j
 	rt.pages[owner] = page{client: client, tools: tools, context: deskContext}
 	rt.mu.Unlock()
 }
+
+// TasksOf is an owner's task agents, newest first, for the assistant's own overview.
+func (rt *Runtime) TasksOf(ctx context.Context, owner string) []Task {
+	if owner == "" {
+		return nil
+	}
+	list, _ := rt.store.Tasks(ctx, owner, 20)
+	return list
+}

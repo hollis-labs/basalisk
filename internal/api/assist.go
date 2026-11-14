@@ -66,11 +66,12 @@ func (a *API) assistNeeds(w http.ResponseWriter, r *http.Request) {
 	needs, err1 := a.assistWatch.Open(r.Context(), assist.ClassNeeds)
 	held, err2 := a.assistWatch.Open(r.Context(), assist.ClassDigest)
 	with, err3 := a.assistWatch.Open(r.Context(), assist.ClassBas)
+	answers, _ := a.assistWatch.Open(r.Context(), assist.ClassAnswer)
 	if err1 != nil || err2 != nil || err3 != nil {
 		fail(w, 500, "The sorted mail could not be read.")
 		return
 	}
-	reply(w, 200, map[string]any{"needs": needs, "held": held, "with_assistant": with})
+	reply(w, 200, map[string]any{"needs": needs, "held": held, "with_assistant": with, "answers": answers})
 }
 
 // assistMail is the owner saying what to do with a sorted message: not now, done, or where

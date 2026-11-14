@@ -121,15 +121,39 @@ Not yet: the last stretch of conversation kept per slot (the thread and its summ
 still one), slots the owner can define, and pointers gathered automatically (the thread's
 history, what the assistant looked up).
 
+## Knowing how things stand (built)
+
+- **Around.** The state of the owner's mail rides with their next message in an `<around>`
+  block when it has changed since the thread was last told: answers that came to what the
+  assistant asked, what waits on the owner, how much is held
+  (`internal/agent/ambient.go`; any source can be added with `Runtime.AddAmbient`).
+- **Answers come back to the asker.** A message the assistant sends in the owner's name
+  (`owner_status_ask`, `owner_send`, a delegation) is remembered. A reply to it is sorted as
+  `answer`: it goes to the assistant in the `<around>` block, not to the owner as new mail.
+- **`status_overview`** (runs at once): the sorted mail, what was done in the owner's name
+  lately, the assistant's background runs, and Torque's work in flight (doing, review,
+  blocked: totals, by team tag, the twenty most recently touched; `team` narrows to a tag).
+  It is the first call for "where are things".
+
+## Handing work on (built)
+
+- **`chief_delegate`** (asks first): makes a Torque task in the create-task shape (Goal,
+  Context, Scope in and out, Acceptance, Evidence, Classification), tagged `seat-chief`,
+  and sends @chief a request naming it. @chief is found in the registry by its handle.
+  It is refused without what not to touch and at least one check.
+- **`dev_request`** (asks first): asks whoever builds Basalisk (`basalisk.dev_address`) for
+  what configuration cannot do.
+- **`mail_rules`**, **`mail_rule_add`**, **`mail_rule_remove`**: the assistant reads the
+  owner's sorting rules, and changes them when told to (asks first).
+
 ## Planned, in order
 
 1. Sends through Tether's typed messages (`tether_message_post`) once the address aliases
    land, and a small model for sorting what the rules cannot.
 3. Context slots, second part: recent conversation kept per slot, with the summary made per
    slot; slots the owner defines; pointers gathered as the assistant works.
-4. Status: what is in flight, read from the owner's own tools (Planner, Torque, scratch,
-   notes, seat status) with a short "is this current" check, fanned out to task agents.
+4. Status, second part: the Planner and Content workspaces and seat status in the overview;
+   a check that a note or a plan is current before it is relied on.
 5. Host and command-line work: a list of command kinds the assistant may run outright, and
    a delegation to @chief that follows its create-task shape.
-6. Tuning: "that was noise" and "always tell me" on a card become rules; the assistant
-   edits its own rules on request; what configuration cannot do goes to Local Dev.
+6. Tuning: a settings page that lists the rules and the standing "Always" answers.
