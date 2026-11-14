@@ -162,7 +162,7 @@ export function Desktop() {
           size: app.size,
           area: areaRef.current,
           multi: !!app.multi,
-          key: opts.key,
+          key: opts.key ?? app.defaultKey,
           args: opts.args,
         })
       },
@@ -216,7 +216,8 @@ export function Desktop() {
       panelOpen: (id) => panelRef.current === id,
       toggleTerminal() {
         // With a terminal window open the shortcut goes to it; otherwise it drops one down.
-        const win = stateRef.current.wins.find((w) => w.app === "terminal")
+        const wins = stateRef.current.wins.filter((w) => w.app === "terminal")
+        const win = wins.find((w) => w.key === "deck") ?? wins[0]
         if (win) dispatch({ type: "focus", id: win.id })
         else terminalRef.current.setOverlayOpen(!terminalRef.current.overlayOpen)
       },

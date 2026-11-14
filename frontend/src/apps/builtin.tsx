@@ -31,6 +31,7 @@ import { SessionsPage } from "../pages/sessions"
 import { ShellPage } from "../pages/shell"
 import { useSession } from "../session"
 import { TerminalSlot, useTerminalHost } from "../terminal/host"
+import { SoloTerminal } from "../terminal/solo"
 import "../terminal/agent"
 
 function Timezone({ children }: { children: (timezone: string) => ReactNode }) {
@@ -136,7 +137,10 @@ const BUILTIN: AppDef[] = [
     menu: true,
     size: [980, 620],
     bare: true,
-    render: () => <TerminalApp />,
+    // The first window is the deck (tabs); others show one shell each (terminal/solo.tsx).
+    multi: true,
+    defaultKey: "deck",
+    render: (props) => (props.args.solo ? <SoloTerminal {...props} /> : <TerminalApp />),
   },
   {
     id: "sessions",

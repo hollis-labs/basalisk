@@ -38,6 +38,11 @@ export interface AppDef {
    * unless one was opened with the same `key`, which is brought forward instead.
    */
   multi?: boolean
+  /**
+   * For a `multi` app: the key a window gets when it is opened with none, so that plain
+   * "open" brings one main window forward instead of making a new one each time.
+   */
+  defaultKey?: string
   render: (props: WindowProps) => ReactNode
 }
 

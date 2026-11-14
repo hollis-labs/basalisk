@@ -202,6 +202,14 @@ in the home directory with `TERM=xterm-256color`. Sessions end when the app quit
 In the terminal: ⌘T new tab, ⌘W close, ⌘1-9 and ⌘⇧[ ] switch, ⌘K clear, ⌘+ ⌘- ⌘0 font size,
 ⌥←/→ word, ⌘←/→ line start and end, ⌘⌫ kill line, ⇧Enter newline.
 
+**Terminal windows.** The Terminal window (and the drop-down) is the deck: one window with
+tabs. A shell can also have a window to itself, so several can be tiled side by side
+(`frontend/src/terminal/solo.tsx`): the command "Terminal: new window", the button on a tab
+("Move to its own window"), or the agent's `terminal_open` with `own_window`. A shell in a
+window of its own is not a tab in the deck. There ⌘T opens another such window and ⌘W
+closes it; closing the window ends the shell, and the shell ending closes the window. A
+page reload brings these shells back as tabs in the deck, since windows are not restored.
+
 Every terminal route needs the write scope, the socket included, and the socket refuses another
 origin. The terminal is a shell as the user who runs the app: anyone who can sign in to this
 Basalisk can run commands as that user.

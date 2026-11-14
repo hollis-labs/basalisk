@@ -9,6 +9,7 @@ import { request } from "../api/account"
 import { terminal as api, type TerminalSession } from "../api/shell"
 import type { DeskAPI } from "../desktop/registry"
 import { adoptTerminal } from "./deck"
+import { openTerminalWindow } from "./solo"
 import { liveTerminals } from "./xterm"
 
 const ACTIVE_KEY = "basalisk.terminal.active"
@@ -190,8 +191,14 @@ registerAgentTools([
     name: "terminal_open",
     level: "act",
     description:
-      "Open a new shell, optionally in a folder (an absolute path, or ~/…), and make it the active tab; shows the terminal if it is hidden. Returns its id.",
-    input_schema: object({ folder: str("The folder to start in. Leave out for the home folder.") }),
+      "Open a new shell, optionally in a folder (an absolute path, or ~/…), and make it the active tab; shows the terminal if it is hidden. With own_window it gets a terminal window to itself instead of a tab, so it can sit beside other windows. Returns its id.",
+    input_schema: object({
+      folder: str("The folder to start in. Leave out for the home folder."),
+      own_window: {
+        type: "boolean",
+        description: "Give the shell a window of its own instead of a tab in the terminal.",
+      },
+    }),
     run: async (input, desk) => {
       await sessions()
       const folder = typeof input.folder === "string" ? input.folder.trim() : ""
@@ -204,8 +211,11 @@ registerAgentTools([
         )
       }
       if (s.cwd) folders.set(s.id, s.cwd)
-      adoptTerminal(s)
-      show(desk)
+      if (input.own_window === true) openTerminalWindow(desk, { session: s.id, title: s.title })
+      else {
+        adoptTerminal(s)
+        show(desk)
+      }
       const ready = await mounted(s.id)
       return {
         shell_id: s.id,

@@ -6,6 +6,7 @@ import { request } from "../api/account"
 import { nativeBrowser } from "../api/browser"
 import { filesLocations } from "../apps/files/model"
 import { registerContext } from "../desktop/registry"
+import { soloSession } from "../terminal/solo"
 
 // Files: the folder the window is showing (it changes as you navigate, so it is not in the args).
 registerContext("files", (win) => {
@@ -13,10 +14,11 @@ registerContext("files", (win) => {
   return loc ? { file: loc } : {}
 })
 
-// Terminal: the folder the active shell was started in.
-registerContext("terminal", async () => {
+// Terminal: the folder the shell in front was started in.
+registerContext("terminal", async (win) => {
   const st = await request<{ sessions: { id: string; cwd: string; exited: boolean }[] }>("terminal")
-  const active = window.localStorage.getItem("basalisk.terminal.active")
+  // A terminal window of its own shows one shell; the deck shows its active tab.
+  const active = soloSession(win.id) ?? window.localStorage.getItem("basalisk.terminal.active")
   const cwd = st.sessions.find((s) => s.id === active && !s.exited)?.cwd
   return cwd ? { cwd } : {}
 })

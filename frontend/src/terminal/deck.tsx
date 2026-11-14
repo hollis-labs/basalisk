@@ -1,6 +1,8 @@
-import { Plus, X } from "lucide-react"
+import { PictureInPicture2, Plus, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { terminal as api, type TerminalSession } from "../api/shell"
+import type { DeskAPI } from "../desktop/registry"
+import { isSolo, openTerminalWindow, SOLO_EVENT } from "./solo"
 import { type DeckKeys, XTermView } from "./xterm"
 
 const FONT_KEY = "basalisk.terminal.fontSize"
@@ -62,7 +64,8 @@ export function TerminalDeck({ epoch, onEmpty }: { epoch: number; onEmpty: () =>
       try {
         const state = await api.state()
         if (!live) return
-        const running = state.sessions.filter((s) => !s.exited)
+        // A shell shown in a window of its own is not a tab here.
+        const running = state.sessions.filter((s) => !s.exited && !isSolo(s.id))
         setSessions(running)
         const wanted = window.localStorage.getItem(ACTIVE_KEY) ?? ""
         if (running.length)
@@ -114,6 +117,16 @@ export function TerminalDeck({ epoch, onEmpty }: { epoch: number; onEmpty: () =>
     [remove],
   )
 
+  // A shell moved to a window of its own: its tab goes, the shell stays.
+  useEffect(() => {
+    const onSolo = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail
+      if (isSolo(id)) remove(id)
+    }
+    window.addEventListener(SOLO_EVENT, onSolo)
+    return () => window.removeEventListener(SOLO_EVENT, onSolo)
+  }, [remove])
+
   // The shell ended on its own (exit, ctrl-d): forget the session and drop the tab.
   const exited = useCallback(
     (id: string) => {
@@ -160,6 +173,20 @@ export function TerminalDeck({ epoch, onEmpty }: { epoch: number; onEmpty: () =>
             >
               <span className="terminal-tab-index">{i + 1}</span>
               {s.title}
+            </button>
+            <button
+              type="button"
+              className="terminal-tab-close"
+              aria-label={`Move terminal ${i + 1} to its own window`}
+              title="Move to its own window"
+              onClick={() => {
+                // The deck is drawn outside the desktop's own tree, so the desktop is
+                // reached the way an outside caller reaches it.
+                const desk = (globalThis as { basalisk?: { desk?: DeskAPI } }).basalisk?.desk
+                if (desk) openTerminalWindow(desk, { session: s.id, title: s.title })
+              }}
+            >
+              <PictureInPicture2 aria-hidden="true" size={12} />
             </button>
             <button
               type="button"
