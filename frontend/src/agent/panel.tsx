@@ -1,7 +1,7 @@
 /** The agent's panel: the running thread, what it is doing, and a box to talk to it. */
 import { ArrowUp, ChevronRight, Plus, Square, X } from "lucide-react"
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { ResultCardView } from "../cite/cards"
+import { cardFor, ResultCardView } from "../cite/cards"
 import { Markdown } from "../cite/ui"
 import { useDesk } from "../desktop/context"
 import { SlashMenu } from "../slash/menu"
@@ -73,6 +73,9 @@ function TaskStrip() {
 function TaskRow({ task: t }: { task: TaskInfo }) {
   const desk = useDesk()
   const asks = !!taskSession(t.id).use().approval
+  // A run the assistant started for itself (sorting mail) stays out of sight unless it needs
+  // an answer or failed; it is listed in Done for you.
+  if (t.origin.startsWith("trigger:mail") && !asks && t.state !== "failed") return null
   return (
     <li className="agent-task" data-state={t.state} data-asks={asks}>
       <button
@@ -248,9 +251,13 @@ function Conversation({
             </p>
           )}
           {s.loaded && ready && !s.items.length && <p className="agent-empty">{empty}</p>}
-          {s.items.map((item) => (
-            <ItemView key={item.id} item={item} />
-          ))}
+          {folded(s.items).map((item) =>
+            item.kind === "steps" ? (
+              <StepsFold key={item.id} tools={item.tools} />
+            ) : (
+              <ItemView key={item.id} item={item} />
+            ),
+          )}
           {s.run && !s.approval && <Working items={s.items} />}
           {s.approval && <ApprovalCard q={s.approval} />}
           {s.error && (
@@ -305,6 +312,58 @@ function Conversation({
         </footer>
       </div>
     </SessionContext.Provider>
+  )
+}
+
+type ToolItem = Extract<Item, { kind: "tool" }>
+
+/**
+ * The thread with its steps folded: tool calls that came one after another become one line,
+ * so the conversation reads as what was said and what came of it. A call still running, and
+ * one whose result is a card (a task started, a list of records), stay as they are.
+ */
+function folded(items: Item[]): (Item | { kind: "steps"; id: string; tools: ToolItem[] })[] {
+  const out: (Item | { kind: "steps"; id: string; tools: ToolItem[] })[] = []
+  let run: ToolItem[] = []
+  const flush = () => {
+    if (run.length === 1) out.push(run[0])
+    else if (run.length > 1) out.push({ kind: "steps", id: `steps-${run[0].id}`, tools: run })
+    run = []
+  }
+  for (const item of items) {
+    const quiet =
+      item.kind === "tool" &&
+      !item.running &&
+      !cardFor(item.name, item.input, item.result, !!item.isError)
+    if (quiet) run.push(item as ToolItem)
+    else {
+      flush()
+      out.push(item)
+    }
+  }
+  flush()
+  return out
+}
+
+/** Several steps as one line; opening it shows each. */
+function StepsFold({ tools }: { tools: ToolItem[] }) {
+  const [open, setOpen] = useState(false)
+  const failed = tools.filter((t) => t.isError).length
+  const last = tools[tools.length - 1]
+  return (
+    <div className="agent-steps" data-open={open}>
+      <button type="button" className="agent-tool-line" onClick={() => setOpen((o) => !o)}>
+        <ChevronRight size={12} className="agent-tool-caret" data-open={open} />
+        <span className="agent-tool-name">
+          {tools.length} steps
+          {open
+            ? ""
+            : ` · ${(last.input !== undefined && describeCall(last.name, last.input)) || last.name.replaceAll("_", " ")}`}
+        </span>
+        <span className="agent-tool-state">{failed ? `${failed} failed` : ""}</span>
+      </button>
+      {open && tools.map((t) => <ToolRow key={t.id} item={t} />)}
+    </div>
   )
 }
 

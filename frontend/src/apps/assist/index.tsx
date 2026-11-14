@@ -5,8 +5,10 @@
  */
 import { ListChecks, RefreshCw } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
+import { openTask, useTasks } from "../../agent/tasks"
 import { request } from "../../api/account"
 import { UrnLink } from "../../cite/ui"
+import { useDesk } from "../../desktop/context"
 import { registerApp } from "../../desktop/registry"
 import "./assist.css"
 
@@ -55,6 +57,8 @@ function AssistWindow() {
     return () => window.clearInterval(timer)
   }, [load])
 
+  const desk = useDesk()
+  const runs = useTasks().filter((t) => t.origin.startsWith("trigger:"))
   let day = ""
   return (
     <div className="assist">
@@ -66,6 +70,28 @@ function AssistWindow() {
         </button>
       </header>
       {error && <p className="assist-error">{error}</p>}
+      {runs.length > 0 && (
+        <div className="assist-runs">
+          <h3>Working in the background</h3>
+          {runs.slice(0, 8).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className="assist-row"
+              onClick={() => openTask(desk, t.id, t.title)}
+            >
+              <time>
+                {new Date(t.updated_at).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </time>
+              <i>{t.state || "running"}</i>
+              <span>{t.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <ul>
         {list.map((e) => {
           const d = new Date(e.at)

@@ -77,13 +77,22 @@ owner's. With `host` the line is `ssh -t <host> '<command>'`. It runs at once (i
 types). `terminal_run` still runs a command on this Mac after asking each time. Work the
 owner should not have to press Enter for goes to @chief with `owner_send`.
 
+## The quiet lane (built, first part)
+
+- In the chat, tool calls that follow one another are folded to one line ("4 steps · …")
+  that opens to show each. A call still running, and one whose result is a card, stay as
+  they are.
+- A background run the assistant started for itself (sorting mail) is not in the task strip
+  unless it is asking permission or failed. It is listed in Done for you, under "Working in
+  the background", and opens from there.
+
+Not yet: Tether's reply-audience fields. Basalisk's own runs are not Tether turns, so there
+is nothing to read them from; they matter when Basalisk shows other seats' sessions.
+
 ## Planned, in order
 
 1. Sends through Tether's typed messages (`tether_message_post`) once the address aliases
    land, and a small model for sorting what the rules cannot.
-2. A quiet lane: the assistant's background work out of the chat, following Tether's
-   reply-audience contract (fold a turn only when its input was a mail wake; never fold
-   what was triaged human; never infer from the text).
 3. Context slots: one per kind of work (messaging, planning, notes, writing, engineering),
    each with the tools that are top of mind there, the last stretch of that context and
    pointers to the rest (chat history, notes, Tesseract, Torque, Planner, scratch).

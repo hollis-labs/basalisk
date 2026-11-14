@@ -508,3 +508,12 @@
   font-size: 11px;
   color: var(--desk-fg-soft);
 }
+
+/* Steps folded to one line (panel.tsx, StepsFold). */
+.agent-steps[data-open="true"] {
+  padding-left: 8px;
+  border-left: 1px solid var(--desk-border);
+}
+.agent-tasks:empty {
+  display: none;
+}
