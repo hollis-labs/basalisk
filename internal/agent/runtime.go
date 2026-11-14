@@ -39,6 +39,10 @@ type Config struct {
 	MaxTokens int
 	// MaxSteps bounds the model invocations in one run (each tool round is one).
 	MaxSteps int
+	// CompactAt is the size of a thread's last request, in tokens, past which its older
+	// messages are summarised for the model before the next request (compact.go).
+	// Negative: never.
+	CompactAt int
 }
 
 // Ready says whether a model can be called at all.
@@ -50,6 +54,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.MaxSteps <= 0 {
 		c.MaxSteps = 24
+	}
+	if c.CompactAt == 0 {
+		c.CompactAt = defaultCompactAt
 	}
 	return c
 }
@@ -350,10 +357,10 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 		rt.store.taskRunning(ctx, thread) // a follow-up sets a task that had ended going again
 	}
 
-	for _, m := range prior {
-		r.history = append(r.history, llmtypes.ChatMessage{Role: m.Role, ContentBlocks: m.Blocks})
-	}
-	r.history = repair(r.history)
+	// What the model is sent of the thread so far: its summary, if its older part has been
+	// compacted, and the messages since.
+	summary, upto := rt.store.summary(ctx, thread)
+	r.history = historyFor(prior, summary, upto)
 
 	// What the owner was looking at goes in front of what they said, in the same message:
 	// the thread then remembers where each thing was said, and the system prompt stays the
@@ -568,6 +575,11 @@ func (r *run) execute(ctx context.Context) {
 	finish := chatstream.FinishStop
 	var failure error
 	steps, tries := 0, 0
+
+	// A thread that has grown long is shortened for the model before it is called again.
+	if r.route == nil {
+		r.compact(ctx)
+	}
 
 	// A message the router took is answered here, with no model, unless the route hands
 	// over to the model or its call failed.

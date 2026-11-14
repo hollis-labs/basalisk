@@ -80,6 +80,10 @@ var migrations = []string{
 	ALTER TABLE threads ADD COLUMN result TEXT NOT NULL DEFAULT '';
 	ALTER TABLE threads ADD COLUMN reported_at TEXT NOT NULL DEFAULT '';
 	ALTER TABLE threads ADD COLUMN origin TEXT NOT NULL DEFAULT '';`,
+	// Compaction: the summary the model is sent in place of a thread's older messages,
+	// and the last message it covers.
+	`ALTER TABLE threads ADD COLUMN summary TEXT NOT NULL DEFAULT '';
+	ALTER TABLE threads ADD COLUMN summary_upto INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // OpenStore opens (and creates or upgrades) the file at path.
@@ -382,5 +386,19 @@ func (s *Store) markReported(ctx context.Context, id string) {
 // ArchiveTask puts a task away. Nothing is deleted.
 func (s *Store) ArchiveTask(ctx context.Context, owner, id string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE threads SET archived_at=? WHERE id=? AND owner=? AND kind='task' AND archived_at=''`, now(), id, owner)
+	return err
+}
+
+// summary is the thread's summary and the sequence number of the last message it covers
+// ("" and 0 when the thread has not been compacted).
+func (s *Store) summary(ctx context.Context, thread string) (string, int) {
+	var text string
+	var upto int
+	_ = s.db.QueryRowContext(ctx, `SELECT summary, summary_upto FROM threads WHERE id=?`, thread).Scan(&text, &upto)
+	return text, upto
+}
+
+func (s *Store) setSummary(ctx context.Context, thread, text string, upto int) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE threads SET summary=?, summary_upto=? WHERE id=?`, text, upto, thread)
 	return err
 }

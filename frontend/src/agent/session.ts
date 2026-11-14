@@ -373,6 +373,19 @@ function createSession(thread: string | null) {
                 },
               ],
             })
+          else if (ev.kind === "basalisk.compact" && typeof ev.value?.state === "string") {
+            // One line that says where the shortening stands.
+            const text =
+              ev.value.state === "start"
+                ? "Summarising the older part of this conversation for the model…"
+                : ev.value.state === "done"
+                  ? "The older part of this conversation was summarised for the model. Every message is still here."
+                  : "The conversation could not be shortened this time."
+            const id = key("compact")
+            if (session.items.some((it) => it.id === id))
+              patchItem(id, (it) => (it.kind === "notice" ? { ...it, text } : it))
+            else set({ items: [...session.items, { kind: "notice", id, tone: "quiet", text }] })
+          }
           break
         case "run.error":
           set({

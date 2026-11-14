@@ -108,9 +108,10 @@ func TestAHaltReflexAnswersWithoutTheModel(t *testing.T) {
 }
 
 func TestTheLongThreadReflexFiresOnceTheLastRequestWasLarge(t *testing.T) {
-	big := strings.Replace(textReply("Done."), `"input_tokens":10`, `"input_tokens":130000`, 1)
+	big := strings.Replace(textReply("Done."), `"input_tokens":10`, `"input_tokens":160000`, 1)
 	s := newStandIn(t, textReply("Short."), big, textReply("Noted."))
 	rt := newRuntime(t, s)
+	rt.cfg.CompactAt = -1 // the reflex is for a thread that compaction did not bring down
 	rt.SetReflexes(NewReflexes("", rt.Store()))
 	for i, text := range []string{"one", "two", "three"} {
 		id, err := rt.Start(t.Context(), StartInput{Owner: "u1", Text: text, ClientID: "c1"})

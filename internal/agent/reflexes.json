@@ -2,12 +2,12 @@
   "reflexes": [
     {
       "name": "long-thread",
-      "about": "The conversation is getting long, and old messages are not shortened yet.",
+      "about": "The conversation is still very long after its older part was summarised.",
       "trigger_kind": "predicate",
-      "trigger": { "kind": "prefix_pressure", "ratio": 0.6, "context_window": 200000 },
+      "trigger": { "kind": "prefix_pressure", "ratio": 0.75, "context_window": 200000 },
       "action_kind": "inject_reminder",
       "action": {
-        "body": "This conversation has grown long (the last request was over about 120,000 tokens) and Basalisk does not shorten old messages yet. Do what was asked. Then tell the owner once, in one line, that /new starts a fresh conversation."
+        "body": "This conversation is very long (the last request was over about 150,000 tokens) even with its older part summarised. Do what was asked. Then tell the owner once, in one line, that /new starts a fresh conversation."
       },
       "cooldown_seconds": 3600
     }

@@ -194,9 +194,9 @@ reflexes that fired on it (`meta.reflexes`). When each last fired is kept in `ag
 which is what its cooldown is measured from.
 
 One ships (`internal/agent/reflexes.json`): **long-thread**. When the last request to the
-model was over about 120,000 tokens, the model is asked to finish what was asked and then
-mention `/new` once. It keeps quiet for an hour after firing. There is no compaction yet,
-so this is the guard against a thread that outgrows the model.
+model was over about 150,000 tokens, which means compaction (below) did not bring the
+thread down, the model is asked to finish what was asked and then mention `/new` once. It
+keeps quiet for an hour after firing.
 
 **Your own reflexes** go in `~/.config/basalisk/agent-reflexes.json` (or the file
 `BASALISK_AGENT_REFLEXES_FILE` names), read again when it changes. One with the name of a
@@ -236,6 +236,24 @@ Message windows are over the last 60 messages, newest first, and count your word
 typed them (not the `<desktop>` block). Token counts per message are not kept, so the
 `input_tokens_window`, `cache_read_window` and `output_growth_window` nodes see zeros.
 The engine's schedule and send-a-message actions are not wired.
+
+## Compaction
+
+A thread that grows long is shortened for the model, not for you
+(`internal/agent/compact.go`). When a thread's last request was over about 110,000
+tokens, then before the next one the older part of the thread is put to the model once,
+as plain text, to be summarised: what you asked and decided, what was done and where,
+what was found, what is unfinished. From then on the model is sent that summary in place
+of those messages, then the recent ones in full (about the last 90,000 characters, cut at
+one of your messages so no call is parted from its result).
+
+Nothing is deleted. The thread keeps every message and the panel shows them all; the
+summary and the point it reaches are kept on the thread. A later compaction summarises
+the earlier summary together with what came since. The panel says when it happens
+("Summarising the older part of this conversation…"). If the summary cannot be made, the
+thread is sent whole as before and the message is still answered. Task threads are
+compacted the same way. The 110,000 figure assumes a model window of 200,000 tokens or
+more.
 
 ## Task agents
 
@@ -349,8 +367,6 @@ never logged. Without a gateway and a model the panel opens and says what to set
   model reads its definition first).
 - No Tesseract writes and no mail yet.
 - Tool calls run one after another.
-- No compaction: a very long thread will eventually exceed the model's window. Start a
-  new conversation.
 - If the page is reloaded while it is running a tool call, the call is given up on after
   45 seconds and the model is told the desktop did not answer.
 - The panel has a fixed width, and a floating window can sit partly under it.
