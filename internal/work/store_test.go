@@ -404,3 +404,103 @@ func TestSetFieldKeepsOneLineMap(t *testing.T) {
 		t.Fatalf("opened:\n%s", d.String())
 	}
 }
+
+func TestWriterOutlinePlace(t *testing.T) {
+	ctx := context.Background()
+	s, f := open(t)
+	if _, err := s.NewWorkspace(ctx, "novel", "The novel", "writer", ""); err != nil {
+		t.Fatal(err)
+	}
+	sp, _, _ := s.Open(ctx, "novel")
+	if len(sp.Kinds) != 10 || sp.Kinds[0].Kind != "part" {
+		t.Fatalf("kinds = %d, first %s", len(sp.Kinds), sp.Kinds[0].Kind)
+	}
+	var outline string
+	for _, v := range sp.Views {
+		if v.View == "outline" {
+			outline = v.ID
+		}
+	}
+	if outline == "" || sp.Default != outline {
+		t.Fatalf("default view %q, outline %q", sp.Default, outline)
+	}
+	mk := func(kind, title, parent string) string {
+		t.Helper()
+		id, err := s.MakeItem(ctx, "novel", NewItem{Kind: kind, Title: title, Parent: parent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	ch1, ch2 := mk("chapter", "One", ""), mk("chapter", "Two", "")
+	a, b, c := mk("scene", "A", ch1), mk("scene", "B", ch1), mk("scene", "C", ch2)
+	kids := func(id string) []string {
+		d, _ := ParseDoc(f.latest("w-novel", ItemName(id)))
+		return d.Strings("children")
+	}
+	parentOf := func(id string) string {
+		d, _ := ParseDoc(f.latest("w-novel", ItemName(id)))
+		return d.Str("parent")
+	}
+	// B to chapter Two, before C: both lists and B's parent change.
+	if err := s.Place(ctx, "novel", b, ch2, c, outline); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(kids(ch1)) != fmt.Sprint([]string{a}) || fmt.Sprint(kids(ch2)) != fmt.Sprint([]string{b, c}) || parentOf(b) != ch2 {
+		t.Fatalf("one %v two %v parent %s", kids(ch1), kids(ch2), parentOf(b))
+	}
+	// Reorder within a parent: C first. B's parent is untouched (no new revision of B).
+	revB := len(f.revs["w-novel/"+ItemName(b)])
+	if err := s.Place(ctx, "novel", c, ch2, b, outline); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(kids(ch2)) != fmt.Sprint([]string{c, b}) || len(f.revs["w-novel/"+ItemName(b)]) != revB {
+		t.Fatalf("two %v", kids(ch2))
+	}
+	// The kinds' rules: a chapter does not hold a chapter; nothing goes inside itself.
+	if err := s.Place(ctx, "novel", ch1, ch2, "", outline); err == nil {
+		t.Error("a chapter went into a chapter")
+	}
+	if err := s.Place(ctx, "novel", a, a, "", outline); err == nil {
+		t.Error("an item went inside itself")
+	}
+	// The top level's order is in the outline view: Two before One.
+	if err := s.Place(ctx, "novel", ch2, "", ch1, outline); err != nil {
+		t.Fatal(err)
+	}
+	v := f.latest("w-novel", ViewName(outline))
+	if !strings.Contains(v, "order:") || strings.Index(v, ch2) > strings.Index(v, ch1) {
+		t.Fatalf("view:\n%s", v)
+	}
+	// A scene to the top level: out of its chapter, parent emptied.
+	if err := s.Place(ctx, "novel", a, "", "", outline); err != nil {
+		t.Fatal(err)
+	}
+	if len(kids(ch1)) != 0 || parentOf(a) != "" {
+		t.Fatalf("one %v parent %q", kids(ch1), parentOf(a))
+	}
+}
+
+func TestEditLinks(t *testing.T) {
+	ctx := context.Background()
+	s, _ := open(t)
+	if _, err := s.NewWorkspace(ctx, "novel", "The novel", "writer", ""); err != nil {
+		t.Fatal(err)
+	}
+	sc, _ := s.MakeItem(ctx, "novel", NewItem{Kind: "scene", Title: "Opening"})
+	ch, _ := s.MakeItem(ctx, "novel", NewItem{Kind: "character", Title: "Mara"})
+	d, _, _ := s.Detail(ctx, "novel", ch)
+	links := []Link{{Rel: "appears-in", To: sc}, {Rel: "appears-in", To: sc}, {Rel: "relates", To: ch}}
+	if _, err := s.EditItem(ctx, "novel", ch, Edit{BaseRev: d.Rev, Links: &links}); err != nil {
+		t.Fatal(err)
+	}
+	d, _, _ = s.Detail(ctx, "novel", ch)
+	if len(d.Links) != 1 || d.Links[0] != (Link{Rel: "appears-in", To: sc}) {
+		t.Fatalf("links = %+v (duplicates and self-links dropped)", d.Links)
+	}
+	for _, bad := range [][]Link{{{Rel: "contains", To: sc}}, {{Rel: "Appears In", To: sc}}, {{Rel: "relates", To: "nope"}}} {
+		if _, err := s.EditItem(ctx, "novel", ch, Edit{BaseRev: d.Rev, Links: &bad}); err == nil {
+			t.Errorf("taken: %+v", bad)
+		}
+	}
+}

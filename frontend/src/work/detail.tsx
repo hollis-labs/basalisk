@@ -12,6 +12,7 @@ import {
   type WorkEdit,
   type WorkField,
   type WorkKind,
+  type WorkLink,
   type WorkMaterial,
   type WorkPublished,
   type WorkRevision,
@@ -30,11 +31,14 @@ export function Detail({
   close,
   editing,
   changed,
+  open,
 }: {
   ws: string
   id: string
   kinds: Map<string, WorkKind>
   items: WorkCard[]
+  /** Open another item in the detail. */
+  open: (id: string) => void
   /** The item's revision in the view's copy: a newer one reloads the detail. */
   revOnBoard: number
   close: () => void
@@ -165,6 +169,7 @@ export function Detail({
             <FieldRow
               key={f.key}
               field={f}
+              self={d.id}
               value={d.fields[f.key]}
               items={items}
               set={(v) => void save({ fields: { [f.key]: v } })}
@@ -228,32 +233,30 @@ export function Detail({
         <TagsRow tags={d.tags} set={(tags) => void save({ tags })} />
       </section>
 
-      {(d.links.length > 0 || d.children.length > 0 || d.parent) && (
-        <section className="work-sec">
-          <h4>Links</h4>
-          {d.parent && <div className="work-rowtext">in {titleOf(d.parent)}</div>}
-          {d.children.length > 0 && (
-            <div className="work-rowtext">holds {d.children.map(titleOf).join(", ")}</div>
-          )}
-          {d.links.map((l) => (
-            <div key={`${l.rel}:${l.to}`} className="work-rowtext">
-              {l.rel} {titleOf(l.to)}
-            </div>
-          ))}
-        </section>
-      )}
+      <section className="work-sec">
+        <h4>Links</h4>
+        <Links
+          d={d}
+          items={items}
+          kinds={kinds}
+          open={open}
+          set={(links) => void save({ links })}
+        />
+      </section>
       <section className="work-sec">
         <h4>Material</h4>
         <MaterialList material={d.material} set={(material) => void save({ material })} />
       </section>
-      <section className="work-sec">
-        <h4>Published</h4>
-        <PublicationLog
-          log={d.published}
-          where={channelOf(d.fields.channel)}
-          set={(published) => void save({ published })}
-        />
-      </section>
+      {(k?.stages.includes("published") || d.published.length > 0) && (
+        <section className="work-sec">
+          <h4>Published</h4>
+          <PublicationLog
+            log={d.published}
+            where={channelOf(d.fields.channel)}
+            set={(published) => void save({ published })}
+          />
+        </section>
+      )}
 
       {d.notes.length > 0 && (
         <section className="work-sec">
@@ -300,15 +303,24 @@ export function Detail({
 /** One field of the item, edited by its type. */
 function FieldRow({
   field,
+  self,
   value,
   items,
   set,
 }: {
   field: WorkField
+  self: string
   value: unknown
   items: WorkCard[]
   set: (v: unknown) => void
 }) {
+  // A ref field's options name the kinds it may point at (empty: any kind).
+  const targets = items.filter(
+    (x) =>
+      !x.cut &&
+      x.id !== self &&
+      (field.type === "enum" || !field.options?.length || field.options.includes(x.kind)),
+  )
   const [text, setText] = useState(value == null ? "" : String(value))
   useEffect(() => setText(value == null ? "" : String(value)), [value])
   const name = field.label || field.key
@@ -355,17 +367,56 @@ function FieldRow({
           aria-label={name}
         >
           <option value="">—</option>
-          {!items.some((x) => x.id === text) && text && <option value={text}>{text}</option>}
-          {items
-            .filter((x) => !x.cut)
-            .map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.title}
-              </option>
-            ))}
+          {!targets.some((x) => x.id === text) && text && (
+            <option value={text}>{items.find((x) => x.id === text)?.title ?? text}</option>
+          )}
+          {targets.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.title}
+            </option>
+          ))}
         </select>
       )
       break
+    case "refs": {
+      const list = Array.isArray(value) ? value.map(String) : []
+      input = (
+        <span className="work-refs">
+          {list.map((r) => (
+            <span key={r} className="work-refchip">
+              {items.find((x) => x.id === r)?.title ?? r}
+              <button
+                type="button"
+                className="work-icon"
+                title="Take it out"
+                onClick={() => {
+                  const next = list.filter((x) => x !== r)
+                  set(next.length ? next : null)
+                }}
+              >
+                <X size={10} />
+              </button>
+            </span>
+          ))}
+          <select
+            className="work-select"
+            value=""
+            onChange={(e) => e.target.value && set([...list, e.target.value])}
+            aria-label={`Add to ${name}`}
+          >
+            <option value="">+ add</option>
+            {targets
+              .filter((x) => !list.includes(x.id))
+              .map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.title}
+                </option>
+              ))}
+          </select>
+        </span>
+      )
+      break
+    }
     default:
       input = (
         <input
@@ -778,5 +829,120 @@ function PublicationForm({
         </button>
       </div>
     </form>
+  )
+}
+
+/** Relations an item can carry (contains is the outline: parent and children). */
+const RELS = ["appears-in", "leads-to", "depends-on", "uses", "relates"]
+
+/**
+ * Links both ways: where the item sits (its parent, what it holds), its own typed links
+ * (edited here), and what points at it: other items' links and their ref fields.
+ */
+function Links({
+  d,
+  items,
+  kinds,
+  open,
+  set,
+}: {
+  d: WorkDetail
+  items: WorkCard[]
+  kinds: Map<string, WorkKind>
+  open: (id: string) => void
+  set: (links: WorkLink[]) => void
+}) {
+  const [rel, setRel] = useState(RELS[0])
+  const byId = new Map(items.map((x) => [x.id, x]))
+  const go = (id: string) => (
+    <button type="button" className="work-link" onClick={() => open(id)} title={id}>
+      {byId.get(id)?.title ?? id}
+    </button>
+  )
+  // What points at this item: links from others, and their ref and refs fields.
+  const incoming: { from: string; how: string }[] = []
+  for (const x of items) {
+    if (x.cut || x.id === d.id) continue
+    for (const l of x.links) if (l.to === d.id) incoming.push({ from: x.id, how: l.rel })
+    const xk = kinds.get(x.kind)
+    for (const f of xk?.fields ?? []) {
+      const v = x.fields[f.key]
+      if (
+        (f.type === "ref" && v === d.id) ||
+        (f.type === "refs" && Array.isArray(v) && v.includes(d.id))
+      )
+        incoming.push({ from: x.id, how: (f.label || f.key).toLowerCase() })
+    }
+  }
+  const candidates = items.filter(
+    (x) => !x.cut && x.id !== d.id && !d.links.some((l) => l.rel === rel && l.to === x.id),
+  )
+  return (
+    <div className="work-links">
+      {d.parent && <div className="work-linkrow">in {go(d.parent)}</div>}
+      {d.children.length > 0 && (
+        <div className="work-linkrow">
+          holds{" "}
+          {d.children.map((c, i) => (
+            <span key={c}>
+              {i > 0 && ", "}
+              {go(c)}
+            </span>
+          ))}
+        </div>
+      )}
+      {d.links.map((l, i) => (
+        <div key={`${l.rel}:${l.to}`} className="work-linkrow">
+          <span className="work-dim">{l.rel}</span> {go(l.to)}
+          <span className="work-spacer" />
+          <button
+            type="button"
+            className="work-icon"
+            title="Take this link out"
+            onClick={() => set(d.links.filter((_, j) => j !== i))}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      ))}
+      <div className="work-linkadd">
+        <select
+          className="work-select"
+          value={rel}
+          onChange={(e) => setRel(e.target.value)}
+          aria-label="Relation"
+        >
+          {RELS.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+        <select
+          className="work-select"
+          value=""
+          onChange={(e) => e.target.value && set([...d.links, { rel, to: e.target.value }])}
+          aria-label="Link to"
+        >
+          <option value="">+ link to…</option>
+          {candidates.map((x) => (
+            <option key={x.id} value={x.id}>
+              {kinds.get(x.kind)?.label ?? x.kind} · {x.title}
+            </option>
+          ))}
+        </select>
+      </div>
+      {incoming.length > 0 && (
+        <>
+          <div className="work-dim work-linkhead">Pointing here</div>
+          {incoming.map((x, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: one item may point here twice
+            <div key={`${x.from}:${x.how}:${i}`} className="work-linkrow">
+              {go(x.from)} <span className="work-dim">{x.how}</span>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
   )
 }

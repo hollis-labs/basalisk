@@ -37,8 +37,10 @@ export function Board({
   const [making, setMaking] = useState<string | null>(null)
 
   // What a card's group is, and the enum fields that can group the board.
+  const byKind = groupBy === "kind"
   const groupOf = (c: WorkCard) =>
-    moved[c.id] ?? (groupBy === "stage" ? c.stage : String(c.fields[groupBy] ?? ""))
+    moved[c.id] ??
+    (groupBy === "stage" ? c.stage : byKind ? c.kind : String(c.fields[groupBy] ?? ""))
   const enumFields = useMemo(() => {
     const out = new Map<string, { key: string; label: string; options: string[] }>()
     for (const k of kinds)
@@ -50,7 +52,10 @@ export function Board({
 
   const columns = useMemo(() => {
     const cols: string[] = []
-    if (groupBy === "stage") {
+    if (byKind) {
+      // One column a kind (a codex): a card cannot change its kind by moving.
+      cols.push(...shownKinds)
+    } else if (groupBy === "stage") {
       for (const k of kinds)
         if (shownKinds.includes(k.kind))
           for (const s of k.stages) if (!cols.includes(s)) cols.push(s)
@@ -58,7 +63,7 @@ export function Board({
       cols.push(...(enumFields.find((f) => f.key === groupBy)?.options ?? []), "")
     }
     return cols
-  }, [kinds, shownKinds, groupBy, enumFields])
+  }, [kinds, shownKinds, groupBy, byKind, enumFields])
 
   const cards = space.items.filter((c) => !c.cut && shownKinds.includes(c.kind))
   const byCol = new Map<string, WorkCard[]>()
@@ -83,7 +88,7 @@ export function Board({
     e.preventDefault()
     const id = e.dataTransfer.getData("text/x-work-item")
     const c = cards.find((x) => x.id === id)
-    if (!c || col === OTHER || groupOf(c) === col) return
+    if (!c || col === OTHER || byKind || groupOf(c) === col) return
     const k = kinds.find((x) => x.kind === c.kind)
     if (groupBy === "stage" && k && !k.stages.includes(col)) {
       setError(`A ${k.label.toLowerCase()} has no stage "${col}".`)
@@ -108,7 +113,7 @@ export function Board({
     try {
       const k = kinds.find((x) => x.kind === kind)
       const stage = groupBy === "stage" && k?.stages.includes(value) ? value : undefined
-      const fields = groupBy !== "stage" && value ? { [groupBy]: value } : undefined
+      const fields = groupBy !== "stage" && !byKind && value ? { [groupBy]: value } : undefined
       const r = await work.make(ws, { kind, stage, fields })
       pick(r.id)
     } catch (e) {
@@ -124,7 +129,7 @@ export function Board({
       <div className="work-filter">
         <KindChips kinds={kinds} shown={shownKinds} set={(k) => void saveView({ kinds: k })} />
         <span className="work-spacer" />
-        {enumFields.length > 0 && (
+        {(enumFields.length > 0 || byKind) && (
           <select
             className="work-select"
             value={groupBy}
@@ -132,6 +137,7 @@ export function Board({
             aria-label="Columns by"
           >
             <option value="stage">By stage</option>
+            <option value="kind">By kind</option>
             {enumFields.map((f) => (
               <option key={f.key} value={f.key}>
                 By {f.label.toLowerCase()}
@@ -152,7 +158,13 @@ export function Board({
               onDrop={(e) => void drop(e, col)}
             >
               <h3>
-                {col === OTHER ? "Other" : col === "" ? "None" : label(col)}{" "}
+                {col === OTHER
+                  ? "Other"
+                  : col === ""
+                    ? "None"
+                    : byKind
+                      ? (kinds.find((k) => k.kind === col)?.plural ?? label(col))
+                      : label(col)}{" "}
                 <span>{list.length}</span>
                 {col !== OTHER && makeable.length > 0 && (
                   <button
@@ -167,7 +179,7 @@ export function Board({
               </h3>
               {making === col && (
                 <div className="work-makemenu">
-                  {makeable.map((k) => {
+                  {(byKind ? makeable.filter((k) => k.kind === col) : makeable).map((k) => {
                     const Icon = kindIcon(k.icon)
                     return (
                       <button type="button" key={k.kind} onClick={() => void make(k.kind, col)}>

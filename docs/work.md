@@ -7,9 +7,9 @@ Torque) and **Writer** (books, TTRPG settings and campaigns). The design is in T
 the task is CW-20261114-0076. It generalizes Story (`docs/story.md`), which stays on
 `story/v1` for now.
 
-Built so far: step 1 (the engine, Board, Detail, the Content app) and step 2 (Calendar, the
-publication log, material by reference). Outline and Writer, Canvas, Flow, Planner, and
-rounds and agents follow.
+Built so far: step 1 (the engine, Board, Detail, the Content app), step 2 (Calendar, the
+publication log, material by reference) and step 3 (Outline, the Writer app, links both
+ways). Canvas, Flow, Planner, and rounds and agents follow.
 
 ## Where it is kept
 
@@ -110,6 +110,20 @@ stay as they are.
   `channel` (ref), `format`, `length`. A new Content workspace gets a Board and a Calendar
   view; the header's **+** adds either to any workspace.
 
+- **Writer**: the manuscript, `part` (holds chapters), `chapter` (holds scenes) and `scene`,
+  with stages `idea → outline → draft → revise → final`; the codex, `character`,
+  `location`, `item`, `faction` and `lore`, with no stages; and for play, `session` (stages
+  `planned → prepped → played`, holds encounters and scenes) and `encounter`. Scene fields:
+  `pov` (a character), `location`, `when`; a scene's words are counted from its text, not
+  kept in a field. Character sections: Role, Description, Voice, Arc, Notes. Other fields:
+  a location's `region`, an item's `owner`, a faction's `members` (refs) and `base`, an
+  encounter's `location`, a session's `played_on`. A new Writer workspace gets an Outline
+  (the manuscript and sessions; it opens on it), a Board (parts, chapters, scenes by stage)
+  and a Codex (a board of the codex kinds, a column each).
+- A `ref` or `refs` field's `options` name the kinds it may point at (`pov: [character]`);
+  empty means any kind. This is an addition to the contract's use of `options`, which
+  otherwise lists an enum's values.
+
 ## The app (step 1)
 
 - **Workspaces**: the app's workspaces, newest change first, with **New workspace** (title,
@@ -154,6 +168,29 @@ stay as they are.
 - Setting one field keeps the item's layout: a `fields` map written on one line stays on one
   line, and a quoted value stays quoted, so a calendar drag shows as one changed value.
 
+## Step 3: Outline, Writer, links both ways
+
+- **Outline**: the `children` tree from the view's `root` (an item) or from the top. A
+  parent's `children` list is the order; an item that names a parent missing it from the list
+  goes at the end, never lost. The top level is ordered by the view's `layout.order`, then by
+  kind and title. Drag a row onto another row's top or bottom edge to put it before or after
+  that row (under the same parent), or onto its middle to put it inside, when that row's kind
+  holds the dragged kind. Moving to another parent changes the old parent's `children`, the
+  new parent's `children` and the item's `parent` (`PUT …/items/{id}/place`
+  `{parent, before, view}`), each applied to the item as it is now; an item never goes inside
+  itself. Words roll up from scenes to chapters to parts. A container row's **+** makes an
+  item inside it; **New** makes one at the top. Cut items stay in the header's cut list.
+- **Board by kind** (`group_by: kind`): a column a kind, as the Codex. Moving a card between
+  columns does nothing (an item does not change kind); a column's **+** makes that kind.
+- **Links** in the detail, both ways: where the item sits (in its parent, what it holds),
+  its own typed links (`appears-in`, `leads-to`, `depends-on`, `uses`, `relates`; added and
+  taken out here, kept in `links`; `contains` is the outline and is refused), and
+  **Pointing here**: other items' links to it and their `ref`/`refs` fields naming it
+  (Mara: "Arrival · point of view", "Salt guild · members"). Each opens that item.
+- A workspace opens on its preset's first view (`default_view` from `GET /api/work/{ws}`).
+- The Published section shows for kinds with a `published` stage, or when the log has
+  entries.
+
 ## Keeping in step with Caster
 
 - **Read-back.** The workspace list reads `work` when it opens and every 25 s; an open
@@ -177,8 +214,8 @@ stay as they are.
 `POST /api/work/{ws}/items` `{kind, title?, stage?, parent?, fields?}`,
 `GET /api/work/{ws}/items/{id}` (the detail),
 `PUT /api/work/{ws}/items/{id}` `{base_rev, title?, stage?, fields?, sections?, tags?,
-material?, published?}` (409 when it moved on; `material` and `published` replace the
-lists), `PUT …/items/{id}/move` `{key, value}` (`stage`, or an enum or date field; an empty
+material?, published?, links?}` (409 when it moved on; `material`, `published` and `links`
+replace the lists), `PUT …/items/{id}/place` `{parent, before, view}`, `PUT …/items/{id}/move` `{key, value}` (`stage`, or an enum or date field; an empty
 value takes a date out),
 `POST …/items/{id}/cut`, `POST …/items/{id}/restore`, `DELETE /api/work/{ws}/notes/{id}`,
 `POST /api/work/{ws}/views` and `PUT …/views/{id}` (the keys sent are set, null takes one

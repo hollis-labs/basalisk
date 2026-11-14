@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -446,6 +447,7 @@ func (s *Store) Views(ctx context.Context, ns string) []View {
 
 // Space is a workspace opened: its index, kinds, items and views.
 type Space struct {
+	Default   string    `json:"default_view"`
 	Workspace Workspace `json:"workspace"`
 	Kinds     []Kind    `json:"kinds"`
 	Items     []Card    `json:"items"`
@@ -494,7 +496,24 @@ func (s *Store) Open(ctx context.Context, ws string) (Space, bool, error) {
 		return list[i].Kind < list[j].Kind
 	})
 	w.Items = len(items)
-	return Space{Workspace: w, Kinds: list, Items: items, Views: s.Views(ctx, w.NS)}, true, nil
+	views := s.Views(ctx, w.NS)
+	return Space{Workspace: w, Kinds: list, Items: items, Views: views, Default: defaultView(w.Preset, views)}, true, nil
+}
+
+// defaultView is the view a workspace opens on: the one its preset lists first (by view and
+// title), else the first.
+func defaultView(preset string, views []View) string {
+	if p, ok := Presets()[preset]; ok && len(p.Views) > 0 {
+		for _, v := range views {
+			if v.View == p.Views[0].View && v.Title == p.Views[0].Title {
+				return v.ID
+			}
+		}
+	}
+	if len(views) > 0 {
+		return views[0].ID
+	}
+	return ""
 }
 
 // Detail is one item from the copy, with its sections and notes.
@@ -851,6 +870,157 @@ func (s *Store) firstPublication(ctx context.Context, ns string, d *Doc) error {
 	return d.Set("published", []Published{{At: at, Where: where}})
 }
 
+// Place puts an item in the outline: under parent (an item id, or "" for the top), before
+// the sibling before (or at the end). Moving it to another parent takes it out of the old
+// parent's children, puts it in the new one's, and sets its parent: each applied to the
+// item as it is now. The top level's order is kept in the outline view's layout (order),
+// when a view is given. A parent must be of a kind that holds the item's kind, and an item
+// cannot go inside itself.
+func (s *Store) Place(ctx context.Context, ws, id, parent, before, view string) error {
+	if s.caster == nil {
+		return ErrNoCaster
+	}
+	if !ValidID(id) || (parent != "" && !ValidID(parent)) || (before != "" && !ValidID(before)) || (view != "" && !ValidID(view)) {
+		return errors.New("that is not an item or a view id")
+	}
+	if parent == id || before == id {
+		return errors.New("an item cannot go inside or before itself")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ns, err := s.space(ctx, ws)
+	if err != nil {
+		return err
+	}
+	kinds, _ := s.Kinds(ctx, ns)
+	it, ok, err := s.fresh(ctx, ns, ItemName(id))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotFound
+	}
+	d, err := ParseDoc(it.Content)
+	if err != nil {
+		return fmt.Errorf("item %s cannot be read: %w", id, err)
+	}
+	kind, old := d.Str("kind"), d.Str("parent")
+	if parent != "" {
+		pit, ok, err := s.fresh(ctx, ns, ItemName(parent))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("there is no item %s to put it in", parent)
+		}
+		pd, err := ParseDoc(pit.Content)
+		if err != nil {
+			return fmt.Errorf("item %s cannot be read: %w", parent, err)
+		}
+		pk, ok := kinds[pd.Str("kind")]
+		if !ok || !contains(pk.Children, kind) {
+			label := pd.Str("kind")
+			if ok {
+				label = pk.Label
+			}
+			return fmt.Errorf("a %s does not hold a %s", strings.ToLower(label), kind)
+		}
+		// Not inside itself: walk up from the new parent through the copy.
+		for at, n := parent, 0; at != "" && n < 64; n++ {
+			if at == id {
+				return errors.New("an item cannot go inside itself")
+			}
+			r, ok := s.copyOf(ctx, ns, ItemName(at))
+			if !ok {
+				break
+			}
+			c, _ := cardOf(at, r, kinds)
+			at = c.Parent
+		}
+	}
+	place := func(list []string) []string {
+		out := make([]string, 0, len(list)+1)
+		put := false
+		for _, c := range list {
+			if c == id {
+				continue
+			}
+			if c == before && !put {
+				out = append(out, id)
+				put = true
+			}
+			out = append(out, c)
+		}
+		if !put {
+			out = append(out, id)
+		}
+		return out
+	}
+	without := func(list []string) []string {
+		out := make([]string, 0, len(list))
+		for _, c := range list {
+			if c != id {
+				out = append(out, c)
+			}
+		}
+		return out
+	}
+	if old != "" && old != parent {
+		_, err := s.changeLocked(ctx, ns, old, func(od *Doc) error { return od.Set("children", without(od.Strings("children"))) })
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("the old parent's list was not changed: %w", err)
+		}
+	}
+	if parent != "" {
+		if _, err := s.changeLocked(ctx, ns, parent, func(pd *Doc) error { return pd.Set("children", place(pd.Strings("children"))) }); err != nil {
+			return err
+		}
+	}
+	if old != parent {
+		if _, err := s.changeLocked(ctx, ns, id, func(d *Doc) error { return d.Set("parent", parent) }); err != nil {
+			return err
+		}
+	}
+	if parent == "" && view != "" {
+		vit, ok, err := s.fresh(ctx, ns, ViewName(view))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotFound
+		}
+		vd, err := ParsePlain(vit.Content)
+		if err != nil {
+			return fmt.Errorf("the view cannot be read: %w", err)
+		}
+		layout := map[string]any{}
+		_ = vd.Decode("layout", &layout)
+		var order []string
+		if raw, ok := layout["order"].([]any); ok {
+			for _, x := range raw {
+				if v, ok := x.(string); ok && ValidID(v) {
+					order = append(order, v)
+				}
+			}
+		}
+		if before != "" && !contains(order, before) {
+			order = append(order, before)
+		}
+		layout["order"] = place(order)
+		if err := vd.Set("layout", layout); err != nil {
+			return err
+		}
+		title := vd.Str("title")
+		if title == "" {
+			title = vd.Str("view")
+		}
+		if _, err := s.write(ctx, ns, ViewName(view), vd.String(), title); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Cut takes an item out of the views (cut: true) and out of its parent's children; it stays
 // in Caster and can be restored.
 func (s *Store) Cut(ctx context.Context, ws, id string) error {
@@ -934,6 +1104,8 @@ type Edit struct {
 	Stage     *string      `json:"stage"`
 	Material  *[]Material  `json:"material"`
 	Published *[]Published `json:"published"`
+	// Links replaces the item's typed links (never "contains": that is parent and children).
+	Links *[]Link `json:"links"`
 }
 
 // Limits on what an edit may carry, so one item stays a readable size.
@@ -956,6 +1128,19 @@ func (e Edit) check() error {
 			}
 			if len(m.Caption) > maxNoteLen {
 				return fmt.Errorf("material %d: the caption is too long", i+1)
+			}
+		}
+	}
+	if e.Links != nil {
+		if len(*e.Links) > maxEntries {
+			return fmt.Errorf("an item holds at most %d links", maxEntries)
+		}
+		for i, l := range *e.Links {
+			if !relRe.MatchString(l.Rel) || l.Rel == "contains" {
+				return fmt.Errorf("link %d: %q is not a relation an item can carry (contains is the outline)", i+1, l.Rel)
+			}
+			if !ValidID(l.To) {
+				return fmt.Errorf("link %d: %q is not an item id", i+1, l.To)
 			}
 		}
 	}
@@ -982,6 +1167,9 @@ func (e Edit) check() error {
 	}
 	return nil
 }
+
+// relRe: a relation's name (the shared ones are Relations; a kind set may add its own).
+var relRe = regexp.MustCompile(`^[a-z][a-z-]{0,39}$`)
 
 func validWhen(s string) bool {
 	if _, err := time.Parse("2006-01-02", s); err == nil {
@@ -1085,6 +1273,13 @@ func (s *Store) EditItem(ctx context.Context, ws, id string, e Edit) (int, error
 			}
 			other = append(other, "material: "+strings.Join(refs, ", "))
 		}
+		if e.Links != nil {
+			ls := make([]string, 0, len(*e.Links))
+			for _, l := range *e.Links {
+				ls = append(ls, l.Rel+" "+l.To)
+			}
+			other = append(other, "links: "+strings.Join(ls, ", "))
+		}
 		if e.Published != nil {
 			ps := make([]string, 0, len(*e.Published))
 			for _, p := range *e.Published {
@@ -1131,6 +1326,17 @@ func (s *Store) EditItem(ctx context.Context, ws, id string, e Edit) (int, error
 			list = append(list, Material{Ref: strings.TrimSpace(m.Ref), Caption: strings.TrimSpace(m.Caption)})
 		}
 		_ = d.Set("material", list)
+	}
+	if e.Links != nil {
+		list := []Link{}
+		seen := map[Link]bool{}
+		for _, l := range *e.Links {
+			if l.To != id && !seen[l] {
+				seen[l] = true
+				list = append(list, l)
+			}
+		}
+		_ = d.Set("links", list)
 	}
 	if e.Published != nil {
 		list := []Published{}

@@ -29,6 +29,7 @@ func (a *API) workRoutes() []route {
 		{"GET", "/api/work/{ws}/items/{id}", r, a.workDetail},
 		{"PUT", "/api/work/{ws}/items/{id}", w, a.workEdit},
 		{"PUT", "/api/work/{ws}/items/{id}/move", w, a.workMove},
+		{"PUT", "/api/work/{ws}/items/{id}/place", w, a.workPlace},
 		{"POST", "/api/work/{ws}/items/{id}/cut", w, a.workCut},
 		{"POST", "/api/work/{ws}/items/{id}/restore", w, a.workRestore},
 		{"DELETE", "/api/work/{ws}/notes/{id}", w, a.workDropNote},
@@ -200,6 +201,26 @@ func (a *API) workMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, 200, map[string]any{"rev": rev})
+}
+
+// workPlace puts an item in the outline: {parent, before, view}.
+func (a *API) workPlace(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	var in struct{ Parent, Before, View string }
+	if !decodeLimit(w, r, &in, 4<<10) {
+		return
+	}
+	if err := a.work.Place(r.Context(), r.PathValue("ws"), r.PathValue("id"), in.Parent, in.Before, in.View); err != nil {
+		if errors.Is(err, work.ErrNoCaster) || errors.Is(err, work.ErrNotFound) {
+			workFail(w, err)
+			return
+		}
+		fail(w, 400, err.Error())
+		return
+	}
+	reply(w, 200, map[string]any{"ok": true})
 }
 
 func (a *API) workCut(w http.ResponseWriter, r *http.Request) {

@@ -9,6 +9,7 @@ import { type WorkPreset, type WorkSpace, type Workspace, work } from "../api/wo
 import { Board } from "./board"
 import { Calendar } from "./calendar"
 import { Detail } from "./detail"
+import { Outline } from "./outline"
 import { ago, message, slug } from "./util"
 import "./work.css"
 
@@ -201,6 +202,7 @@ const NEW_VIEWS = [
   { view: "board", title: "Board", group_by: "stage" },
   // No date field: the calendar places items by the first date field the kinds have.
   { view: "calendar", title: "Calendar" },
+  { view: "outline", title: "Outline" },
 ]
 
 function SpaceView({ ws, back }: { ws: string; back: () => void }) {
@@ -236,7 +238,11 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
   }, [load])
 
   const kinds = useMemo(() => new Map((sp?.kinds ?? []).map((k) => [k.kind, k])), [sp])
-  const view = sp?.views.find((v) => v.id === viewId) ?? sp?.views[0] ?? null
+  const view =
+    sp?.views.find((v) => v.id === viewId) ??
+    sp?.views.find((v) => v.id === sp.default_view) ??
+    sp?.views[0] ??
+    null
 
   if (!sp)
     return (
@@ -357,6 +363,16 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
               changed={() => void load()}
               setError={setError}
             />
+          ) : view.view === "outline" ? (
+            <Outline
+              ws={ws}
+              space={sp}
+              view={view}
+              picked={picked}
+              pick={setPicked}
+              changed={() => void load()}
+              setError={setError}
+            />
           ) : view.view === "calendar" ? (
             <Calendar
               ws={ws}
@@ -380,6 +396,7 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
             items={sp.items}
             revOnBoard={sp.items.find((x) => x.id === picked)?.rev ?? 0}
             close={() => setPicked(null)}
+            open={setPicked}
             editing={(on) => {
               editing.current = on
             }}

@@ -120,6 +120,8 @@ export interface WorkPreset {
 }
 
 export interface WorkSpace {
+  /** The view the workspace opens on (its preset's first). */
+  default_view: string
   workspace: Workspace
   kinds: WorkKind[]
   items: WorkCard[]
@@ -141,6 +143,7 @@ export interface WorkEdit {
   stage?: string
   material?: WorkMaterial[]
   published?: WorkPublished[]
+  links?: WorkLink[]
 }
 
 const enc = encodeURIComponent
@@ -171,6 +174,9 @@ export const work = {
     request<{ rev: number }>(`work/${enc(ws)}/items/${enc(id)}`, "PUT", edit),
   move: (ws: string, id: string, key: string, value: string) =>
     request<{ rev: number }>(`work/${enc(ws)}/items/${enc(id)}/move`, "PUT", { key, value }),
+  /** Put an item in the outline: under parent ("" for the top), before a sibling ("" for the end). */
+  place: (ws: string, id: string, parent: string, before: string, view: string) =>
+    request(`work/${enc(ws)}/items/${enc(id)}/place`, "PUT", { parent, before, view }),
   cut: (ws: string, id: string) => request(`work/${enc(ws)}/items/${enc(id)}/cut`, "POST"),
   restore: (ws: string, id: string) => request(`work/${enc(ws)}/items/${enc(id)}/restore`, "POST"),
   dropNote: (ws: string, id: string) => request(`work/${enc(ws)}/notes/${enc(id)}`, "DELETE"),

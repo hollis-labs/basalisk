@@ -2,6 +2,7 @@
 import {
   Book,
   BookOpen,
+  CalendarDays,
   Circle,
   Clapperboard,
   FileText,
@@ -14,6 +15,7 @@ import {
   MapPin,
   MessageSquare,
   Milestone,
+  PenLine,
   Radio,
   Scroll,
   Shield,
@@ -42,6 +44,8 @@ const ICONS: Record<string, LucideIcon> = {
   target: Target,
   flag: Flag,
   milestone: Milestone,
+  "pen-line": PenLine,
+  "calendar-days": CalendarDays,
 }
 
 export const kindIcon = (name?: string): LucideIcon => (name && ICONS[name]) || Circle
