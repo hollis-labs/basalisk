@@ -40,6 +40,9 @@ type Controller interface {
 	SetFixMinimized(on bool) error
 	// SetLoginItem makes the app start when the owner logs in, or stops that.
 	SetLoginItem(on bool) error
+	// Restart quits the app and starts it again from its bundle (to load a build installed
+	// under it).
+	Restart() error
 	// RequestPermission shows the system prompt for "accessibility" or "input-monitoring".
 	RequestPermission(kind string) error
 	// Events returns the log entries after the given sequence number.
@@ -82,7 +85,11 @@ type Status struct {
 	TapLevel     string `json:"tap_level"`
 	FixMinimized bool   `json:"fix_minimized"`
 	// LoginItem says whether the app starts at login.
-	LoginItem   bool        `json:"login_item"`
+	LoginItem bool `json:"login_item"`
+	// Build is the build this process is; Installed is the one now in the bundle on disk.
+	// They differ after an install, until the app is restarted.
+	Build       string      `json:"build"`
+	Installed   string      `json:"installed"`
 	Permissions Permissions `json:"permissions"`
 	Screen      Screen      `json:"screen"`
 	Identity    Identity    `json:"identity"`

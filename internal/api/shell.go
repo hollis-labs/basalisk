@@ -32,6 +32,7 @@ func (a *API) shellRoutes() []route {
 		route{"POST", "/api/shell/swallow", w, a.shellSwallow},
 		route{"POST", "/api/shell/fix-minimized", w, a.shellFixMinimized},
 		route{"POST", "/api/shell/login-item", w, a.shellLoginItem},
+		route{"POST", "/api/shell/restart", w, a.shellRestart},
 		route{"POST", "/api/shell/windows/unminimize", w, a.shellUnminimize},
 		route{"POST", "/api/shell/permissions", w, a.shellPermission},
 	)
@@ -98,6 +99,10 @@ func (a *API) shellSwallow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.shellDone(w, a.shell.SetSwallow(in.On, in.Combos))
+}
+
+func (a *API) shellRestart(w http.ResponseWriter, _ *http.Request) {
+	a.shellDone(w, a.shell.Restart())
 }
 
 func (a *API) shellLoginItem(w http.ResponseWriter, r *http.Request) {

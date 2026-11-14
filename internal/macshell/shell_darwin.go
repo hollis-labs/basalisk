@@ -158,6 +158,8 @@ func (s *Shell) Status() Status {
 		Combos:         append([]string{}, s.combos...),
 		FixMinimized:   s.fixMin,
 		LoginItem:      C.bslLoginItem() == 1,
+		Build:          cString(C.bslRunningBuild()),
+		Installed:      cString(C.bslInstalledBuild()),
 		Chords:         Chords{Escape: EscapeChord, ToggleKiosk: ToggleKioskChord, ToggleMenuBar: ToggleMenuBarChord},
 	}
 	attached := s.attached
@@ -285,6 +287,28 @@ func (s *Shell) Unminimize(pid, index int) error {
 		return errors.New("no such window")
 	default:
 		return errors.New("the app refused to restore the window")
+	}
+}
+
+// cString takes a malloc'd C string (or NULL) and frees it.
+func cString(p *C.char) string {
+	if p == nil {
+		return ""
+	}
+	defer C.free(unsafe.Pointer(p))
+	return C.GoString(p)
+}
+
+// Restart implements Controller.
+func (s *Shell) Restart() error {
+	switch C.bslRelaunch() {
+	case 0:
+		s.log.add("restart", "quitting to start again from the bundle")
+		return nil
+	case -1:
+		return errors.New("this is not the installed app, so it cannot start itself again; quit and start it by hand")
+	default:
+		return errors.New("the helper that starts the app again could not be run")
 	}
 }
 

@@ -10,6 +10,7 @@ import {
   Minus,
   PictureInPicture2,
   Power,
+  RotateCw,
   Search,
   Settings,
   Square,
@@ -542,6 +543,21 @@ export function Desktop() {
             >
               <Search aria-hidden="true" size={14} strokeWidth={1.6} />
             </button>
+            {status?.available &&
+              status.build &&
+              status.installed &&
+              status.installed !== status.build && (
+                <button
+                  type="button"
+                  className="desk-bar-button"
+                  data-on="true"
+                  title={`A newer build is installed (${status.installed}); this is ${status.build}. Click to restart into it.`}
+                  onClick={() => void shell.restart().catch(() => undefined)}
+                >
+                  <RotateCw aria-hidden="true" size={14} strokeWidth={1.6} />
+                  <span>Update</span>
+                </button>
+              )}
             <InboxBell />
             <button
               type="button"
@@ -1075,6 +1091,26 @@ function DeskMenu({
               )}
               <span>{status.kiosk ? "Leave kiosk" : "Kiosk mode"}</span>
               <kbd className="desk-menu-hint">⌃⌥⌘F</kbd>
+            </button>
+          )}
+          {status?.available && status.build && (
+            <button
+              type="button"
+              role="menuitem"
+              title="Quit Basalisk and start it again. Closing the window only puts it away; this loads a newly installed build."
+              onClick={pick(() => void shell.restart().catch(() => undefined))}
+            >
+              <RotateCw aria-hidden="true" size={15} strokeWidth={1.6} />
+              <span>
+                {status.installed && status.installed !== status.build
+                  ? "Restart to update"
+                  : "Restart Basalisk"}
+              </span>
+              <kbd className="desk-menu-hint">
+                {status.installed && status.installed !== status.build
+                  ? `${status.build} → ${status.installed}`
+                  : status.build}
+              </kbd>
             </button>
           )}
           {status?.available && (

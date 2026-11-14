@@ -54,6 +54,12 @@ void bslSetFixMinimized(int on);
 int bslLoginItem(void);
 // Returns 0 when done, -1 when not available, -2 when the system refused.
 int bslSetLoginItem(int on);
+// The build this process is (its bundle's version when it started) and the build now on
+// disk in the bundle. Each is a malloc'd string the caller frees, or NULL.
+char *bslRunningBuild(void);
+char *bslInstalledBuild(void);
+// Quit and start the app again from its bundle. Returns -1 when not run from a bundle.
+int bslRelaunch(void);
 
 // bslSnapshotPNG renders the web view to a PNG. The caller frees *out. Returns the length,
 // or -1 when there is no web view or the snapshot failed or timed out.

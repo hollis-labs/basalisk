@@ -14,6 +14,9 @@ export interface ShellStatus {
   fix_minimized: boolean
   /** The app starts when the owner logs in. */
   login_item?: boolean
+  /** The build this process is, and the one now installed in its bundle (they differ until a restart). */
+  build?: string
+  installed?: string
   permissions: { accessibility: boolean; input_monitoring: boolean }
   screen: { width: number; height: number; safe_top: number; count: number }
   identity: { bundle_id: string; path: string; bundled: boolean }
@@ -49,6 +52,7 @@ export const shell = {
   menuBar: (visible: boolean) => request<ShellStatus>("shell/menu-bar", "POST", { visible }),
   swallow: (on: boolean, combos: string[]) =>
     request<ShellStatus>("shell/swallow", "POST", { on, combos }),
+  restart: () => request<ShellStatus>("shell/restart", "POST", {}),
   loginItem: (on: boolean) => request<ShellStatus>("shell/login-item", "POST", { on }),
   fixMinimized: (on: boolean) => request<ShellStatus>("shell/fix-minimized", "POST", { on }),
   unminimize: (pid: number, index: number) =>

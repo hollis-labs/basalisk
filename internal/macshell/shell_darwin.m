@@ -545,6 +545,33 @@ int bslUnminimize(int pid, int index) {
 
 void bslSetFixMinimized(int on) { atomic_store(&gFixMin, on ? 1 : 0); }
 
+char *bslRunningBuild(void) {
+	NSString *v = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+	return v ? strdup(v.UTF8String) : NULL;
+}
+
+char *bslInstalledBuild(void) {
+	// Read from disk each time: an install replaces the bundle under the running process.
+	NSString *path = [[[NSBundle mainBundle] bundlePath] stringByAppendingPathComponent:@"Contents/Info.plist"];
+	NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:path];
+	NSString *v = info[@"CFBundleShortVersionString"];
+	return v ? strdup(v.UTF8String) : NULL;
+}
+
+int bslRelaunch(void) {
+	NSString *bundle = [[NSBundle mainBundle] bundlePath];
+	if (![bundle hasSuffix:@".app"]) return -1;
+	// A small helper outlives this process: it waits for it to go, then opens the bundle.
+	NSTask *task = [[NSTask alloc] init];
+	task.executableURL = [NSURL fileURLWithPath:@"/bin/sh"];
+	task.arguments = @[@"-c", @"while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; /usr/bin/open \"$2\"", @"sh",
+		[NSString stringWithFormat:@"%d", [NSProcessInfo processInfo].processIdentifier], bundle];
+	NSError *err = nil;
+	if (![task launchAndReturnError:&err]) return -2;
+	dispatch_async(dispatch_get_main_queue(), ^{ [NSApp terminate:nil]; });
+	return 0;
+}
+
 // Start at login, as a login item of this app bundle (System Settings, General, Login Items).
 int bslLoginItem(void) {
 	if (@available(macOS 13.0, *)) {
