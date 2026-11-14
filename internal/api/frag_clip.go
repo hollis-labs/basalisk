@@ -3,6 +3,8 @@ package api
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
@@ -20,8 +22,13 @@ import (
 // travel as fe-clipper sends them (frag_media.go).
 
 const (
-	maxClipBody    = 512 * 1024
-	maxClipRequest = maxClipBody + maxClipExtBytes + 512*1024
+	// FE takes a capture of at most 2 MiB (fe-clipper's max_manifest_bytes); a clip is
+	// refused only when it would not fit, not by a smaller limit of ours on the body. A long
+	// Reddit or X thread is mostly body (fe-clipper's adapters keep up to 1.5 MB of replies).
+	maxClipManifest = 2 * 1024 * 1024
+	// What the manifest adds around the page's own text and metadata.
+	clipManifestOverhead = 48 * 1024
+	maxClipRequest       = maxClipManifest + 1024*1024
 )
 
 // fragPage is what the extraction observed, as the page reports it.
@@ -73,11 +80,25 @@ func validClip(p *fragPage, note string) string {
 			return "The clipped page has invalid text."
 		}
 	}
-	if len(p.Markdown) > maxClipBody || len(p.Selection) > 64*1024 || len(note) > 16*1024 || len(p.Title) > 1000 || len(p.Description) > 4000 || len(p.Warnings) > 32 || len(p.Capabilities) > 16 {
-		return "The clipped page is too large (a body of at most 512 KiB)."
+	switch {
+	case len(note) > 16*1024:
+		return "The note is too long (at most 16 KB)."
+	case len(p.Title) > 2000:
+		return "The page's title is too long to clip (at most 2,000 characters)."
+	case len(p.Description) > 20000:
+		return "The page's description is too long to clip (at most 20,000 characters)."
+	case len(p.Capabilities) > 32:
+		return "The clipped page is not readable."
+	}
+	// Warnings only explain the extraction: past 64 the rest are left out, the clip goes on.
+	if len(p.Warnings) > 64 {
+		p.Warnings = p.Warnings[:64]
 	}
 	if msg := validClipMedia(p); msg != "" {
 		return msg
+	}
+	if size := clipSize(p, note); size > maxClipManifest {
+		return fmt.Sprintf("This page is too large to clip: about %.1f MB, and Fragments Engine takes at most 2 MB per capture. Select the part you want and clip that.", float64(size)/(1024*1024))
 	}
 	submitted, ok := clipURL(p.SubmittedURL)
 	if !ok {
@@ -216,4 +237,17 @@ func pageManifest(upstream, principal, capturedAt string, p *fragPage, note stri
 		"extraction":   extraction,
 		"page_context": pageContext,
 	}
+}
+
+// clipSize is about how large the page's manifest will be: its text, metadata and media as
+// sent, and the envelope around them.
+func clipSize(p *fragPage, note string) int {
+	n := clipManifestOverhead + len(p.Markdown) + 2*len(p.Selection) + len(note) + len(p.Title) + len(p.Description)
+	for _, e := range p.Extensions {
+		n += len(e.Namespace) + len(e.Data) + 64
+	}
+	if raw, err := json.Marshal(p.Media); err == nil {
+		n += len(raw)
+	}
+	return n
 }

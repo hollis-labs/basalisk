@@ -144,9 +144,26 @@ func TestFragClipValidation(t *testing.T) {
 	bad := clipIn("frag-clip-0000000002")
 	bad["page"].(map[string]any)["submittedUrl"] = "file:///etc/hosts"
 	c.call("POST", "/api/frag/captures", bad, 400)
+	// Over FE's 2 MiB capture: refused, saying so.
 	big := clipIn("frag-clip-0000000003")
-	big["page"].(map[string]any)["markdown"] = strings.Repeat("x", maxClipBody+1)
-	c.call("POST", "/api/frag/captures", big, 400)
+	big["page"].(map[string]any)["markdown"] = strings.Repeat("x", maxClipManifest+1)
+	if body := c.call("POST", "/api/frag/captures", big, 400).Body.String(); !strings.Contains(body, "too large to clip") || !strings.Contains(body, "2 MB") {
+		t.Fatal(body)
+	}
+	// A long thread (1.5 MB of body, as fe-clipper's Reddit and X adapters may keep) and a long
+	// YouTube description fit.
+	long := clipIn("frag-clip-0000000005")
+	long["page"].(map[string]any)["markdown"] = strings.Repeat("comment text ", 1_500_000/13)
+	long["page"].(map[string]any)["description"] = strings.Repeat("d", 5000)
+	c.call("POST", "/api/frag/captures", long, 202)
+	// Many warnings are trimmed, not refused.
+	warned := clipIn("frag-clip-0000000006")
+	ws := []map[string]string{}
+	for range 100 {
+		ws = append(ws, map[string]string{"code": "x.y", "message": "m"})
+	}
+	warned["page"].(map[string]any)["warnings"] = ws
+	c.call("POST", "/api/frag/captures", warned, 202)
 	noteOnly := fragIn("frag-clip-0000000004", "text")
 	noteOnly["note"] = "a note without a page"
 	c.call("POST", "/api/frag/captures", noteOnly, 400)

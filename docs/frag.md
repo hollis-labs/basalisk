@@ -79,6 +79,11 @@ pending a deeper look he wants later. The note is a `capture_note` annotation. T
 note, selection, title and tags, so clipping the same page with the same note again is the same
 capture.
 
+A clip is refused only when it would not fit in one Fragments Engine capture (2 MB: the
+page's text, the highlight, the note, metadata and media together). The box then says how
+large the page is; selecting the part wanted and clipping that fits. A long Reddit or X
+thread is mostly body (fe-clipper's adapters keep up to 1.5 MB of replies) and fits.
+
 ### Before the extraction
 
 Two kinds of page give fe-clipper's adapters less than they show, so the clip gets them
