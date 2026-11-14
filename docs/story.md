@@ -173,3 +173,17 @@ text before the first heading, stay as they are.
 `POST /api/story/scripts/{key}/notes` `{scene?, section?, kind, quote?, replace?, text?}`,
 `PUT …/notes/{id}` `{text?, replace?}`, `DELETE …/notes/{id}`, `POST …/send`,
 `POST …/scenes/{id}/approve` `{base_rev, approve}`, `POST …/signoff` `{all}`.
+
+## Script view, frames, the task, the agent (step 4)
+
+- **Script** (the storyboard's header) shows the whole script read through in order: each
+  scene with its running time, status, sections and frames. Copy as Markdown puts it on the
+  clipboard. A scene's heading opens it on the storyboard.
+- **Frames** are shown by reference. A `file:<root>:<path>` reference to a picture in a
+  Files root is drawn; any other reference (`design-asset:<id>`) is shown as its text with
+  its caption.
+- **The Torque task** in the manifest (`task:`) is a reference chip in the header.
+- **The agent** has `story_list` and `story_get` (the script as Markdown, the scenes'
+  revisions, the draft notes, the last round with the team's replies), which run at once,
+  and `story_note`, which asks first and only drafts a comment or a suggestion. Sending a
+  round, approving a scene and signing off stay the owner's: there is no tool for them.

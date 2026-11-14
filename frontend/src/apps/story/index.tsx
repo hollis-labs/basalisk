@@ -5,6 +5,7 @@
 import { Clapperboard } from "lucide-react"
 import { registerApp } from "../../desktop/registry"
 import { StoryWindow } from "./window"
+import "./agent"
 
 registerApp({
   id: "story",

@@ -5,6 +5,7 @@
  */
 import { ArrowLeft, Copy, Plus, RotateCcw, Scissors } from "lucide-react"
 import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { files } from "../../api/files"
 import {
   clock,
   type StoryCard,
@@ -16,6 +17,7 @@ import {
   spoken,
   story,
 } from "../../api/story"
+import { CiteText } from "../../cite/ui"
 import { useDesk } from "../../desktop/context"
 import "./story.css"
 
@@ -279,6 +281,8 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
   useEffect(() => setNotice(""), [picked])
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<number | null>(null)
+  // The script read through as one document, in place of the board of scenes.
+  const [reading, setReading] = useState(false)
   const editing = useRef(false)
 
   const load = useCallback(
@@ -405,6 +409,24 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
           {clock(s.duration_s)}
           {s.length_s ? ` of ${clock(s.length_s)}` : ""} · spoken {clock(spoken(words))}
         </span>
+        {s.task && (
+          <span className="story-task" title="The Torque task for this script">
+            <CiteText text={s.task} />
+          </span>
+        )}
+        <button
+          type="button"
+          className="story-drafts"
+          data-open={reading}
+          onClick={() => {
+            setReading((r) => !r)
+            setPicked(null)
+            setRoundOpen(false)
+          }}
+          title="Read the whole script through, in order"
+        >
+          {reading ? "Storyboard" : "Script"}
+        </button>
         <button
           type="button"
           className="story-drafts"
@@ -449,7 +471,16 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
         </p>
       )}
       {notice && !picked && <p className="story-status story-banner">{notice}</p>}
-      <div className="story-split">
+      {reading && (
+        <ScriptView
+          s={s}
+          open={(id) => {
+            setReading(false)
+            setPicked(id)
+          }}
+        />
+      )}
+      <div className="story-split" data-hidden={reading}>
         <div className="story-grid">
           {s.scene_list.map((x, i) => (
             // biome-ignore lint/a11y/noStaticElementInteractions: a card that is dragged to reorder
@@ -624,6 +655,103 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
 // ---- A scene, beside the board ----
 
 const SECTIONS = ["Visual", "On-screen text", "Narration", "Notes"]
+
+/** The script as Markdown: what Copy puts on the clipboard, and what the agent reads. */
+export function scriptMarkdown(s: StoryScript): string {
+  const out = [`# ${s.title}`, ""]
+  if (s.body.trim()) out.push(s.body.trim(), "")
+  s.scene_list.forEach((x, i) => {
+    out.push(`## ${i + 1}. ${x.title || x.id} (${clock(x.duration_s)})`, "")
+    for (const name of SECTIONS) {
+      const text = (x.sections[name] ?? "").trim()
+      if (text) out.push(`**${name}**`, "", text, "")
+    }
+    for (const f of x.frames ?? [])
+      out.push(`- frame: ${f.ref}${f.caption ? ` (${f.caption})` : ""}`)
+    if (x.frames?.length) out.push("")
+  })
+  return `${out.join("\n").trimEnd()}\n`
+}
+
+/** A frame's picture, when its reference is a file this Basalisk can show. */
+function frameImage(ref: string): string | null {
+  const m = ref.match(/^file:([^:]+):(.+\.(?:png|jpe?g|gif|webp))$/i)
+  return m ? files.contentURL(m[1], m[2]) : null
+}
+
+/** The whole script in order, to read through: each scene with its sections and frames. */
+function ScriptView({ s, open }: { s: StoryScript; open: (id: string) => void }) {
+  const [copied, setCopied] = useState(false)
+  let at = 0
+  return (
+    <article className="story-script">
+      <header>
+        <h1>{s.title}</h1>
+        <p>
+          {s.scene_list.length} scenes · {clock(s.duration_s)}
+          {s.length_s ? ` of ${clock(s.length_s)}` : ""} · {s.stage}
+          {s.platform ? ` · ${s.platform}` : ""}
+        </p>
+        <button
+          type="button"
+          className="desk-button"
+          onClick={() =>
+            void navigator.clipboard
+              .writeText(scriptMarkdown(s))
+              .then(() => setCopied(true))
+              .catch(() => undefined)
+          }
+        >
+          {copied ? "Copied" : "Copy as Markdown"}
+        </button>
+      </header>
+      {s.body.trim() && <p className="story-logline">{s.body.trim()}</p>}
+      {s.scene_list.map((x, i) => {
+        const starts = at
+        at += x.duration_s
+        return (
+          <section key={x.id} data-status={x.status}>
+            <h2>
+              <button
+                type="button"
+                title="Open this scene on the storyboard"
+                onClick={() => open(x.id)}
+              >
+                {i + 1}. {x.title || x.id}
+              </button>
+              <span>
+                {clock(starts)}–{clock(at)} · {x.status}
+              </span>
+            </h2>
+            {(x.frames ?? []).length > 0 && (
+              <div className="story-frames">
+                {(x.frames ?? []).map((f) => {
+                  const src = frameImage(f.ref)
+                  return (
+                    <figure key={f.ref}>
+                      {src ? (
+                        <img src={src} alt={f.caption ?? ""} loading="lazy" />
+                      ) : (
+                        <code>{f.ref}</code>
+                      )}
+                      {f.caption && <figcaption>{f.caption}</figcaption>}
+                    </figure>
+                  )
+                })}
+              </div>
+            )}
+            {SECTIONS.filter((n) => (x.sections[n] ?? "").trim()).map((n) => (
+              <div key={n} className="story-part" data-part={n}>
+                <h3>{n}</h3>
+                <p>{(x.sections[n] ?? "").trim()}</p>
+              </div>
+            ))}
+          </section>
+        )
+      })}
+    </article>
+  )
+}
 
 function SceneDetail({
   scriptKey,
