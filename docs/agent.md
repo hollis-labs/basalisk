@@ -94,8 +94,8 @@ ones named in that file, each with the level the file gives it:
   `torque_comment_add`, `torque_task_subtodo_add`, `torque_task_subtodo_done`.
 
 A tool that is not in that list cannot be called, whatever the gateway offers. The list is
-read from the gateway in the background after the first message (starting the gateway can
-take a few seconds), so the first message after a start may go out without these tools.
+read from the gateway in the background when Basalisk starts (starting the gateway can
+take a few seconds), so only a message sent in those first seconds goes out without them.
 Without `tether_mcp` configured there are none.
 
 ## Permission
@@ -125,8 +125,10 @@ never logged. Without a gateway and a model the panel opens and says what to set
 
 ## Limits of this slice
 
-- The gateway's tool descriptions are long (about 58 KB for the 18 tools). They are cached
-  by the provider between steps, but they are part of every request.
+- The gateway's tool definitions are long: about 58 KB for the 18 tools, measured at about
+  22,500 tokens, against about 6,500 for the system prompt and every tool of Basalisk's own.
+  They are cached by the provider between steps (a step then costs little), but a
+  conversation picked up after the cache has lapsed pays to write them again.
 - No Tesseract writes and no mail yet.
 - Tool calls run one after another.
 - No compaction: a very long thread will eventually exceed the model's window. Start a

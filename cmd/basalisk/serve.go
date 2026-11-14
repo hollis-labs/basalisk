@@ -98,7 +98,12 @@ func (b *basalisk) serve(ctx context.Context) error {
 	a.EnableCite(link)
 	if agentRT != nil {
 		// The agent reaches Torque and Tesseract through the same gateway (internal/agent/tether.go).
-		agentRT.AddTools(agent.TetherTools(link))
+		tools := agent.TetherTools(link)
+		agentRT.AddTools(tools)
+		// Ask the gateway for them now, not at the first message: a message sent before they
+		// arrive goes out without them, and their arrival then changes the prompt's prefix,
+		// which the provider has to cache again in full.
+		tools(ctx)
 	}
 	go func() {
 		<-ctx.Done()
