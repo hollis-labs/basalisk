@@ -54,6 +54,14 @@ var tetherTools = map[string]string{
 	"memory_write":     LevelWrite,
 	"knowledge_write":  LevelWrite,
 	"workspace_write":  LevelWrite,
+	// Caster: named, revisioned text (scratchpads, drafts, notes) and refs to it and to
+	// records in the other systems.
+	"caster_head":   LevelRead,
+	"caster_get":    LevelRead,
+	"caster_ls":     LevelRead,
+	"caster_log":    LevelRead,
+	"caster_search": LevelRead,
+	"caster_put":    LevelWrite,
 }
 
 // mailTools are the gateway's mail tools the agent is given when it has an address of its

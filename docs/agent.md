@@ -96,6 +96,8 @@ ones named in that file, each with the level the file gives it:
   `tesseract_skills` (read) for the shape of a write. The agent writes as itself
   (`author_agent_id` is always `basalisk`) and never in your own scope: a write to a
   `user/…` or `system` namespace is refused before it reaches the gateway.
+- Caster (named, revisioned text): `caster_head`, `caster_get`, `caster_ls`, `caster_log`
+  and `caster_search` (read), and `caster_put` to store text or a new revision (asks first).
 - Mail, when the agent has an address of its own (`agent_urn`): `tether_registry_search`,
   `tether_message_list` and `tether_message_get` (read), `tether_message_mark_read`, and
   `tether_message_notify` to send (asks first). Whatever the model passes, mail is sent
