@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hollis-labs/basalisk/internal/fecapture"
@@ -285,9 +286,17 @@ func (w *FragmentWorker) failed(ctx context.Context, j deliveryJob, cause error)
 			state = "needs_attention"
 		}
 	}
+	if code == errMediaPending.Code {
+		// Not a failure: a clip's media goes on in the next attempt, at once and without backoff.
+		return w.update(ctx, j, `code=?,next_attempt=?,lease_token='',lease_until=0,updated_at=?`, code, time.Now().Unix(), time.Now().UTC().Format(timestampFormat))
+	}
 	delay := min(300, 5*(1<<min(j.attempts, 6)))
 	return w.update(ctx, j, `state=?,code=?,attempts=attempts+1,next_attempt=?,lease_token='',lease_until=0,updated_at=?`, state, code, time.Now().Unix()+int64(delay), time.Now().UTC().Format(timestampFormat))
 }
+
+// deliveryAttemptTimeout bounds one attempt, below the 120 s lease (tests shorten it).
+var deliveryAttemptTimeout = 40 * time.Second
+
 func (w *FragmentWorker) Once(ctx context.Context) error {
 	j, err := w.claim(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -296,7 +305,7 @@ func (w *FragmentWorker) Once(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	attemptCtx, cancel := context.WithTimeout(ctx, 40*time.Second)
+	attemptCtx, cancel := context.WithTimeout(ctx, deliveryAttemptTimeout)
 	defer cancel()
 	err = w.deliver(attemptCtx, &j)
 	if err != nil { // Persist retry metadata even during orderly cancellation.
@@ -349,8 +358,28 @@ func (w *FragmentWorker) deliver(ctx context.Context, j *deliveryJob) error {
 	if _, err = w.authorized(ctx, *j); err != nil {
 		return err
 	}
-	// Media: FE's instructions for each variant (frag_media.go), then one outcome each.
-	outcomes, err := transferMedia(ctx, client, j.origin, bearer, j.manifest, receipt)
+	// Media: FE's instructions for each variant (frag_media.go), then one outcome each. The
+	// outcomes are saved with the row as they come, so a clip with many files goes on where
+	// the last attempt stopped.
+	progress, rounds := mediaProgress(j.receipt)
+	var saving sync.Mutex
+	record := func(o map[string]any) error {
+		saving.Lock()
+		defer saving.Unlock()
+		progress[o["client_variant_id"].(string)] = o
+		j.receipt = withMediaProgress(j.receipt, progress, rounds)
+		return w.update(ctx, *j, `receipt=?`, j.receipt)
+	}
+	outcomes, err := transferMedia(ctx, client, j.origin, bearer, j.manifest, receipt, progress, record, rounds >= maxMediaRounds)
+	if errors.Is(err, errMediaPending) {
+		// Count the round; the worker goes on at once (failed, media_in_progress).
+		saving.Lock()
+		j.receipt = withMediaProgress(j.receipt, progress, rounds+1)
+		saving.Unlock()
+		saveCtx, done := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer done()
+		_ = w.update(saveCtx, *j, `receipt=?`, j.receipt)
+	}
 	if err != nil {
 		return err
 	}

@@ -17,6 +17,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -46,8 +47,10 @@ const (
 	// schema and fe-clipper set no limit; this one only stops something absurd.
 	maxClipVariants   = 256
 	maxClipExtensions = 16
-	maxClipExtBytes   = 1024 * 1024
-	maxAssetBytes     = 64 * 1024 * 1024
+	// All variants of one clip together (a page of captioned videos stays well under it).
+	maxClipTotalVariants = 512
+	maxClipExtBytes      = 1024 * 1024
+	maxAssetBytes        = 64 * 1024 * 1024
 )
 
 type clipVariant struct {
@@ -96,6 +99,13 @@ var (
 // anything FE cannot take is left out when the manifest is made, with a warning).
 func validClipMedia(p *fragPage) string {
 	if len(p.Media) > maxClipMedia || len(p.Extensions) > maxClipExtensions {
+		return "The clipped page reports too much media."
+	}
+	total := 0
+	for _, m := range p.Media {
+		total += len(m.Variants)
+	}
+	if total > maxClipTotalVariants {
 		return "The clipped page reports too much media."
 	}
 	for _, m := range p.Media {
@@ -486,6 +496,11 @@ func fetchMedia(ctx context.Context, client *http.Client, raw string, max int64)
 	if int64(len(body)) > max {
 		return fetched{}, "the media is larger than FE takes", false
 	}
+	if len(body) == 0 {
+		// As fe-clipper: an empty answer is not the file (YouTube's caption URLs answer empty
+		// without the player's own token).
+		return fetched{}, "the media source returned an empty response", true
+	}
 	sum := sha256.Sum256(body)
 	return fetched{body: body, sha: sum[:], mime: sniffMedia(body)}, "", false
 }
@@ -564,10 +579,32 @@ func failedOutcome(id, reason string, retryable bool) map[string]any {
 	return o
 }
 
+// mediaWorkers is how many files are fetched and uploaded at once.
+const mediaWorkers = 4
+
+// mediaReserve is the time an attempt keeps back: no new file is started with less left, so
+// the outcomes found so far can still be saved.
+var mediaReserve = 15 * time.Second
+
+// maxMediaRounds is how many attempts in a row may end with files still to send before the
+// rest are given up as failed and the capture completed.
+var maxMediaRounds = 20
+
+// errMediaPending means some files are still to be sent: the outcomes so far are saved, and
+// the delivery goes on at once with the rest (fragment_worker.go).
+var errMediaPending = &fecapture.Failure{Code: "media_in_progress", Retryable: true}
+
 // transferMedia carries out FE's instructions for an accepted manifest and returns one
-// outcome per variant for the completion. An error is for the delivery to retry (FE busy or
-// unreachable during an upload); a file that cannot be had is an outcome, not an error.
-func transferMedia(ctx context.Context, client *fecapture.Client, origin, bearer, manifest string, receipt fecapture.Receipt) ([]any, error) {
+// outcome per variant for the completion.
+//
+// A captioned video has dozens of files, more than one delivery attempt (40 s) may fetch, so
+// the work resumes: done holds the outcomes of earlier attempts, which are not redone, and
+// record is told each new outcome as it is known (the worker saves it with the row). Files go
+// four at a time; none is started with less than mediaReserve left in the attempt, and each
+// fetch ends with the attempt. When some are left, errMediaPending says to go on. A file
+// that cannot be had is an outcome, not an error; FE busy during an upload leaves that file
+// for the next attempt.
+func transferMedia(ctx context.Context, client *fecapture.Client, origin, bearer, manifest string, receipt fecapture.Receipt, done map[string]map[string]any, record func(map[string]any) error, last bool) ([]any, error) {
 	if len(receipt.AssetInstructions) == 0 {
 		return []any{}, nil
 	}
@@ -585,19 +622,25 @@ func transferMedia(ctx context.Context, client *fecapture.Client, origin, bearer
 		a, b := variants[instructions[i].ClientVariantID].expires, variants[instructions[j].ClientVariantID].expires
 		return a != "" && (b == "" || a < b)
 	})
-	fetcher := mediaClient(mediaPorts(page))
-	// FE's own limit on one file, when it says (GET /v1/capabilities); 64 MiB at most.
-	limit := int64(maxAssetBytes)
-	for _, in := range instructions {
-		if in.Action == "request_upload" {
-			if caps, err := client.Capabilities(ctx, origin, bearer); err == nil && caps.Capture.MaxAssetBytes > 0 && caps.Capture.MaxAssetBytes < limit {
-				limit = caps.Capture.MaxAssetBytes
-			}
-			break
+
+	var mu sync.Mutex
+	got := map[string]map[string]any{}
+	for id, o := range done {
+		got[id] = o
+	}
+	settle := func(o map[string]any) {
+		mu.Lock()
+		got[o["client_variant_id"].(string)] = o
+		mu.Unlock()
+		if record != nil {
+			_ = record(o) // saved best effort: an unsaved outcome is found again next attempt
 		}
 	}
-	outcomes := []any{}
+	work := []fecapture.Instruction{}
 	for _, in := range instructions {
+		if _, ok := got[in.ClientVariantID]; ok {
+			continue
+		}
 		v := variants[in.ClientVariantID]
 		switch in.Action {
 		case "reuse_blob":
@@ -605,46 +648,97 @@ func transferMedia(ctx context.Context, client *fecapture.Client, origin, bearer
 			if in.Digest != nil {
 				o["digest"] = map[string]string{"algorithm": in.Digest.Algorithm, "value": in.Digest.Value}
 			}
-			outcomes = append(outcomes, o)
+			got[in.ClientVariantID] = o
 		case "server_acquire", "reference_only":
-			outcomes = append(outcomes, map[string]any{"client_variant_id": in.ClientVariantID, "outcome": "deferred"})
+			got[in.ClientVariantID] = map[string]any{"client_variant_id": in.ClientVariantID, "outcome": "deferred"}
 		case "rejected":
 			reason := strings.TrimSpace(in.Reason)
 			if reason == "" {
 				reason = "rejected"
 			}
-			outcomes = append(outcomes, map[string]any{"client_variant_id": in.ClientVariantID, "outcome": "not_available", "reason": reason})
+			got[in.ClientVariantID] = map[string]any{"client_variant_id": in.ClientVariantID, "outcome": "not_available", "reason": reason}
 		case "request_upload":
-			if v.source == "" {
-				outcomes = append(outcomes, map[string]any{"client_variant_id": in.ClientVariantID, "outcome": "not_available", "reason": "the variant has no source address"})
-				continue
+			switch {
+			case v.source == "":
+				got[in.ClientVariantID] = map[string]any{"client_variant_id": in.ClientVariantID, "outcome": "not_available", "reason": "the variant has no source address"}
+			case youtubeVideo(v.mediaKind, v.source) && v.kind == "original":
+				got[in.ClientVariantID] = map[string]any{"client_variant_id": in.ClientVariantID, "outcome": "not_available", "reason": "video streams are kept as references"}
+			default:
+				work = append(work, in)
 			}
-			if youtubeVideo(v.mediaKind, v.source) && v.kind == "original" {
-				outcomes = append(outcomes, map[string]any{"client_variant_id": in.ClientVariantID, "outcome": "not_available", "reason": "video streams are kept as references"})
-				continue
-			}
-			f, reason, retry := fetchMedia(ctx, fetcher, v.source, limit)
-			if reason != "" {
-				outcomes = append(outcomes, failedOutcome(in.ClientVariantID, reason, retry))
-				continue
-			}
-			hexSum := hex.EncodeToString(f.sha)
-			if in.ExpectedDigest != nil && (in.ExpectedDigest.Algorithm != "sha256" || in.ExpectedDigest.Value != hexSum) {
-				outcomes = append(outcomes, failedOutcome(in.ClientVariantID, "the media does not match the digest FE expected", false))
-				continue
-			}
-			if err := client.Upload(ctx, origin, bearer, in.UploadHref, f.mime, f.body, f.sha); err != nil {
-				var fail *fecapture.Failure
-				if errors.As(err, &fail) && fail.Retryable {
-					return nil, err
-				}
-				outcomes = append(outcomes, failedOutcome(in.ClientVariantID, "FE did not take the upload", false))
-				continue
-			}
-			outcomes = append(outcomes, map[string]any{"client_variant_id": in.ClientVariantID, "outcome": "uploaded", "digest": map[string]string{"algorithm": "sha256", "value": hexSum}, "byte_size": len(f.body)})
 		}
 	}
+
+	// The last round fetches nothing more: what is left is reported failed below, leaving the
+	// attempt its time to complete the capture.
+	if len(work) > 0 && !last {
+		fetcher := mediaClient(mediaPorts(page))
+		// FE's own limit on one file, when it says (GET /v1/capabilities); 64 MiB at most.
+		limit := int64(maxAssetBytes)
+		if caps, err := client.Capabilities(ctx, origin, bearer); err == nil && caps.Capture.MaxAssetBytes > 0 && caps.Capture.MaxAssetBytes < limit {
+			limit = caps.Capture.MaxAssetBytes
+		}
+		deadline, bounded := ctx.Deadline()
+		queue := make(chan fecapture.Instruction)
+		var wg sync.WaitGroup
+		for range mediaWorkers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for in := range queue {
+					if o := sendOne(ctx, client, fetcher, origin, bearer, in, variants[in.ClientVariantID].source, limit); o != nil {
+						settle(o)
+					}
+				}
+			}()
+		}
+		for _, in := range work {
+			if ctx.Err() != nil || (bounded && time.Until(deadline) < mediaReserve) {
+				break
+			}
+			queue <- in
+		}
+		close(queue)
+		wg.Wait()
+	}
+
+	outcomes := make([]any, 0, len(instructions))
+	for _, in := range instructions {
+		o, ok := got[in.ClientVariantID]
+		if !ok && last {
+			// Many attempts have not sent it: say so and complete the capture.
+			o, ok = failedOutcome(in.ClientVariantID, "the media could not be sent in time", true), true
+		}
+		if !ok {
+			return nil, errMediaPending
+		}
+		outcomes = append(outcomes, o)
+	}
 	return outcomes, nil
+}
+
+// sendOne fetches one file and uploads it: its outcome, or nil when it is to be tried again
+// in a later attempt (the attempt ended under it, or FE was busy).
+func sendOne(ctx context.Context, client *fecapture.Client, fetcher *http.Client, origin, bearer string, in fecapture.Instruction, source string, limit int64) map[string]any {
+	f, reason, retry := fetchMedia(ctx, fetcher, source, limit)
+	if ctx.Err() != nil {
+		return nil // our attempt ended, not the media host's fault
+	}
+	if reason != "" {
+		return failedOutcome(in.ClientVariantID, reason, retry)
+	}
+	hexSum := hex.EncodeToString(f.sha)
+	if in.ExpectedDigest != nil && (in.ExpectedDigest.Algorithm != "sha256" || in.ExpectedDigest.Value != hexSum) {
+		return failedOutcome(in.ClientVariantID, "the media does not match the digest FE expected", false)
+	}
+	if err := client.Upload(ctx, origin, bearer, in.UploadHref, f.mime, f.body, f.sha); err != nil {
+		var fail *fecapture.Failure
+		if ctx.Err() != nil || (errors.As(err, &fail) && fail.Retryable) {
+			return nil
+		}
+		return failedOutcome(in.ClientVariantID, "FE did not take the upload", false)
+	}
+	return map[string]any{"client_variant_id": in.ClientVariantID, "outcome": "uploaded", "digest": map[string]string{"algorithm": "sha256", "value": hexSum}, "byte_size": len(f.body)}
 }
 
 // mediaSummary is how a capture's media went, for the outbox: counts by outcome and the first
@@ -682,6 +776,8 @@ func withMediaSummary(receipt string, outcomes []any) string {
 		return receipt
 	}
 	doc["basalisk_media"] = sum
+	delete(doc, "basalisk_media_progress")
+	delete(doc, "basalisk_media_rounds")
 	out, err := json.Marshal(doc)
 	if err != nil {
 		return receipt
@@ -700,4 +796,34 @@ func receiptMedia(receipt string) *mediaSummary {
 		return nil
 	}
 	return doc.Media
+}
+
+// mediaProgress is the outcomes earlier attempts saved with the row's receipt, and how many
+// attempts ended with files still to send.
+func mediaProgress(receipt string) (map[string]map[string]any, int) {
+	var doc struct {
+		Progress map[string]map[string]any `json:"basalisk_media_progress"`
+		Rounds   int                       `json:"basalisk_media_rounds"`
+	}
+	_ = json.Unmarshal([]byte(receipt), &doc)
+	if doc.Progress == nil {
+		doc.Progress = map[string]map[string]any{}
+	}
+	return doc.Progress, doc.Rounds
+}
+
+// withMediaProgress keeps the outcomes so far, and the rounds, in the receipt (keys of
+// Basalisk's own, which the receipt's readers ignore).
+func withMediaProgress(receipt string, progress map[string]map[string]any, rounds int) string {
+	var doc map[string]any
+	if json.Unmarshal([]byte(receipt), &doc) != nil {
+		return receipt
+	}
+	doc["basalisk_media_progress"] = progress
+	doc["basalisk_media_rounds"] = rounds
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return receipt
+	}
+	return string(out)
 }

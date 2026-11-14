@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,6 +32,8 @@ func mediaSource(t *testing.T) *httptest.Server {
 			w.Write(testPNG)
 		case "/moved.png":
 			http.Redirect(w, r, "/hero.png", http.StatusFound)
+		case "/empty.vtt":
+			w.WriteHeader(200)
 		case "/subs.vtt":
 			w.Write([]byte("WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n"))
 		default:
@@ -329,6 +332,8 @@ func TestFragMediaFetchGuards(t *testing.T) {
 				w.Write(make([]byte, 100))
 				w.(http.Flusher).Flush()
 			}
+		case "/empty":
+			w.WriteHeader(200)
 		case "/slow":
 			w.WriteHeader(200)
 			w.Write(testPNG[:8])
@@ -362,6 +367,9 @@ func TestFragMediaFetchGuards(t *testing.T) {
 	}
 	if _, reason, _ := fetchMedia(ctx, mediaClient(mediaPorts("https://example.com:"+strconv.Itoa(int(portOf(open)))+"/post")), open.URL+"/ok.png", 1<<20); reason != "" {
 		t.Fatalf("the page's own port: %q", reason)
+	}
+	if _, reason, retry := fetchMedia(ctx, mediaClient(both), open.URL+"/empty", 1<<20); reason != "the media source returned an empty response" || !retry {
+		t.Fatalf("empty: %q", reason)
 	}
 	if _, reason, _ := fetchMedia(ctx, mediaClient(both), open.URL+"/big", 1000); reason != "the media is larger than FE takes" {
 		t.Fatalf("cap: %q", reason)
@@ -437,5 +445,129 @@ func TestFragClipMediaManyVariants(t *testing.T) {
 	}
 	if msg := validClipMedia(&fragPage{Media: []clipMedia{item(maxClipVariants + 1)}}); msg == "" {
 		t.Errorf("%d variants were accepted", maxClipVariants+1)
+	}
+	// All of a clip's variants together: 2 x 256 is the most; 3 x 200 is refused.
+	if msg := validClipMedia(&fragPage{Media: []clipMedia{item(256), item(256)}}); msg != "" {
+		t.Errorf("512 variants in all: %s", msg)
+	}
+	if msg := validClipMedia(&fragPage{Media: []clipMedia{item(200), item(200), item(200)}}); msg == "" {
+		t.Error("600 variants in all were accepted")
+	}
+}
+
+// A clip with more files than one attempt can send goes on where the last attempt stopped:
+// each file is fetched and uploaded once, and the capture completes with all of them.
+func TestFragClipMediaResumesAcrossAttempts(t *testing.T) {
+	var mu sync.Mutex
+	hits := map[string]int{}
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits[r.URL.Path]++
+		mu.Unlock()
+		time.Sleep(400 * time.Millisecond)
+		w.Write(testPNG)
+	}))
+	t.Cleanup(slow.Close)
+	oldAddr, oldAttempt, oldReserve := mediaAddrAllowed, deliveryAttemptTimeout, mediaReserve
+	mediaAddrAllowed = func(netip.AddrPort) bool { return true }
+	deliveryAttemptTimeout, mediaReserve = 1500*time.Millisecond, 700*time.Millisecond
+	t.Cleanup(func() { mediaAddrAllowed, deliveryAttemptTimeout, mediaReserve = oldAddr, oldAttempt, oldReserve })
+
+	f := newDeliveryFixture(t, false)
+	personal, _ := f.s.NewFragmentWorker(DeliveryConfig{}, f.server.Client())
+	f.s.db.Exec(`DELETE FROM integrations`)
+	f.peer.jwt = "personal-owner-token-0123456789abcdef"
+	f.c.call("POST", "/api/integrations", map[string]any{"name": "FE", "provider": "fragments-engine", "baseUrl": f.server.URL, "credential": f.peer.jwt}, 201)
+	f.peer.instruct = func(capture string, v map[string]any) map[string]any {
+		id := v["client_variant_id"].(string)
+		return map[string]any{"client_variant_id": id, "asset_variant_id": "av", "action": "request_upload", "upload_href": "/v1/captures/" + capture + "/assets/" + id + "/content"}
+	}
+	in := clipIn("frag-clip-media-00004")
+	u, _ := url.Parse(slow.URL)
+	page := in["page"].(map[string]any)
+	page["submittedUrl"] = "http://example.com:" + u.Port() + "/post"
+	variants := []map[string]any{}
+	for i := range 40 {
+		variants = append(variants, map[string]any{"variantId": "s" + strconv.Itoa(i), "kind": "subtitles", "sourceUrl": slow.URL + "/t/" + strconv.Itoa(i) + ".vtt"})
+	}
+	page["media"] = []map[string]any{{"candidateId": "video", "kind": "video", "role": "primary", "position": 0, "variants": variants}}
+	q := responseAs[fragmentSubmissionStatus](t, f.c.call("POST", "/api/frag/captures", in, 202))
+
+	attempts := 0
+	for ; attempts < 30; attempts++ {
+		if st, _, _, _ := ownerRow(t, f, q.Sequence); st == "saved" {
+			break
+		}
+		if err := personal.Once(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st, code, _, _ := ownerRow(t, f, q.Sequence); st != "saved" {
+		t.Fatalf("not saved after %d attempts: %s %s", attempts, st, code)
+	}
+	if attempts < 3 {
+		t.Fatalf("expected the files to need several attempts, took %d", attempts)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for i := range 40 {
+		if n := hits["/t/"+strconv.Itoa(i)+".vtt"]; n != 1 {
+			t.Fatalf("file %d fetched %d times", i, n)
+		}
+	}
+	if len(f.peer.uploads) != 40 || len(f.peer.completes) != 1 || strings.Count(f.peer.completes[0], `"uploaded"`) != 40 {
+		t.Fatalf("uploads %d, completes %d", len(f.peer.uploads), len(f.peer.completes))
+	}
+	if strings.Contains(f.peer.completes[0], "basalisk_media_progress") {
+		t.Fatal("progress reached FE")
+	}
+	t.Logf("40 files in %d attempts", attempts)
+}
+
+// A file that never finishes inside an attempt is given up after maxMediaRounds rounds: the
+// capture completes, with that file failed.
+func TestFragClipMediaGivesUpAfterRounds(t *testing.T) {
+	hang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/stuck.png" {
+			<-r.Context().Done()
+			return
+		}
+		w.Write(testPNG)
+	}))
+	t.Cleanup(hang.Close)
+	oldAddr, oldAttempt, oldReserve, oldRounds := mediaAddrAllowed, deliveryAttemptTimeout, mediaReserve, maxMediaRounds
+	mediaAddrAllowed = func(netip.AddrPort) bool { return true }
+	deliveryAttemptTimeout, mediaReserve, maxMediaRounds = 800*time.Millisecond, 100*time.Millisecond, 3
+	t.Cleanup(func() {
+		mediaAddrAllowed, deliveryAttemptTimeout, mediaReserve, maxMediaRounds = oldAddr, oldAttempt, oldReserve, oldRounds
+	})
+	f := newDeliveryFixture(t, false)
+	personal, _ := f.s.NewFragmentWorker(DeliveryConfig{}, f.server.Client())
+	f.s.db.Exec(`DELETE FROM integrations`)
+	f.peer.jwt = "personal-owner-token-0123456789abcdef"
+	f.c.call("POST", "/api/integrations", map[string]any{"name": "FE", "provider": "fragments-engine", "baseUrl": f.server.URL, "credential": f.peer.jwt}, 201)
+	f.peer.instruct = func(capture string, v map[string]any) map[string]any {
+		id := v["client_variant_id"].(string)
+		return map[string]any{"client_variant_id": id, "asset_variant_id": "av", "action": "request_upload", "upload_href": "/v1/captures/" + capture + "/assets/" + id + "/content"}
+	}
+	in := clipIn("frag-clip-media-00005")
+	u, _ := url.Parse(hang.URL)
+	page := in["page"].(map[string]any)
+	page["submittedUrl"] = "http://example.com:" + u.Port() + "/post"
+	page["media"] = []map[string]any{
+		{"candidateId": "ok", "kind": "image", "role": "hero", "position": 0, "variants": []map[string]any{{"variantId": "o", "kind": "original", "sourceUrl": hang.URL + "/ok.png"}}},
+		{"candidateId": "stuck", "kind": "image", "role": "inline", "position": 1, "variants": []map[string]any{{"variantId": "o", "kind": "original", "sourceUrl": hang.URL + "/stuck.png"}}},
+	}
+	q := responseAs[fragmentSubmissionStatus](t, f.c.call("POST", "/api/frag/captures", in, 202))
+	for range 10 {
+		if st, _, _, _ := ownerRow(t, f, q.Sequence); st == "saved" {
+			break
+		}
+		if err := personal.Once(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st, code, _, _ := ownerRow(t, f, q.Sequence); st != "saved" || len(f.peer.completes) != 1 || !strings.Contains(f.peer.completes[0], "could not be sent in time") || strings.Count(f.peer.completes[0], `"uploaded"`) != 1 {
+		t.Fatalf("%s %s %v", st, code, f.peer.completes)
 	}
 }

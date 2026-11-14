@@ -39,6 +39,7 @@ type Page = { items: Submission[]; nextBefore: number }
 
 const deliveryMessages: Record<string, string> = {
   delivery_unavailable: "Delivery is awaiting setup. Your note is retained.",
+  media_in_progress: "Sending the page's media; it goes on by itself in a moment.",
   authorization_required: "Service access needs attention. After renewing access, retry this note.",
   device_authorization_required:
     "This Mac’s capture permission expired or was revoked. Your note is retained.",

@@ -130,7 +130,16 @@ fetches the file itself:
 - ports 80 and 443 only, plus the page's own port when its address named one;
 - the type is decided from the bytes.
 
-It then PUTs the file to FE with its `Digest` and completes the capture with one outcome per
+Files go four at a time. A clip with many files (a captioned video has one per caption
+track) may take more than one delivery attempt (40 s each). Each file's outcome is saved
+with the row as soon as it is known, and the next attempt goes on at once with the rest
+(outbox code `media_in_progress`), so no file is fetched twice. No file is started with
+less than 15 s left in an attempt. After 20 attempts that end with files still to send,
+those files are reported as failed and the capture completes. An empty answer is a failure,
+as in fe-clipper. YouTube's caption addresses answer empty to a fetch without the player's
+own token, so captions arrive as failed variants; the extension gets the same.
+
+It then PUTs each file to FE with its `Digest` and completes the capture with one outcome per
 variant: `uploaded`, `already_available`, `deferred`, `not_available` or `failed`. A file
 that cannot be had is a failed outcome, and FE marks the capture `partial`. The bytes are
 held in memory for the upload and never written down; what is kept at rest is still the
