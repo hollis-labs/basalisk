@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/hollis-labs/libs/llm/core/llmtypes"
 )
 
 // Context slots. The owner moves between kinds of work (their mail, a plan, a draft, a
@@ -101,17 +103,26 @@ var slotState = struct {
 	current string            // the slot now
 	pinned  bool              // set by context_switch: holds until the window in front selects another
 	told    map[string]string // thread -> slot and note stamp last put in a message
+	thread  string            // the owner's running thread, for thread_recall
 }{current: "general", told: map[string]string{}}
 
 // slotBlock decides the slot for a message of the owner's and returns the <context> block
 // to put in front of it, or "" when the thread already has it.
-func (rt *Runtime) slotBlock(ctx context.Context, thread string, pageContext json.RawMessage, have map[string]ToolSpec) string {
+// slotNow decides the slot for a message of the owner's: the window in front selects it;
+// a window with no slot of its own leaves it where it was.
+func slotNow(thread string, pageContext json.RawMessage) string {
 	slotState.Lock()
+	defer slotState.Unlock()
 	if byApp := slotForApp(focusedApp(pageContext)); byApp != "" && byApp != slotState.current {
-		// The window in front wins, unless the assistant just chose one and the window has
-		// no slot of its own to say otherwise.
 		slotState.current, slotState.pinned = byApp, false
 	}
+	slotState.thread = thread
+	return slotState.current
+}
+
+func (rt *Runtime) slotBlock(ctx context.Context, thread string, pageContext json.RawMessage, have map[string]ToolSpec) string {
+	slotNow(thread, pageContext)
+	slotState.Lock()
 	name := slotState.current
 	// Where this thread was before, to ask for a note on leaving it.
 	left, _, _ := strings.Cut(slotState.told[thread], "@")
@@ -239,6 +250,7 @@ func (rt *Runtime) SlotTools() ToolSource {
 			},
 		},
 	}
+	tools = append(tools, rt.recallTool(names))
 	return func(context.Context) []ServerTool { return tools }
 }
 
@@ -251,4 +263,164 @@ func (s *Store) setSlotNote(ctx context.Context, name, note string) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO slots(name, note, updated_at) VALUES(?,?,?)
 		ON CONFLICT(name) DO UPDATE SET note=excluded.note, updated_at=excluded.updated_at`, name, note, time.Now().UTC().Format("2006-01-02 15:04 UTC"))
 	return err
+}
+
+// focusChars is the size of a thread's unsummarised part above which it is focused: below
+// it everything is sent, which costs little and keeps the provider's cache whole.
+const focusChars = 60_000
+
+// keepLastTurns are always sent, whatever context they were in: what was just said.
+const keepLastTurns = 3
+
+func turnSlot(m Message) string {
+	var meta struct {
+		Slot string `json:"slot"`
+	}
+	_ = json.Unmarshal(m.Meta, &meta)
+	return meta.Slot
+}
+
+// focusHistory is the part of a long thread the model is sent while the owner is in one
+// context: the turns of that context and the last few of any, in order. A run of turns from
+// other contexts is left out and said so in front of the next turn that is kept, so the
+// assistant knows it is there and can bring it back (thread_recall, the context's note).
+// A turn is the owner's message and everything up to their next, so no call is parted from
+// its result. Messages up to upto are already covered by the summary.
+func focusHistory(msgs []Message, upto int, slot string) []Message {
+	var rest []Message
+	total := 0
+	for _, m := range msgs {
+		if m.Seq > upto {
+			rest = append(rest, m)
+			total += messageChars(m)
+		}
+	}
+	if slot == "" || total <= focusChars {
+		return rest
+	}
+	var starts []int
+	for i, m := range rest {
+		if ownerTurn(m) {
+			starts = append(starts, i)
+		}
+	}
+	if len(starts) <= keepLastTurns {
+		return rest
+	}
+	out := append([]Message{}, rest[:starts[0]]...)
+	skipped := map[string]int{}
+	var order []string
+	for t, at := range starts {
+		end := len(rest)
+		if t+1 < len(starts) {
+			end = starts[t+1]
+		}
+		was := turnSlot(rest[at])
+		if was != "" && was != slot && t < len(starts)-keepLastTurns {
+			if skipped[was] == 0 {
+				order = append(order, was)
+			}
+			skipped[was]++
+			continue
+		}
+		turn := append([]Message{}, rest[at:end]...)
+		if len(order) > 0 {
+			var parts []string
+			for _, name := range order {
+				parts = append(parts, fmt.Sprintf("%d in %s", skipped[name], name))
+			}
+			note := "<elsewhere>\nEarlier turns from other contexts are not shown here (" + strings.Join(parts, ", ") + "): the owner was on something else then. Your note for each context says where it stood; thread_recall brings those messages back if you need what was said.\n</elsewhere>"
+			first := turn[0]
+			first.Blocks = append([]llmtypes.ContentBlock{{Type: "text", Text: note}}, first.Blocks...)
+			turn[0] = first
+			skipped, order = map[string]int{}, nil
+		}
+		out = append(out, turn...)
+	}
+	return out
+}
+
+// recallTool brings back what was said in a context: the owner's messages and the
+// assistant's replies of its recent turns, from the whole thread, summarised part included.
+func (rt *Runtime) recallTool(names []string) ServerTool {
+	return ServerTool{
+		Spec: ToolSpec{Name: "thread_recall", Level: LevelRead,
+			Description: "Read back what was said earlier in this conversation in one context: the owner's messages and your replies in its most recent turns (not the tool calls). Use it when a turn you need is not in front of you: it was in another context (an <elsewhere> block says so), or it is behind the summary. Give words to find the turns that mention them.",
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{
+				"context": map[string]any{"type": "string", "enum": names, "description": "The context. The current one when left out."},
+				"turns":   map[string]any{"type": "integer", "description": "How many of the most recent turns (default 6, up to 20)."},
+				"words":   map[string]any{"type": "string", "description": "Only turns that mention these words."},
+			}, "additionalProperties": false}},
+		Run: func(ctx context.Context, in map[string]any) (string, error) {
+			slotState.Lock()
+			thread, name := slotState.thread, slotState.current
+			slotState.Unlock()
+			if c, _ := in["context"].(string); c != "" {
+				name = c
+			}
+			if thread == "" {
+				return "", errors.New("there is no conversation to read back yet")
+			}
+			n := 6
+			if v, ok := in["turns"].(float64); ok && v >= 1 {
+				n = min(int(v), 20)
+			}
+			words := strings.ToLower(strings.TrimSpace(fmt.Sprint(in["words"])))
+			if in["words"] == nil {
+				words = ""
+			}
+			msgs, err := rt.store.Messages(ctx, thread)
+			if err != nil {
+				return "", err
+			}
+			type turn struct {
+				At    string `json:"at"`
+				Owner string `json:"owner"`
+				You   string `json:"you"`
+			}
+			var turns []turn
+			var cur *turn
+			for _, m := range msgs {
+				if ownerTurn(m) {
+					if cur != nil {
+						turns = append(turns, *cur)
+						cur = nil
+					}
+					if turnSlot(m) != name {
+						continue
+					}
+					var meta struct {
+						Text string `json:"text"`
+					}
+					_ = json.Unmarshal(m.Meta, &meta)
+					cur = &turn{At: m.CreatedAt, Owner: clip(meta.Text, 1500)}
+					continue
+				}
+				if cur != nil && m.Role == "assistant" {
+					for _, b := range m.Blocks {
+						if b.Type == "text" && b.Text != "" {
+							cur.You = clip(strings.TrimSpace(cur.You+"\n"+b.Text), 2500)
+						}
+					}
+				}
+			}
+			if cur != nil {
+				turns = append(turns, *cur)
+			}
+			if words != "" {
+				kept := turns[:0]
+				for _, t := range turns {
+					if strings.Contains(strings.ToLower(t.Owner+" "+t.You), words) {
+						kept = append(kept, t)
+					}
+				}
+				turns = kept
+			}
+			if len(turns) > n {
+				turns = turns[len(turns)-n:]
+			}
+			raw, _ := json.Marshal(map[string]any{"context": name, "turns": turns})
+			return string(raw), nil
+		},
+	}
 }

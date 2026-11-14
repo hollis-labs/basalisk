@@ -124,8 +124,17 @@ When a long conversation is summarised (compaction), the summary is written unde
 per context, with what holds across all of them first, so each context can be picked up
 from it.
 
-Not yet: recent messages kept per slot (the recent part of the thread is still one
-stream), slots the owner can define, and pointers gathered automatically.
+**Focus.** Each of the owner's messages is stored with the slot it was said in. Once the
+unsummarised part of the thread passes about 60,000 characters, the model is sent the turns
+of the slot the owner is in and the last three turns of any, in order; a run of turns from
+other slots is left out and an `<elsewhere>` block in front of the next kept turn says how
+many and from where (`focusHistory`). A turn is the owner's message and everything up to
+their next, so no call is parted from its result. Nothing is deleted: `thread_recall` reads
+back the owner's messages and the assistant's replies of a slot's recent turns, with words
+to search by. Below that size the thread is sent whole, which is cheaper than re-reading it
+after every move.
+
+Not yet: slots the owner can define, and pointers gathered automatically.
 
 ## Knowing how things stand (built)
 

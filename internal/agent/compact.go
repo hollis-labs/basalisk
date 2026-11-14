@@ -45,12 +45,14 @@ Leave out pleasantries and anything that was superseded. Do not address anyone a
 
 // historyFor is what the model is sent of a thread's stored messages: the summary of the
 // part that has been compacted away, if any, then the messages after it.
-func historyFor(msgs []Message, summary string, upto int) []llmtypes.ChatMessage {
+func historyFor(msgs []Message, summary string, upto int, slot ...string) []llmtypes.ChatMessage {
 	var out []llmtypes.ChatMessage
-	for _, m := range msgs {
-		if m.Seq <= upto {
-			continue
-		}
+	focus := ""
+	if len(slot) > 0 {
+		focus = slot[0]
+	}
+	// A long thread is focused on the context the owner is in (slots.go, focusHistory).
+	for _, m := range focusHistory(msgs, upto, focus) {
 		out = append(out, llmtypes.ChatMessage{Role: m.Role, ContentBlocks: append([]llmtypes.ContentBlock(nil), m.Blocks...)})
 	}
 	out = repair(out)
@@ -219,7 +221,7 @@ func (r *run) compact(ctx context.Context) {
 		note("failed")
 		return
 	}
-	r.history = historyFor(msgs, summary, cut-1)
+	r.history = historyFor(msgs, summary, cut-1, r.slot)
 	slog.Info("agent: thread compacted", "thread", r.thread, "summarised_to", cut-1, "took", time.Since(started).Round(time.Millisecond).String())
 	note("done")
 }

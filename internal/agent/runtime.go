@@ -244,6 +244,7 @@ type pending struct {
 type run struct {
 	rt                *Runtime
 	id, owner, thread string
+	slot              string // the context the owner was in when this run began (slots.go)
 	client            string
 	tools             map[string]ToolSpec
 	server            map[string]ServerTool // the tools among them that the server runs
@@ -362,7 +363,10 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	// What the model is sent of the thread so far: its summary, if its older part has been
 	// compacted, and the messages since.
 	summary, upto := rt.store.summary(ctx, thread)
-	r.history = historyFor(prior, summary, upto)
+	if !isTask {
+		r.slot = slotNow(thread, in.Context)
+	}
+	r.history = historyFor(prior, summary, upto, r.slot)
 
 	// What the owner was looking at goes in front of what they said, in the same message:
 	// the thread then remembers where each thing was said, and the system prompt stays the
@@ -412,7 +416,7 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	if r.route != nil {
 		rt.store.setRoute(ctx, r.id, r.route.Rule)
 	}
-	meta, _ := json.Marshal(map[string]any{"text": text, "context": in.Context, "reflexes": r.fired})
+	meta, _ := json.Marshal(map[string]any{"text": text, "context": in.Context, "reflexes": r.fired, "slot": r.slot})
 	if _, err := rt.store.Append(ctx, thread, r.id, "user", blocks, meta); err != nil {
 		rt.store.finishRun(ctx, r.id, "error", err.Error(), 0, 0)
 		release()
