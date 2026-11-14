@@ -18,6 +18,7 @@ import (
 	"github.com/hollis-labs/substrate/modules/httphost"
 
 	"github.com/hollis-labs/basalisk/internal/agent"
+	"github.com/hollis-labs/basalisk/internal/collab"
 	"github.com/hollis-labs/basalisk/internal/feeds"
 	"github.com/hollis-labs/basalisk/internal/files"
 	"github.com/hollis-labs/basalisk/internal/inbox"
@@ -65,6 +66,8 @@ type API struct {
 	// feeds is the Reader's feed store (reader.go); nil unless EnableReader was called.
 	feeds      *feeds.Store
 	feedClient *http.Client
+	// collab is the shared drafts, artifacts and diagrams (collab.go); nil unless EnableCollab was called.
+	collab *collab.Store
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,
@@ -131,6 +134,7 @@ func (a *API) allRoutes() []route {
 	rts = append(rts, a.workRoutes()...)    // work.go
 	rts = append(rts, a.inboxRoutes()...)   // inbox.go
 	rts = append(rts, a.readerRoutes()...)  // reader.go
+	rts = append(rts, a.collabRoutes()...)  // collab.go
 	return append(rts, a.fragRoutes()...)   // frag.go
 }
 

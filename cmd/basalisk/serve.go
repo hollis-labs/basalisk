@@ -21,6 +21,7 @@ import (
 
 	"github.com/hollis-labs/basalisk/internal/agent"
 	"github.com/hollis-labs/basalisk/internal/api"
+	"github.com/hollis-labs/basalisk/internal/collab"
 	"github.com/hollis-labs/basalisk/internal/feeds"
 	"github.com/hollis-labs/basalisk/internal/hostguard"
 	"github.com/hollis-labs/basalisk/internal/inbox"
@@ -140,6 +141,7 @@ func (b *basalisk) serve(ctx context.Context) error {
 		if len(addresses) == 0 {
 			addresses = []string{story.RoundFrom}
 		}
+		a.EnableCollab(&collab.Store{Link: link})
 		a.EnableInbox(inbox.New(&inbox.Tether{Link: link, Addresses: addresses}))
 	}
 	// Story: scripts and storyboards, kept in Caster's "story" namespace through the same
