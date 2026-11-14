@@ -146,7 +146,9 @@ Not yet: slots the owner can define, and pointers gathered automatically.
   (`owner_status_ask`, `owner_send`, a delegation) is remembered. A reply to it is sorted as
   `answer`: it goes to the assistant in the `<around>` block, not to the owner as new mail.
 - **`status_overview`** (runs at once): the sorted mail, what was done in the owner's name
-  lately, the assistant's background runs, and Torque's work in flight (doing, review,
+  lately, the assistant's background runs, the owner's plans (each Content, Planner and
+  Writer workspace from the Work engine's working copy: items by stage, the unfinished ones
+  last touched, their dates), and Torque's work in flight (doing, review,
   blocked: totals, by team tag, the twenty most recently touched; `team` narrows to a tag).
   It is the first call for "where are things".
 
@@ -173,9 +175,18 @@ Not yet: slots the owner can define, and pointers gathered automatically.
    land, and a small model for sorting what the rules cannot.
 3. Context slots, second part: recent conversation kept per slot, with the summary made per
    slot; slots the owner defines; pointers gathered as the assistant works.
-4. Status, second part: the Planner and Content workspaces and seat status in the overview;
-   a check that a note or a plan is current before it is relied on.
+4. Status, second part: seat status in the overview; a check that a note or a plan is
+   current before it is relied on.
 5. Host and command-line work: a list of command kinds the assistant may run outright, and
    a delegation to @chief that follows its create-task shape.
 6. Tuning: the standing "Always" answers listed beside the mail rules (the rules are in the
    Done for you window, under Mail rules, with Remove).
+
+## Run with the model
+
+Twice on 2026-11-14, on Opus through the owner's gateway, against a stand-in mailbox (no
+live mail): (1) four new messages: a report was acknowledged and archived, two decisions
+were left to the owner, and an instruction planted in one message was declined and
+reported; (2) a status request sent in the owner's name, its reply routed back in the
+`<around>` block and relayed on "Any news?" after a move to another window, with a new
+decision inside the reply raised and a context note written. Not yet run against live mail.

@@ -22,6 +22,9 @@ type OwnerDeps struct {
 	}
 	// Tasks are the assistant's own background runs, newest first.
 	Tasks func(ctx context.Context) []Task
+	// Plans is the owner's plans from the Work engine (Content, Planner, Writer workspaces),
+	// as a value to put in the overview. Nil: none.
+	Plans func(ctx context.Context) any
 	// Own is the assistant's own mailbox (its address, not the owner's), for asking other
 	// seats something as itself. Nil: it has no address of its own.
 	Own *inbox.Inbox
@@ -46,7 +49,7 @@ func moreOwnerTools(mail *inbox.Inbox, log *assist.Log, d OwnerDeps, record func
 
 	tools = append(tools, ServerTool{
 		Spec: ToolSpec{Name: "status_overview", Level: LevelRead,
-			Description: "How everything stands, in one call, from the owner's own systems: their mail as sorted (what waits on them, answers that came, what is held, what you are handling), what you did in their name lately, your background runs, and the work in flight in Torque (how many tasks are doing, in review and blocked, the most recently touched, and the count by team). Use it first when the owner asks where things are, what is going on, or what needs them. It is a snapshot: for one piece of work go to the task (torque_task_get) or ask its seat (owner_status_ask), and say what you did not check.",
+			Description: "How everything stands, in one call, from the owner's own systems: their mail as sorted (what waits on them, answers that came, what is held, what you are handling), what you did in their name lately, your background runs, their plans (the Content, Planner and Writer workspaces: items by stage, the unfinished ones last touched, with dates), and the work in flight in Torque (how many tasks are doing, in review and blocked, the most recently touched, and the count by team). Use it first when the owner asks where things are, what is going on, or what needs them. It is a snapshot: for one piece of work go to the task (torque_task_get) or ask its seat (owner_status_ask), and say what you did not check.",
 			InputSchema: obj(map[string]any{"team": str("Narrow the work in flight to one team or seat: a tag such as cell-mig-tachyon or seat-chief.")})},
 		Run: func(ctx context.Context, in map[string]any) (string, error) {
 			res := map[string]any{"as_of": time.Now().UTC().Format(time.RFC3339)}
@@ -85,6 +88,11 @@ func moreOwnerTools(mail *inbox.Inbox, log *assist.Log, d OwnerDeps, record func
 					rows = append(rows, map[string]any{"title": t.Title, "state": t.State, "started_by": t.Origin, "id": t.ID})
 				}
 				res["your_background_runs"] = rows
+			}
+			if d.Plans != nil {
+				if plans := d.Plans(ctx); plans != nil {
+					res["plans"] = plans
+				}
 			}
 			if d.Link != nil {
 				args := map[string]any{"statuses": `["doing","review","blocked"]`, "limit": "200", "sort_by": "updated_at", "sort_dir": "desc", "include_total": "true"}

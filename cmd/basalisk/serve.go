@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -90,6 +91,8 @@ func (b *basalisk) serve(ctx context.Context) error {
 	}
 	a := svc.API(api.IdentityUsers{Svc: id})
 	var agentRT *agent.Runtime
+	// The Work engine's store, once it is open: the assistant's overview reads the plans from it.
+	var workStore *work.Store
 	scratchPath := ""
 	// The desktop's settings documents live beside the database, in the private data directory.
 	if db, _ := app.Config["database"].(map[string]any); db != nil {
@@ -177,6 +180,7 @@ func (b *basalisk) serve(ctx context.Context) error {
 					agentRT.AddAmbient(agent.OwnAnswers(own, watch))
 				}
 				deps := agent.OwnerDeps{Watch: watch, Link: link, Own: own, DevAddress: cfg.DevAddress,
+					Plans: func(ctx context.Context) any { return planOverview(ctx, workStore) },
 					Tasks: func(ctx context.Context) []agent.Task { return agentRT.TasksOf(ctx, a.AssistOwner()) }}
 				agentRT.AddTools(agent.OwnerTools(ownerMail, log, deps))
 				if watch != nil {
@@ -224,6 +228,7 @@ func (b *basalisk) serve(ctx context.Context) error {
 			slog.Warn("work is off: its store could not be opened", "path", workPath, "err", err)
 		} else {
 			a.EnableWork(store)
+			workStore = store
 			go func() {
 				<-ctx.Done()
 				_ = store.Close()
@@ -317,4 +322,62 @@ func requireLoopback(app *module.App) error {
 		}
 	}
 	return fmt.Errorf("basalisk currently requires a loopback httphost.addr (for example 127.0.0.1:8085), got %q", addr)
+}
+
+// planOverview is the owner's plans as the assistant's overview wants them: each workspace
+// of the Work engine (Content, Planner, Writer) with its items by stage and the ones last
+// touched that are not finished. Read from the working copy; nothing is fetched.
+func planOverview(ctx context.Context, store *work.Store) any {
+	if store == nil {
+		return nil
+	}
+	spaces, err := store.Workspaces(ctx, "")
+	if err != nil {
+		return map[string]any{"problem": err.Error()}
+	}
+	finished := map[string]bool{"published": true, "done": true, "final": true, "dropped": true, "decided": true, "closed": true}
+	out := []map[string]any{}
+	for i, w := range spaces {
+		if i == 12 {
+			break
+		}
+		space, ok, err := store.Open(ctx, w.Slug)
+		if err != nil || !ok {
+			continue
+		}
+		byStage := map[string]int{}
+		type row struct {
+			ID, Kind, Title, Stage, Updated string
+			Due                             any
+		}
+		var open []row
+		for _, it := range space.Items {
+			if it.Cut || it.Stage == "" {
+				continue
+			}
+			byStage[it.Stage]++
+			if finished[it.Stage] {
+				continue
+			}
+			due := it.Fields["due"]
+			if due == nil {
+				due = it.Fields["publish_on"]
+			}
+			open = append(open, row{it.ID, it.Kind, it.Title, it.Stage, it.Updated, due})
+		}
+		sort.Slice(open, func(a, b int) bool { return open[a].Updated > open[b].Updated })
+		if len(open) > 8 {
+			open = open[:8]
+		}
+		items := []map[string]any{}
+		for _, r := range open {
+			m := map[string]any{"id": r.ID, "kind": r.Kind, "title": r.Title, "stage": r.Stage, "updated": r.Updated}
+			if r.Due != nil && r.Due != "" {
+				m["date"] = r.Due
+			}
+			items = append(items, m)
+		}
+		out = append(out, map[string]any{"workspace": w.Slug, "title": w.Title, "app": w.App, "updated": w.Updated, "by_stage": byStage, "unfinished_last_touched": items})
+	}
+	return out
 }
