@@ -113,6 +113,14 @@ export function AgentSettings() {
                 </dd>
               </>
             )}
+            {state.reflexes_problem && (
+              <>
+                <dt>Reflexes</dt>
+                <dd className="text-danger">
+                  Not in use: {state.reflexes_problem} (see “Reflexes” in docs/agent.md)
+                </dd>
+              </>
+            )}
           </dl>
         )}
       </section>
