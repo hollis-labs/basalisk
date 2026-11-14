@@ -1,0 +1,45 @@
+/* Slash commands above the agent's box (menu.tsx). */
+.slash-anchor {
+  position: relative;
+  height: 0;
+}
+.slash-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  z-index: 5;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--desk-border);
+  border-radius: 9px;
+  background: var(--desk-panel, var(--desk-surface));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+}
+.slash-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.slash-item[data-on="true"] {
+  background: var(--desk-accent-soft, var(--desk-hover, rgba(127, 127, 127, 0.14)));
+}
+.slash-name {
+  color: var(--desk-fg);
+  font-family: var(--desk-mono, ui-monospace, monospace);
+}
+.slash-arg {
+  color: var(--desk-muted);
+}
+.slash-about {
+  color: var(--desk-fg-soft);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

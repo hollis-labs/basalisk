@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { ResultCardView } from "../cite/cards"
 import { Markdown } from "../cite/ui"
 import { useDesk } from "../desktop/context"
+import { SlashMenu } from "../slash/menu"
 import type { DeskSnapshot } from "./api"
 import {
   type Approval,
@@ -159,6 +160,7 @@ export function AgentPanel({ close }: { close: () => void }) {
 
       <footer className="agent-foot">
         <ContextLine context={s.context} />
+        <SlashMenu box={box} text={draft} setText={setDraft} />
         <div className="agent-box">
           <textarea
             ref={box}
