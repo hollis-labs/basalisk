@@ -6,6 +6,7 @@ import { Markdown } from "../cite/ui"
 import { useDesk } from "../desktop/context"
 import { SlashMenu } from "../slash/menu"
 import type { DeskSnapshot, TaskInfo } from "./api"
+import { NeedsStrip } from "./needs"
 import { type AgentSession, type Approval, type Item, mainSession, taskSession } from "./session"
 import { closeTask, openTask, toneOf, useTasks } from "./tasks"
 import { describeCall } from "./tools"
@@ -43,7 +44,12 @@ export function AgentPanel({ close }: { close: () => void }) {
           </button>
         </header>
       }
-      above={<TaskStrip />}
+      above={
+        <>
+          <NeedsStrip />
+          <TaskStrip />
+        </>
+      }
       empty="Ask about what is in front of you, or ask for something to be done. The agent sees which window has focus and what you have selected."
       placeholder="Ask, or say what to do"
     />

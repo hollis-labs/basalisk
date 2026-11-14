@@ -70,7 +70,8 @@ type API struct {
 	// collab is the shared drafts, artifacts and diagrams (collab.go); nil unless EnableCollab was called.
 	collab *collab.Store
 	// assist is the record of what the assistant did in the owner's name (assist.go).
-	assist *assist.Log
+	assist      *assist.Log
+	assistWatch *assist.Watcher
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,

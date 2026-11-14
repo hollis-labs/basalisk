@@ -377,3 +377,134 @@
     animation: none;
   }
 }
+
+/* Needs you: sorted mail at the top of the panel (needs.tsx). */
+.needs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--desk-border);
+  font-size: 12px;
+}
+.needs h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--desk-accent);
+}
+.needs-card {
+  border: 1px solid var(--desk-border);
+  border-left: 3px solid var(--desk-accent);
+  border-radius: 7px;
+}
+.needs-head,
+.needs-held {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  text-align: left;
+  color: var(--desk-fg);
+}
+.needs-head span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--desk-fg-soft);
+}
+.needs-body {
+  padding: 0 8px 8px 27px;
+}
+.needs-body p {
+  margin: 0 0 6px;
+  max-height: 9em;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--desk-fg-soft);
+}
+.needs-options,
+.needs-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.needs-options button {
+  padding: 3px 10px;
+  border: 1px solid var(--desk-border);
+  border-radius: 6px;
+  font-weight: 600;
+}
+.needs-options button[data-recommended="true"] {
+  border-color: var(--desk-accent);
+  color: var(--desk-accent);
+}
+.needs-options button:hover {
+  background: var(--desk-accent-soft);
+}
+.needs-body input {
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 3px 7px;
+  border: 1px solid var(--desk-border);
+  border-radius: 5px;
+  background: var(--desk-bg);
+  color: var(--desk-fg);
+  font: inherit;
+}
+.needs-tools button,
+.needs-row button,
+.needs-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--desk-fg-soft);
+}
+.needs-tools button:hover,
+.needs-row button:hover,
+.needs-clear:hover {
+  background: var(--desk-accent-soft);
+  color: var(--desk-fg);
+}
+.needs-held {
+  gap: 10px;
+  padding: 3px 4px;
+  color: var(--desk-fg-soft);
+}
+.needs-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px 1px 22px;
+  color: var(--desk-fg-soft);
+}
+.needs-row span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.needs-row button {
+  flex: none;
+}
+.needs-clear {
+  align-self: flex-end;
+}
+.needs-said {
+  margin: 2px 4px 0;
+  padding: 0 10px;
+  font-size: 11px;
+  color: var(--desk-fg-soft);
+}

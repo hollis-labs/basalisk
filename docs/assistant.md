@@ -46,10 +46,34 @@ was sent. `GET /api/assist/activity`. The chat is told outcomes, not steps.
   `SMAppService`), once; **Start at login** in the desktop menu turns it off or on.
 - With Basalisk quit, nothing runs: mail waits in Tether.
 
+## Sorting new mail (built)
+
+While Basalisk runs, the owner's unread mail is swept every minute
+(`internal/assist/watch.go`) and each new message is sorted, by rule and not by a model:
+
+| Class | When | What happens |
+|---|---|---|
+| `needs` | it asks the owner to decide (a question, a decision, an approval) or escalates | a card at the top of the assistant's panel, with its options as buttons |
+| `bas` | a request with no options | handed to the assistant as a background task ("Mail for you"), at most one batch every five minutes; its report reaches the owner with their next message |
+| `digest` | anything else | held and counted ("3 held for you"), listed on demand |
+| `settle` | one of the owner's rules says so | marked read, on the record |
+
+The owner's rules are tried first, newest first. A card makes one: **This is noise** holds
+that kind of mail from that sender from now on; **Always tell me** shows the owner that
+sender's mail. `GET /api/assist/rules` lists them; `DELETE /api/assist/rules/{id}` removes
+one. What was already unread when the watcher first ran is not sorted. A message that stops
+being unread (answered here, in the Inbox or anywhere else) leaves the lists.
+
+Answering a card's option is the owner answering: it goes through the Inbox's reply, from
+their address, with no assistant marker.
+
+Routes: `GET /api/assist/needs`, `POST /api/assist/mail/{id}` (`state`, and `rule` to make
+one).
+
 ## Planned, in order
 
-1. A watcher on the owner's inbox that triages each new message (Tether's classes: human,
-   action, fyi, read) and either settles it, holds it for a digest or puts a card in chat.
+1. Sends through Tether's typed messages (`tether_message_post`) once the address aliases
+   land, and a small model for sorting what the rules cannot.
 2. A quiet lane: the assistant's background work out of the chat, following Tether's
    reply-audience contract (fold a turn only when its input was a mail wake; never fold
    what was triaged human; never infer from the text).

@@ -151,7 +151,25 @@ func (b *basalisk) serve(ctx context.Context) error {
 			if log, err := assist.Open(ctx, logPath); err != nil {
 				slog.Warn("the assistant's mail tools are off: its activity log could not be opened", "path", logPath, "err", err)
 			} else {
-				a.EnableAssist(log)
+				// New mail is sorted as it arrives; what asks for something without options is
+				// handed to the assistant as a background task.
+				watch := &assist.Watcher{Mail: ownerMail, Log: log}
+				watch.Hand = func(ctx context.Context, batch []assist.Mail) {
+					owner := a.AssistOwner()
+					if owner == "" {
+						return // no page has been seen yet: it waits for the next sweep
+					}
+					if _, _, err := agentRT.StartTask(context.WithoutCancel(ctx), agent.TaskInput{Owner: owner, Title: "Mail for you", Brief: agent.MailBrief(batch), Origin: "trigger:mail"}); err != nil {
+						slog.Warn("assist: the assistant was not started on new mail", "err", err)
+					}
+				}
+				if err := watch.Init(ctx); err != nil {
+					slog.Warn("assist: new mail is not sorted: the watcher's tables could not be made", "err", err)
+					watch = nil
+				} else {
+					go watch.Run(ctx)
+				}
+				a.EnableAssist(log, watch)
 				agentRT.AddTools(agent.OwnerTools(ownerMail, log))
 				go func() {
 					<-ctx.Done()
