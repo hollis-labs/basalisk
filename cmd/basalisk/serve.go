@@ -106,14 +106,14 @@ func (b *basalisk) serve(ctx context.Context) error {
 			slog.Warn("scratch is off: its store could not be opened", "path", scratchPath, "err", err)
 		} else {
 			syncer := scratch.NewSyncer(store, link)
-			a.EnableScratch(store, syncer)
+			a.EnableScratch(store, syncer, link)
 			go syncer.Run(ctx)
 			go func() {
 				<-ctx.Done()
 				_ = store.Close()
 			}()
 			if agentRT != nil {
-				agentRT.AddTools(agent.ScratchTools(store, syncer.Kick))
+				agentRT.AddTools(agent.ScratchTools(store, syncer.Kick, a.ScratchAuto))
 			}
 		}
 	}

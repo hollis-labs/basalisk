@@ -125,6 +125,14 @@ export const agentApi = {
   thread: (task?: string) =>
     request<ThreadState>(task ? `agent/thread?id=${encodeURIComponent(task)}` : "agent/thread"),
   tasks: () => request<{ tasks: TaskInfo[] }>("agent/tasks").then((r) => r.tasks),
+  /** Hand a piece of work to a task agent at the owner's own asking. */
+  startTask: (body: {
+    title?: string
+    brief: string
+    client_id: string
+    context: DeskSnapshot
+    tools: ToolSpec[]
+  }) => request<{ task: TaskInfo }>("agent/tasks", "POST", body),
   closeTask: (id: string) => request<void>(`agent/tasks/${encodeURIComponent(id)}`, "DELETE"),
   /** Something happened on the desktop: reflexes that fire on it start their task agents. */
   event: (body: { type: string; client_id: string; context: DeskSnapshot; tools: ToolSpec[] }) =>

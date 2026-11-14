@@ -310,3 +310,36 @@
   background: var(--desk-hover, rgba(127, 127, 127, 0.18));
   color: var(--desk-fg);
 }
+
+.scratch-into {
+  position: relative;
+  display: flex;
+}
+.scratch-menu {
+  position: absolute;
+  top: 24px;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 130px;
+  padding: 4px;
+  border: 1px solid var(--desk-border);
+  border-radius: 6px;
+  background: var(--desk-surface, var(--desk-bg));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+.scratch-menu button {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--desk-fg);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.scratch-menu button:hover {
+  background: var(--desk-hover, rgba(127, 127, 127, 0.18));
+}

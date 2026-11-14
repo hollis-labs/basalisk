@@ -20,6 +20,8 @@ export interface ScratchItem {
 export interface Count {
   value: string
   n: number
+  /** What to call it when the value is an id (a session's title). */
+  label?: string
 }
 
 export interface ScratchFacets {
@@ -29,6 +31,7 @@ export interface ScratchFacets {
   tasks: Count[]
   agents: Count[]
   tags: Count[]
+  sessions: Count[]
   open: number
   total: number
 }
@@ -60,12 +63,29 @@ function query(v: ScratchView): string {
 }
 
 export const scratch = {
-  list: (v: ScratchView) => request<{ items: ScratchItem[]; today: string }>(`scratch${query(v)}`),
+  list: (v: ScratchView) =>
+    request<{ items: ScratchItem[]; today: string; labels?: Record<string, string> }>(
+      `scratch${query(v)}`,
+    ),
   facets: () => request<{ facets: ScratchFacets; today: string }>("scratch/facets"),
   add: (text: string, context?: unknown) =>
     request<{ items: ScratchItem[] }>("scratch", "POST", { text, context }),
-  update: (id: string, change: { text?: string; done?: boolean; archived?: boolean }) =>
-    request<{ item: ScratchItem }>(`scratch/${encodeURIComponent(id)}`, "PUT", change),
+  update: (
+    id: string,
+    change: {
+      text?: string
+      done?: boolean
+      archived?: boolean
+      /** Tie the item to something more: what it became, a task. */
+      link?: { rel: string; value: string }
+    },
+  ) => request<{ item: ScratchItem }>(`scratch/${encodeURIComponent(id)}`, "PUT", change),
+  /** Make a Torque task of the item (in the Torque project named like the item's, if any). */
+  toTask: (id: string) =>
+    request<{ task_id: string; item: ScratchItem; in_project: boolean }>(
+      `scratch/${encodeURIComponent(id)}/task`,
+      "POST",
+    ),
   /** A view as one markdown page. */
   page: async (v: ScratchView, title: string): Promise<string> => {
     const q = query(v)

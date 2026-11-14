@@ -3,9 +3,14 @@
  * small item of its own; what is shown is a view put together from them (a day, a project,
  * a task, the open follow-ups, a search), editable in place. See docs/scratch.md.
  */
-import { Archive, Copy, CornerDownLeft, Play, Search } from "lucide-react"
+import { Archive, ArrowUpRight, Copy, CornerDownLeft, Play, Search } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { runTool } from "../../agent/tools"
+import { agentApi } from "../../agent/api"
+import { CLIENT } from "../../agent/session"
+import { openTask, refreshTasks } from "../../agent/tasks"
+import { runTool, snapshot, toolSpecs } from "../../agent/tools"
+import { files } from "../../api/files"
+import { frag } from "../../api/frag"
 import {
   type Count,
   SCRATCH_CHANGED,
@@ -17,6 +22,9 @@ import {
 import { CiteText } from "../../cite/ui"
 import { useDesk } from "../../desktop/context"
 import { moment } from "../frag/context"
+import { captureIdFor, newDraft } from "../frag/draft"
+import { notesFolder } from "../notes/notefiles"
+import { ScratchComplete } from "./complete"
 import "./scratch.css"
 
 const KIND_LABEL: Record<string, string> = {
@@ -27,7 +35,39 @@ const KIND_LABEL: Record<string, string> = {
   cmd: "command",
   question: "question",
 }
-const CHECKABLE = new Set(["todo", "follow-up", "question"])
+const CHECKABLE = new Set(["todo", "follow-up", "question", "delegate"])
+
+/** What an item can be made into. */
+type Into = "task" | "note" | "fragment" | "agent"
+const INTO: { to: Into; label: string; hint: string }[] = [
+  {
+    to: "task",
+    label: "Torque task",
+    hint: "A task in Torque, in the item's project if it names one",
+  },
+  { to: "note", label: "Note", hint: "A markdown file in your notes, under scratch/" },
+  { to: "fragment", label: "Fragment", hint: "Send it to Fragments Engine" },
+  { to: "agent", label: "Task agent", hint: "Hand it to a task agent to do, in the background" },
+]
+
+/** A file name out of an item's first line. */
+function slug(text: string): string {
+  const s = (text.split("\n")[0] ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+    .replace(/-+$/, "")
+  return s || "item"
+}
+
+/** How a "became" link reads on its chip. */
+function becameLabel(value: string): string {
+  if (value.startsWith("task:")) return `→ ${value.slice(5)}`
+  if (value.startsWith("note:")) return `→ note ${value.slice(5).split("/").pop()}`
+  if (value.startsWith("agent-task:")) return "→ task agent"
+  return `→ ${value}`
+}
 
 function dayLabel(day: string, today: string): string {
   if (day === today) return "Today"
@@ -38,13 +78,13 @@ function dayLabel(day: string, today: string): string {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
 }
 
-function viewTitle(v: ScratchView, today: string): string {
+function viewTitle(v: ScratchView, today: string, labels?: Record<string, string>): string {
   if (v.q) return `Search: ${v.q}`
   if (v.open) return "Open follow-ups"
   if (v.archived) return "Put away"
   if (v.day) return dayLabel(v.day, today)
   if (v.kind) return `${KIND_LABEL[v.kind] ?? v.kind}s`
-  if (v.rel && v.value) return `${v.rel}: ${v.value}`
+  if (v.rel && v.value) return `${v.rel}: ${labels?.[`${v.rel}:${v.value}`] ?? v.value}`
   return "Everything"
 }
 
@@ -60,6 +100,7 @@ export function ScratchWindow() {
   const [find, setFind] = useState("")
   const [error, setError] = useState("")
   const [note, setNote] = useState("")
+  const [labels, setLabels] = useState<Record<string, string>>({})
   const box = useRef<HTMLTextAreaElement>(null)
   const started = useRef(false)
 
@@ -67,6 +108,7 @@ export function ScratchWindow() {
     try {
       const [list, f] = await Promise.all([scratch.list(v), scratch.facets()])
       setItems(list.items)
+      setLabels(list.labels ?? {})
       setFacets(f.facets)
       setToday(list.today)
       setError("")
@@ -125,9 +167,65 @@ export function ScratchWindow() {
     }
   }
 
+  // Make an item into something more lasting. The item stays, tied to what it became.
+  const promote = async (it: ScratchItem, to: Into) => {
+    const became = (value: string) => scratch.update(it.id, { link: { rel: "became", value } })
+    const tags = it.links.filter((l) => l.rel === "tag").map((l) => l.value)
+    try {
+      setError("")
+      if (to === "task") {
+        const r = await scratch.toTask(it.id)
+        setNote(
+          `Now the Torque task ${r.task_id}${r.in_project ? "" : " (in no project; set one in Torque)"}.`,
+        )
+      } else if (to === "note") {
+        const folder = await notesFolder()
+        const base = `scratch/${it.day}-${slug(it.text)}`
+        let path = `${base}.md`
+        for (let n = 2; n < 50; n++) {
+          const full = folder.path ? `${folder.path}/${path}` : path
+          const there = await files.stat(folder.root, full).catch(() => null)
+          if (!there) break
+          path = `${base}-${n}.md`
+        }
+        const out = await runTool("notes_write", { path, text: `${it.text}\n` }, desk)
+        if (out.isError) throw new Error(out.content)
+        await became(`note:${path}`)
+        setNote(`Written to your notes as ${path}.`)
+      } else if (to === "fragment") {
+        const d = captureIdFor({ ...newDraft(), content: it.text, tags: tags.join(", ") })
+        await frag.capture({
+          captureId: d.captureId,
+          content: it.text,
+          tags: [...tags, "scratch"],
+          draftAt: it.created_at,
+          submittedAt: new Date().toISOString(),
+          context: { scratch: it.id },
+        })
+        await became("fragment")
+        setNote("Queued for Fragments Engine.")
+      } else {
+        const { task } = await agentApi.startTask({
+          brief: `${it.text}\n\n(This is an item from the owner's scratch, ${it.id}, handed to you to do. When you are finished, say plainly what you did and what is left.)`,
+          client_id: CLIENT,
+          context: await snapshot(desk),
+          tools: toolSpecs(),
+        })
+        await became(`agent-task:${task.id}`)
+        void refreshTasks()
+        openTask(desk, task.id, task.title)
+        setNote("Handed to a task agent.")
+      }
+      window.setTimeout(() => setNote(""), 4000)
+      await load(view)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That could not be done.")
+    }
+  }
+
   const copyPage = async () => {
     try {
-      const page = await scratch.page(view, `Scratch: ${viewTitle(view, today)}`)
+      const page = await scratch.page(view, `Scratch: ${viewTitle(view, today, labels)}`)
       await navigator.clipboard.writeText(page)
       setNote("Copied this view as a markdown page.")
       window.setTimeout(() => setNote(""), 2500)
@@ -213,12 +311,21 @@ export function ScratchWindow() {
             go={(v) => pick({ rel, value: v })}
           />
         ))}
+        <SideGroup
+          title="Sessions"
+          counts={(facets?.sessions ?? []).slice(0, 10)}
+          label={(v) =>
+            labels[`session:${v}`] ?? facets?.sessions.find((c) => c.value === v)?.label ?? v
+          }
+          on={(v) => view.rel === "session" && view.value === v}
+          go={(v) => pick({ rel: "session", value: v })}
+        />
         <SideRow label="Put away" on={!!view.archived} go={() => pick({ archived: true })} />
       </nav>
 
       <section className="scratch-main">
         <header className="scratch-head">
-          <h2>{viewTitle(view, today)}</h2>
+          <h2>{viewTitle(view, today, labels)}</h2>
           <span className="scratch-count">
             {items.length} {items.length === 1 ? "item" : "items"}
           </span>
@@ -260,6 +367,8 @@ export function ScratchWindow() {
           </button>
         </div>
 
+        <ScratchComplete box={box} text={draft} setText={setDraft} />
+
         {error && <p className="scratch-error">{error}</p>}
         {note && <p className="scratch-note">{note}</p>}
 
@@ -276,8 +385,10 @@ export function ScratchWindow() {
                 <ItemRow
                   key={it.id}
                   item={it}
+                  labels={labels}
                   change={change}
                   pick={pick}
+                  promote={promote}
                   run={(command) => void runTool("terminal_run", { command }, desk)}
                 />
               ))}
@@ -330,15 +441,20 @@ function SideGroup({
 
 function ItemRow({
   item,
+  labels,
   change,
   pick,
+  promote,
   run,
 }: {
   item: ScratchItem
+  labels: Record<string, string>
   change: (id: string, c: { text?: string; done?: boolean; archived?: boolean }) => Promise<void>
   pick: (v: ScratchView) => void
+  promote: (item: ScratchItem, to: Into) => Promise<void>
   run: (command: string) => void
 }) {
+  const [menu, setMenu] = useState(false)
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(item.text)
   const area = useRef<HTMLTextAreaElement>(null)
@@ -429,7 +545,9 @@ function ItemRow({
               onClick={() => pick({ rel: l.rel, value: l.value })}
             >
               {l.rel === "project" ? "+" : l.rel === "agent" ? "@" : l.rel === "tag" ? "#" : ""}
-              {l.value}
+              {l.rel === "became"
+                ? becameLabel(l.value)
+                : (labels[`${l.rel}:${l.value}`] ?? l.value)}
             </button>
           ))}
           <span className="scratch-time">{time}</span>
@@ -455,6 +573,39 @@ function ItemRow({
             <Play size={12} />
           </button>
         )}
+        <span className="scratch-into">
+          <button
+            type="button"
+            className="scratch-tool"
+            title="Make it into a task, a note, a fragment, or hand it to a task agent"
+            aria-haspopup="menu"
+            aria-expanded={menu}
+            onClick={() => setMenu((m) => !m)}
+            onBlur={(e) => {
+              if (!e.currentTarget.parentElement?.contains(e.relatedTarget as Node)) setMenu(false)
+            }}
+          >
+            <ArrowUpRight size={12} />
+          </button>
+          {menu && (
+            <div className="scratch-menu" role="menu">
+              {INTO.map((o) => (
+                <button
+                  key={o.to}
+                  type="button"
+                  role="menuitem"
+                  title={o.hint}
+                  onClick={() => {
+                    setMenu(false)
+                    void promote(item, o.to)
+                  }}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </span>
         <button
           type="button"
           className="scratch-tool"

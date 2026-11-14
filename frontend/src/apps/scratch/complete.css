@@ -1,0 +1,45 @@
+/* Completions while writing scratch (complete.tsx). */
+.scratch-complete-anchor {
+  position: relative;
+  height: 0;
+  z-index: 6;
+}
+.scratch-complete {
+  position: absolute;
+  left: 12px;
+  top: 2px;
+  min-width: 200px;
+  max-width: 360px;
+  padding: 4px;
+  border: 1px solid var(--desk-border);
+  border-radius: 8px;
+  background: var(--desk-panel, var(--desk-surface));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  font-family: var(--desk-font);
+}
+.scratch-complete-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--desk-fg);
+  cursor: pointer;
+}
+.scratch-complete-item[data-on="true"] {
+  background: var(--desk-accent-soft, rgba(127, 127, 127, 0.18));
+}
+.scratch-complete-label {
+  flex: 0 0 auto;
+}
+.scratch-complete-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--desk-muted);
+  text-align: right;
+}

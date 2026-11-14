@@ -11,8 +11,8 @@ import (
 
 // ScratchTools are the agent's tools for the owner's scratch (internal/scratch): add
 // items, list a view, mark one done. kick is called after a change so it is written on
-// to Caster.
-func ScratchTools(store *scratch.Store, kick func()) ToolSource {
+// to Caster; auto says what an item written now is tied to (the work session going).
+func ScratchTools(store *scratch.Store, kick func(), auto func(ctx context.Context, owner string) scratch.Auto) ToolSource {
 	str := func(d string) map[string]any { return map[string]any{"type": "string", "description": d} }
 	tools := []ServerTool{
 		{
@@ -39,7 +39,7 @@ func ScratchTools(store *scratch.Store, kick func()) ToolSource {
 				if r.route != nil {
 					origin = "owner" // typed as a command, word for word
 				}
-				items, err := store.Add(ctx, r.owner, text, origin, nil, time.Now())
+				items, err := store.Add(ctx, r.owner, text, origin, nil, time.Now(), auto(ctx, r.owner))
 				if err != nil {
 					return "", err
 				}

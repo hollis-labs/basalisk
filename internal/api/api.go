@@ -49,6 +49,7 @@ type API struct {
 	// scratch is the owner's scratch items (scratch.go); nil unless EnableScratch was called.
 	scratch     *scratch.Store
 	scratchSync *scratch.Syncer
+	scratchLink scratch.Putter // the Tether gateway, for making a Torque task of an item
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,

@@ -36,6 +36,7 @@ func (a *API) agentRoutes() []route {
 		route{"POST", "/api/agent/runs/{id}/approvals", w, a.agentApproval},
 		route{"POST", "/api/agent/events", w, a.agentEvent},
 		route{"GET", "/api/agent/tasks", r, a.agentTasks},
+		route{"POST", "/api/agent/tasks", w, a.agentTaskStart},
 		route{"DELETE", "/api/agent/tasks/{id}", w, a.agentTaskClose},
 		route{"GET", "/api/agent/tools", r, a.agentTools},
 		route{"GET", "/api/agent/automation", r, a.agentAutomation},
@@ -139,6 +140,33 @@ func (a *API) agentTasks(w http.ResponseWriter, r *http.Request) {
 		out = append(out, row{Task: t, ActiveRun: a.agent.ActiveRun(t.ID)})
 	}
 	reply(w, 200, map[string]any{"tasks": out})
+}
+
+// agentTaskStart hands a piece of work to a task agent at the owner's own asking (a scratch
+// item marked for it, say). The page says what it can do, so the task has the desktop's tools.
+func (a *API) agentTaskStart(w http.ResponseWriter, r *http.Request) {
+	owner, err := a.ownerID(r)
+	if err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var in struct {
+		Title    string           `json:"title"`
+		Brief    string           `json:"brief"`
+		ClientID string           `json:"client_id"`
+		Context  json.RawMessage  `json:"context"`
+		Tools    []agent.ToolSpec `json:"tools"`
+	}
+	if !decodeLimit(w, r, &in, 512<<10) {
+		return
+	}
+	a.agent.SeePage(owner, in.ClientID, in.Tools, in.Context)
+	task, _, err := a.agent.StartTask(context.WithoutCancel(r.Context()), agent.TaskInput{Owner: owner, Title: in.Title, Brief: in.Brief, Origin: "owner"})
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	reply(w, 200, map[string]any{"task": task})
 }
 
 // agentTaskClose puts a task away. One that is still running is stopped first by its run.

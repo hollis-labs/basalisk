@@ -47,6 +47,15 @@ var migrations = []string{
 		PRIMARY KEY(item_id, rel, value)
 	);
 	CREATE INDEX links_value ON links(rel, value);`,
+	// What to call something an item is tied to by an id (a work session's title).
+	`CREATE TABLE labels (
+		rel TEXT NOT NULL,
+		value TEXT NOT NULL,
+		label TEXT NOT NULL,
+		PRIMARY KEY(rel, value)
+	);`,
+	// Refs in Caster's scratch namespace that were looked at and are not scratch items.
+	`CREATE TABLE passed (ref TEXT PRIMARY KEY);`,
 }
 
 // Open opens (and creates or upgrades) the file at path.
@@ -65,6 +74,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("scratch: %s was written by a newer Basalisk", path)
 	}
+
 	for i := have; i < len(migrations); i++ {
 		tx, err := db.BeginTx(ctx, nil)
 		if err == nil {
@@ -82,7 +92,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			return nil, fmt.Errorf("scratch: schema step %d: %w", i+1, err)
 		}
 	}
-	return &Store{db: db}, nil
+	s := &Store{db: db}
+	s.reread(ctx)
+	return s, nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
@@ -112,8 +124,15 @@ func stamp(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.0000
 
 func newID() string { return "scr_" + strings.ToLower(rand.Text()[:16]) }
 
-// Add writes what was typed as items (Parse) and returns them, oldest first.
-func (s *Store) Add(ctx context.Context, owner, text, origin string, moment json.RawMessage, at time.Time) ([]Item, error) {
+// Auto is what an item is tied to without the owner typing it: the work session that was
+// going when it was written, and that session's project.
+type Auto struct {
+	SessionID, SessionTitle, Project string
+}
+
+// Add writes what was typed as items (Parse) and returns them, oldest first. Each item is
+// tied to the session in auto, and to its project unless the item names one itself.
+func (s *Store) Add(ctx context.Context, owner, text, origin string, moment json.RawMessage, at time.Time, auto Auto) ([]Item, error) {
 	parsed := Parse(text)
 	if len(parsed) == 0 {
 		return nil, errors.New("there is nothing to keep")
@@ -142,12 +161,24 @@ func (s *Store) Add(ctx context.Context, owner, text, origin string, moment json
 			id, owner, p.Kind, p.Text, done, at.Format("2006-01-02"), string(moment), origin, created, created); err != nil {
 			return nil, err
 		}
-		for _, l := range p.Links {
+		links := p.Links
+		if auto.SessionID != "" {
+			links = append(links, Link{RelSession, auto.SessionID})
+		}
+		if auto.Project != "" && !hasRel(p.Links, RelProject) {
+			links = addLink(links, RelProject, auto.Project)
+		}
+		for _, l := range links {
 			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO links(item_id, rel, value) VALUES(?,?,?)`, id, l.Rel, l.Value); err != nil {
 				return nil, err
 			}
 		}
 		ids = append(ids, id)
+	}
+	if auto.SessionID != "" && auto.SessionTitle != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO labels(rel, value, label) VALUES(?,?,?) ON CONFLICT(rel, value) DO UPDATE SET label=excluded.label`, RelSession, auto.SessionID, auto.SessionTitle); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -286,6 +317,35 @@ type Change struct {
 	Text     *string
 	Done     *bool
 	Archived *bool
+	// Link ties the item to one more thing (what it was promoted to, say).
+	Link *Link
+}
+
+// reread reads notes again whose text carries a marker the parser now understands (one at
+// the end of the line), so items written before it did are what they were meant to be.
+func (s *Store) reread(ctx context.Context) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, owner, text FROM items WHERE kind='note' AND text LIKE '%::%'`)
+	if err != nil {
+		return
+	}
+	type row struct{ id, owner, text string }
+	var todo []row
+	for rows.Next() {
+		var r row
+		if rows.Scan(&r.id, &r.owner, &r.text) == nil {
+			todo = append(todo, r)
+		}
+	}
+	_ = rows.Close()
+	for _, r := range todo {
+		p := Parse(r.text)
+		if len(p) != 1 || p[0].Kind == KindNote {
+			continue
+		}
+		// As it would be typed with the marker in front, so the edit keeps the new kind.
+		text := "::" + p[0].Kind + " " + p[0].Text
+		_, _ = s.Update(ctx, r.owner, r.id, Change{Text: &text}, time.Now())
+	}
 }
 
 // Update edits one item. New text is read again for its kind and links (the first item of
@@ -320,13 +380,19 @@ func (s *Store) Update(ctx context.Context, owner, id string, c Change, at time.
 		if _, err := tx.ExecContext(ctx, `UPDATE items SET kind=?, text=?, updated_at=? WHERE id=?`, p.Kind, p.Text, now, id); err != nil {
 			return Item{}, err
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM links WHERE item_id=?`, id); err != nil {
+		// The links read from the text are replaced; the ones the text never held (the
+		// session it was written in, what it became) stay.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM links WHERE item_id=? AND rel NOT IN (?,?)`, id, RelSession, RelBecame); err != nil {
 			return Item{}, err
 		}
 		for _, l := range p.Links {
 			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO links(item_id, rel, value) VALUES(?,?,?)`, id, l.Rel, l.Value); err != nil {
 				return Item{}, err
 			}
+		}
+		// A task the item became is still its task, whatever the text now says.
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO links(item_id, rel, value) SELECT item_id, ?, substr(value, 6) FROM links WHERE item_id=? AND rel=? AND value LIKE 'task:%'`, RelTask, id, RelBecame); err != nil {
+			return Item{}, err
 		}
 		if p.Done && c.Done == nil {
 			yes := true
@@ -351,6 +417,14 @@ func (s *Store) Update(ctx context.Context, owner, id string, c Change, at time.
 			return Item{}, err
 		}
 	}
+	if c.Link != nil && c.Link.Rel != "" && strings.TrimSpace(c.Link.Value) != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO links(item_id, rel, value) VALUES(?,?,?)`, id, c.Link.Rel, strings.TrimSpace(c.Link.Value)); err != nil {
+			return Item{}, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE items SET updated_at=? WHERE id=?`, now, id); err != nil {
+			return Item{}, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return Item{}, err
 	}
@@ -358,10 +432,38 @@ func (s *Store) Update(ctx context.Context, owner, id string, c Change, at time.
 	return it, nil
 }
 
-// Count is something the items can be viewed by, and how many there are.
+// Count is something the items can be viewed by, and how many there are. Label is what to
+// call it when the value is an id.
 type Count struct {
 	Value string `json:"value"`
 	N     int    `json:"n"`
+	Label string `json:"label,omitempty"`
+}
+
+func hasRel(links []Link, rel string) bool {
+	for _, l := range links {
+		if l.Rel == rel {
+			return true
+		}
+	}
+	return false
+}
+
+// Labels are the names of the things items are tied to by id, keyed "rel:value".
+func (s *Store) Labels(ctx context.Context) map[string]string {
+	out := map[string]string{}
+	rows, err := s.db.QueryContext(ctx, `SELECT rel, value, label FROM labels`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rel, value, label string
+		if rows.Scan(&rel, &value, &label) == nil {
+			out[rel+":"+value] = label
+		}
+	}
+	return out
 }
 
 // Facets are the ways into the scratch: recent days, kinds, and what items are tied to,
@@ -373,12 +475,13 @@ type Facets struct {
 	Tasks    []Count `json:"tasks"`
 	Agents   []Count `json:"agents"`
 	Tags     []Count `json:"tags"`
+	Sessions []Count `json:"sessions"`
 	Open     int     `json:"open"`
 	Total    int     `json:"total"`
 }
 
 func (s *Store) Facets(ctx context.Context, owner string) (Facets, error) {
-	f := Facets{Days: []Count{}, Kinds: []Count{}, Projects: []Count{}, Tasks: []Count{}, Agents: []Count{}, Tags: []Count{}}
+	f := Facets{Days: []Count{}, Kinds: []Count{}, Projects: []Count{}, Tasks: []Count{}, Agents: []Count{}, Tags: []Count{}, Sessions: []Count{}}
 	counts := func(query string, args ...any) ([]Count, error) {
 		rows, err := s.db.QueryContext(ctx, query, args...)
 		if err != nil {
@@ -407,6 +510,20 @@ func (s *Store) Facets(ctx context.Context, owner string) (Facets, error) {
 			return f, err
 		}
 	}
+	// Sessions newest first, by the title they had.
+	rows, err := s.db.QueryContext(ctx, `SELECT l.value, COUNT(*), COALESCE((SELECT label FROM labels WHERE rel=l.rel AND value=l.value), ''), MAX(i.created_at) AS latest
+		FROM links l JOIN items i ON i.id=l.item_id WHERE i.owner=? AND i.archived_at='' AND l.rel=? GROUP BY l.value ORDER BY latest DESC LIMIT 30`, owner, RelSession)
+	if err != nil {
+		return f, err
+	}
+	for rows.Next() {
+		var c Count
+		var latest string
+		if rows.Scan(&c.Value, &c.N, &c.Label, &latest) == nil {
+			f.Sessions = append(f.Sessions, c)
+		}
+	}
+	_ = rows.Close()
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM items WHERE owner=? AND archived_at='' AND kind IN ('todo','follow-up','question') AND done_at=''`, owner).Scan(&f.Open)
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM items WHERE owner=? AND archived_at=''`, owner).Scan(&f.Total)
 	return f, nil
@@ -441,4 +558,44 @@ func Markdown(title string, items []Item) string {
 		b.WriteString("\n\n")
 	}
 	return strings.TrimRight(b.String(), "\n") + "\n"
+}
+
+// adopt keeps an item that was found in Caster: under Caster's own name for it, read for
+// its kind and links like anything typed, and marked as already there.
+func (s *Store) adopt(ctx context.Context, owner, name, ref, content string, at time.Time) error {
+	parsed := Parse(content)
+	if len(parsed) == 0 {
+		return nil
+	}
+	p := parsed[0]
+	for _, more := range parsed[1:] {
+		p.Text += "\n\n" + more.Text
+		for _, l := range more.Links {
+			p.Links = addLink(p.Links, l.Rel, l.Value)
+		}
+	}
+	id := name
+	if !strings.HasPrefix(id, "scr_") {
+		id = "cst_" + name
+	}
+	created := stamp(at)
+	done := ""
+	if p.Done {
+		done = created
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO items(id, owner, kind, text, done_at, day, origin, created_at, updated_at, caster_ref, synced_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		id, owner, p.Kind, p.Text, done, at.Local().Format("2006-01-02"), "caster", created, created, ref, created); err != nil {
+		return err
+	}
+	for _, l := range p.Links {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO links(item_id, rel, value) VALUES(?,?,?)`, id, l.Rel, l.Value); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

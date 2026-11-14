@@ -2,6 +2,7 @@ package scratch
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"sync"
@@ -106,8 +107,13 @@ func (y *Syncer) Pass(ctx context.Context) (more, failed bool) {
 			continue
 		}
 		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		// An item found in Caster keeps the name it has there.
+		name := "scratch/" + it.ID
+		if rest, ok := strings.CutPrefix(it.CasterRef, "caster://"); ok && rest != "" {
+			name = rest
+		}
 		_, err := y.link.Call(callCtx, "caster_put", map[string]any{
-			"name":    "scratch/" + it.ID,
+			"name":    name,
 			"content": Markdown("", []Item{it}),
 			"mime":    "text/markdown",
 			"title":   title(it.Text),
@@ -120,7 +126,7 @@ func (y *Syncer) Pass(ctx context.Context) (more, failed bool) {
 			_, _ = y.store.db.ExecContext(ctx, `UPDATE items SET sync_error=? WHERE id=?`, clip(err.Error(), 300), it.ID)
 			return more, true
 		}
-		_, _ = y.store.db.ExecContext(ctx, `UPDATE items SET caster_ref=?, synced_at=?, sync_error='' WHERE id=? AND updated_at=?`, Ref(it.ID), it.UpdatedAt, it.ID, it.UpdatedAt)
+		_, _ = y.store.db.ExecContext(ctx, `UPDATE items SET caster_ref=?, synced_at=?, sync_error='' WHERE id=? AND updated_at=?`, "caster://"+name, it.UpdatedAt, it.ID, it.UpdatedAt)
 	}
 	return more, false
 }
@@ -156,3 +162,67 @@ func clip(s string, n int) string {
 	}
 	return string(r[:n]) + "…"
 }
+
+// Import reads back items that are in Caster's scratch namespace and not here: ones an
+// agent or another machine put there. Small text only (a document parked in the namespace
+// is not a scratch item). They arrive as already written, so they are not written back.
+func (y *Syncer) Import(ctx context.Context, owner string) (int, error) {
+	if y == nil || y.link == nil || !y.link.Configured() {
+		return 0, nil
+	}
+	raw, err := y.link.Call(ctx, "caster_ls", map[string]any{"ns": "scratch"})
+	if err != nil {
+		return 0, err
+	}
+	var list struct {
+		Items []struct {
+			Ref     string `json:"ref"`
+			Title   string `json:"title"`
+			Updated string `json:"updated"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, li := range list.Items {
+		name, ok := strings.CutPrefix(li.Ref, "caster://scratch/")
+		if !ok || name == "" {
+			continue
+		}
+		var have int
+		_ = y.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM items WHERE id=? OR caster_ref=?`, name, li.Ref).Scan(&have)
+		var skipped int
+		_ = y.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM passed WHERE ref=?`, li.Ref).Scan(&skipped)
+		if have > 0 || skipped > 0 {
+			continue
+		}
+		got, err := y.link.Call(ctx, "caster_get", map[string]any{"ref": li.Ref, "max_bytes": maxImport + 1})
+		if err != nil {
+			return n, err
+		}
+		var item struct {
+			Content   string `json:"content"`
+			State     string `json:"state"`
+			Size      int    `json:"size"`
+			Truncated bool   `json:"truncated"`
+		}
+		if json.Unmarshal(got, &item) != nil || item.State != "resolved" || item.Truncated || item.Size > maxImport || strings.TrimSpace(item.Content) == "" {
+			// Not scratch (too large, unreadable): remembered, so it is not fetched each time.
+			_, _ = y.store.db.ExecContext(ctx, `INSERT OR IGNORE INTO passed(ref) VALUES(?)`, li.Ref)
+			continue
+		}
+		at, perr := time.Parse(time.RFC3339Nano, li.Updated)
+		if perr != nil {
+			at = time.Now()
+		}
+		if err := y.store.adopt(ctx, owner, name, li.Ref, item.Content, at); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
+// maxImport is the largest text read back from Caster as a scratch item.
+const maxImport = 8 << 10

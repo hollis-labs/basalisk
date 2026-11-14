@@ -42,6 +42,12 @@ func TestWhatIsTypedBecomesItems(t *testing.T) {
 		{"# A heading\nand text", `[note done=false "# A heading\nand text" {}]`},
 		{"[] one\n[] two\n$ ls\nand a note", `[todo done=false "one" {}][todo done=false "two" {}][cmd done=false "ls" {}][note done=false "and a note" {}]`},
 		{"::idea one\nstill one\n\nnow a note\n\nwith two paragraphs", `[idea done=false "one\nstill one" {}][note done=false "now a note\n\nwith two paragraphs" {}]`},
+		// The marker after the thought.
+		{"API router/gateway as peer to LLM/MCP. ::idea", `[idea done=false "API router/gateway as peer to LLM/MCP." {}]`},
+		{"Research agent runtimes #chore ::delegate", `[delegate done=false "Research agent runtimes #chore" {tag=chore}]`},
+		{"ask about it +tachyon ::fu", `[follow-up done=false "ask about it +tachyon" {project=tachyon}]`},
+		{"a ratio of 3::4 is not a marker", `[note done=false "a ratio of 3::4 is not a marker" {}]`},
+		{"ends with a colon word :idea", `[note done=false "ends with a colon word :idea" {}]`},
 		{"", ``},
 		{"   \n  ", ``},
 		{"::idea", ``},

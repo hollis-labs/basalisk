@@ -28,6 +28,9 @@ const (
 	RelTask    = "task"
 	RelTag     = "tag"
 	RelSession = "session"
+	// RelBecame records what an item was promoted to: "note:<place>:<path>", "fragment",
+	// "agent-task:<id>". A Torque task it became is an ordinary task link.
+	RelBecame = "became"
 )
 
 // Link ties an item to something: a project, an agent, a task, a tag, a session.
@@ -70,6 +73,8 @@ var (
 	projectTok = regexp.MustCompile(`(?:^|\s)\+([A-Za-z][\w.-]*)`)
 	agentTok   = regexp.MustCompile(`(?:^|\s)@([A-Za-z][\w.-]*)`)
 	tagTok     = regexp.MustCompile(`(?:^|\s)#([A-Za-z][\w-]*)`)
+	// "… ::idea" at the end of a line: the marker after the thought, as it is often typed.
+	trailing = regexp.MustCompile(`\s::?([A-Za-z][A-Za-z0-9_-]*)\s*$`)
 )
 
 // Parse reads what was typed into items. Text with no markers is one note. Each directive
@@ -174,6 +179,19 @@ func Parse(input string) []Parsed {
 // finish reads the markers inside an item's own text and adds the standing links.
 func finish(p *Parsed, standing []Link) {
 	first, rest, _ := strings.Cut(p.Text, "\n")
+	if p.Kind == KindNote {
+		// A marker at the end of the first line says what it is, as one at the start does.
+		if m := trailing.FindStringSubmatch(first); m != nil && strings.Contains(m[0], "::") {
+			kind := strings.ToLower(m[1])
+			if k, ok := kindAliases[kind]; ok {
+				kind = k
+			}
+			if kind != "config" {
+				p.Kind = kind
+				first = strings.TrimSpace(first[:len(first)-len(m[0])])
+			}
+		}
+	}
 	if p.Kind == KindNote {
 		switch {
 		case strings.HasPrefix(first, "$ "):

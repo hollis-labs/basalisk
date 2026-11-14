@@ -49,6 +49,25 @@ an item to edit it in place (⌘↩ or clicking away keeps it, Esc does not); co
 command in the terminal; put it away. "page" copies the view as one markdown page, which
 reads back in as the same items (`GET /api/scratch/page`).
 
+**Sessions.** An item written while a work session is running is tied to it (and to the
+session's project, when the text names none). Sessions are a group on the left, by title.
+
+**Completion.** While typing, `::` offers the markers, `+` the projects, `@` the agents and
+`#` the tags already in use, most used first. Arrows choose, Tab or Enter takes one, Esc
+closes the list. It works in the window and in the capture box when it is set to scratch.
+
+**Making an item into something more** (the arrow on an item). The item stays, with a chip
+for what it became:
+
+- **Torque task**: the first line is the title, the rest the description. It goes in the
+  Torque project whose name is the item's `+project`, when exactly one matches, else in none.
+  The item is tied to the task id. Needs the Tether gateway.
+- **Note**: a markdown file `scratch/<day>-<first words>.md` in the notes folder. An
+  existing file is never replaced; the name gets `-2`, `-3`.
+- **Fragment**: queued for Fragments Engine like a capture, with the item's tags and `scratch`.
+- **Task agent**: the text is the brief of a task agent that works in the background
+  (docs/agent.md); its window opens. `… ::delegate` marks an item meant for this.
+
 ## Where it is kept
 
 - `scratch.db`, beside the app's database, is the working copy. Every view is a query over
@@ -58,10 +77,15 @@ reads back in as the same items (`GET /api/scratch/page`).
   (`scratch kind:todo day:2026-11-14 project:basalisk done`). A write that fails is tried
   again; an item says "saving…" until Caster has it. Nothing is ever deleted there:
   putting an item away adds the tag `archived`.
-- Items made in Caster by something else are not read back in yet.
+- **Read back.** Items in Caster's `scratch` namespace that are not here (an agent put them
+  there, or another machine) are brought in when the window is opened, at most every two
+  minutes. Only text up to 8 KB; a larger document parked in the namespace is left alone.
+  They keep Caster's name (`cst_<name>` here) and are not written back until edited.
 
 ## Routes
 
 `GET /api/scratch` (`day`, `kind`, `rel` + `value`, `open=1`, `q`, `archived=1`),
 `GET /api/scratch/facets`, `GET /api/scratch/page` (the same filters, and `title`),
-`POST /api/scratch` `{text, context}`, `PUT /api/scratch/{id}` `{text?, done?, archived?}`.
+`POST /api/scratch` `{text, context}`, `PUT /api/scratch/{id}` `{text?, done?, archived?, link?}`,
+`POST /api/scratch/{id}/task` (make a Torque task of it). A task agent is started with
+`POST /api/agent/tasks` `{brief, title?, client_id, context, tools}`.

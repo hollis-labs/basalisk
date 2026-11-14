@@ -6,6 +6,7 @@ import { fragmentRef } from "../../cite/fragment"
 import { CiteText } from "../../cite/ui"
 import { useDesk } from "../../desktop/context"
 import type { DeskAPI } from "../../desktop/registry"
+import { ScratchComplete } from "../scratch/complete"
 import { type Moment, moment } from "./context"
 import { captureIdFor, type Draft, newDraft, parseTags, readDraft, writeDraft } from "./draft"
 import { NoteField, PreviewToggle, tagsFieldProps, usePreview } from "./notefield"
@@ -309,6 +310,13 @@ export function Capture({ close }: { close: () => void }) {
           className=""
           pulse={pulse % 2}
         />
+        {dest === "scratch" && !preview && (
+          <ScratchComplete
+            box={textRef}
+            text={draft.content}
+            setText={(v) => edit({ content: v })}
+          />
+        )}
         <label className="frag-field frag-tags">
           <span className="frag-tags-label">▸ tags</span>
           <input
