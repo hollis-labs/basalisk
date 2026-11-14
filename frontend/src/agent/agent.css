@@ -355,6 +355,14 @@
   background: #3fb27f;
   opacity: 1;
 }
+.agent-task-dot[data-tone="warning"] {
+  background: #e5a23d;
+  opacity: 1;
+}
+.agent-task[data-asks="true"] .agent-task-state {
+  color: #e5a23d;
+  opacity: 1;
+}
 .agent-task-dot[data-tone="danger"] {
   background: #e5484d;
   opacity: 1;

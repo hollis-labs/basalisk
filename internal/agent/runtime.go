@@ -374,6 +374,13 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	if r.route == nil && !isTask {
 		for _, f := range rt.Reflexes().Evaluate(ctx, reflexState(thread, text, in.Context, prior, rt.store.lastPrefix(ctx, thread))) {
 			r.fired = append(r.fired, f.Name)
+			if f.Prompt != "" {
+				// A reflex that starts a task agent on what was said.
+				if _, _, err := rt.StartTask(context.WithoutCancel(ctx), TaskInput{Owner: in.Owner, Title: f.Title, Brief: f.Prompt, Origin: "trigger:" + f.Name, Parent: thread}); err != nil {
+					slog.Warn("agent: a reflex's task did not start", "reflex", f.Name, "err", err)
+				}
+				continue
+			}
 			if f.Halt != "" {
 				r.route = &Route{Rule: "reflex:" + f.Name, Say: f.Halt}
 				break
@@ -777,6 +784,11 @@ func (r *run) end(ctx context.Context, finish chatstream.FinishReason, failure e
 			report = strings.TrimSpace(report + "\n\n(It stopped at a limit before finishing: " + string(finish) + ".)")
 		}
 		rt.store.setTask(bg, r.thread, state, report)
+		// A task ending is an event (unless a trigger started it: a trigger on task_ended
+		// would otherwise set itself off).
+		if task, ok := rt.store.Task(bg, r.owner, r.thread); ok && !strings.HasPrefix(task.Origin, "trigger:") {
+			go rt.Event(rt.base, r.owner, "task_ended")
+		}
 	}
 	switch {
 	case errors.Is(context.Cause(ctx), errCancelled):

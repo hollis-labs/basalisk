@@ -5,7 +5,7 @@ import { ResultCardView } from "../cite/cards"
 import { Markdown } from "../cite/ui"
 import { useDesk } from "../desktop/context"
 import { SlashMenu } from "../slash/menu"
-import type { DeskSnapshot } from "./api"
+import type { DeskSnapshot, TaskInfo } from "./api"
 import { type AgentSession, type Approval, type Item, mainSession, taskSession } from "./session"
 import { closeTask, openTask, toneOf, useTasks } from "./tasks"
 import { describeCall } from "./tools"
@@ -52,36 +52,46 @@ export function AgentPanel({ close }: { close: () => void }) {
 
 /** The task agents, above the running thread: one line each, opening the task's window. */
 function TaskStrip() {
-  const desk = useDesk()
   const tasks = useTasks()
   if (!tasks.length) return null
   return (
     <ul className="agent-tasks" aria-label="Task agents">
       {tasks.slice(0, 6).map((t) => (
-        <li key={t.id} className="agent-task" data-state={t.state}>
-          <button
-            type="button"
-            className="agent-task-open"
-            title="Open this task's window"
-            onClick={() => openTask(desk, t.id, t.title)}
-          >
-            <span className="agent-task-dot" data-tone={toneOf(t.state)} />
-            <span className="agent-task-title">{t.title}</span>
-            <span className="agent-task-state">{t.state}</span>
-          </button>
-          {t.state !== "running" && (
-            <button
-              type="button"
-              className="agent-icon"
-              title="Put this task away"
-              onClick={() => void closeTask(t.id)}
-            >
-              <X size={12} />
-            </button>
-          )}
-        </li>
+        <TaskRow key={t.id} task={t} />
       ))}
     </ul>
+  )
+}
+
+/** One task in the strip. It says so when its agent is waiting on a permission question. */
+function TaskRow({ task: t }: { task: TaskInfo }) {
+  const desk = useDesk()
+  const asks = !!taskSession(t.id).use().approval
+  return (
+    <li className="agent-task" data-state={t.state} data-asks={asks}>
+      <button
+        type="button"
+        className="agent-task-open"
+        title={
+          asks ? "It is asking permission: open its window to answer" : "Open this task's window"
+        }
+        onClick={() => openTask(desk, t.id, t.title)}
+      >
+        <span className="agent-task-dot" data-tone={asks ? "warning" : toneOf(t.state)} />
+        <span className="agent-task-title">{t.title}</span>
+        <span className="agent-task-state">{asks ? "asks you" : t.state}</span>
+      </button>
+      {t.state !== "running" && (
+        <button
+          type="button"
+          className="agent-icon"
+          title="Put this task away"
+          onClick={() => void closeTask(t.id)}
+        >
+          <X size={12} />
+        </button>
+      )}
+    </li>
   )
 }
 

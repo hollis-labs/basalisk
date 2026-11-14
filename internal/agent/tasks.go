@@ -204,3 +204,15 @@ func tasksBlock(ended []Task) string {
 const taskPrompt = `
 
 You are working as a task agent: you were handed one task, in the first message, and you work on it by yourself. The owner is not watching as you go and may be doing something else on the same desktop, so prefer tools that read and look over ones that move their windows about. Do not ask questions unless you cannot go on at all. When you are done, your last message is your report: what you did, what you found, and anything you could not do. It is read later, on its own, so make it stand alone.`
+
+// SeePage notes what an owner's desktop page can do: who runs page tools, and which. A
+// message does this too; an event does it so that a task started before any message has
+// the desktop's tools.
+func (rt *Runtime) SeePage(owner, client string, tools []ToolSpec, deskContext json.RawMessage) {
+	if client == "" {
+		return
+	}
+	rt.mu.Lock()
+	rt.pages[owner] = page{client: client, tools: tools, context: deskContext}
+	rt.mu.Unlock()
+}

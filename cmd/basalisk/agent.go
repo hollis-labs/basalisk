@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/hollis-labs/basalisk/internal/agent"
 	"github.com/hollis-labs/basalisk/internal/api"
@@ -59,6 +60,8 @@ func enableAgent(ctx context.Context, a *api.API, cfg agent.Config, dbPath strin
 		reflexFile = filepath.Join(home, ".config", "basalisk", "agent-reflexes.json")
 	}
 	rt.SetReflexes(agent.NewReflexes(reflexFile, store))
+	// Interval triggers: the minutes are counted while Basalisk runs.
+	go rt.RunTriggers(ctx, time.Minute)
 	a.EnableAgent(rt)
 	slog.Info("agent enabled", "ready", cfg.Ready(), "model", cfg.Model)
 	return rt

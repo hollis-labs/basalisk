@@ -7,7 +7,8 @@ import { useSyncExternalStore } from "react"
 import { registerResultCards } from "../cite/cards"
 import type { DeskAPI } from "../desktop/registry"
 import { agentApi, type TaskInfo } from "./api"
-import { setOnTaskStarted, taskSession } from "./session"
+import { CLIENT, setOnTaskStarted, taskSession } from "./session"
+import { snapshot, toolSpecs } from "./tools"
 
 let tasks: TaskInfo[] = []
 const listeners = new Set<() => void>()
@@ -55,11 +56,40 @@ export async function refreshTasks() {
   }
 }
 
-/** Start keeping the list. Called once the desktop is up. */
+/**
+ * Tell the server that something happened on the desktop ("window_opened:browser"), with
+ * what this page can do, so a reflex that fires on it can start a task agent (triggers in
+ * docs/agent.md). Quiet when the agent is not there.
+ */
+export async function reportEvent(type: string) {
+  if (!desk) return
+  try {
+    const { started } = await agentApi.event({
+      type,
+      client_id: CLIENT,
+      context: await snapshot(desk),
+      tools: toolSpecs(),
+    })
+    if (started.length) void refreshTasks()
+  } catch {
+    // No agent, or not signed in: nothing listens.
+  }
+}
+
+/** Start keeping the list, and reporting what happens. Called once the desktop is up. */
 export function startTasks(d: DeskAPI) {
   desk = d
   setOnTaskStarted(() => void refreshTasks())
   void refreshTasks()
+  void reportEvent("desktop_ready")
+  // A window that was not there before is an event, named for its app.
+  let known = new Set(d.wmState().wins.map((w) => w.id))
+  d.subscribe(() => {
+    const wins = d.wmState().wins
+    for (const w of wins)
+      if (!known.has(w.id) && w.app !== "agent-task") void reportEvent(`window_opened:${w.app}`)
+    known = new Set(wins.map((w) => w.id))
+  })
 }
 
 /** Open a task's window (or bring it forward). */

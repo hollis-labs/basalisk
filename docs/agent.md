@@ -7,8 +7,7 @@ describe their windows, and it does the rest.
 
 This page describes the runtime, the stream, the panel and the desktop's own tools, the
 apps' tools, Torque and Tesseract through the Tether gateway, the router in front of the
-model, reflexes, and task agents. Triggers that start a turn on their own come after and
-plug into what is here.
+model, reflexes, task agents, and triggers.
 
 ## Shape
 
@@ -236,8 +235,7 @@ something to look at here:
 Message windows are over the last 60 messages, newest first, and count your words as you
 typed them (not the `<desktop>` block). Token counts per message are not kept, so the
 `input_tokens_window`, `cache_read_window` and `output_growth_window` nodes see zeros.
-The engine's other action kinds (dispatch to an agent, schedule, send a message) and its
-event and interval triggers are not wired: nothing here starts a turn by itself yet.
+The engine's schedule and send-a-message actions are not wired.
 
 ## Task agents
 
@@ -265,6 +263,56 @@ same time as the running thread.
 
 Routes: `GET /api/agent/tasks`, `GET /api/agent/thread?id=<task>`, `thread` on
 `POST /api/agent/turns` (a follow-up), `DELETE /api/agent/tasks/{id}`.
+
+## Triggers
+
+A trigger is a reflex that fires without you saying anything and starts a task agent
+(`internal/agent/triggers.go`). It is written in the same file as your other reflexes,
+with the action `dispatch_to_agent`:
+
+```json
+{
+  "reflexes": [
+    {
+      "name": "morning-tasks",
+      "about": "Once the desktop is up, say what is on my plate.",
+      "trigger_kind": "event",
+      "trigger": { "name": "desktop_ready" },
+      "action_kind": "dispatch_to_agent",
+      "action": { "title": "Today's tasks", "prompt": "List my Torque tasks that are in doing or review, most urgent first, in five lines." },
+      "cooldown_seconds": 43200
+    },
+    {
+      "name": "inbox-check",
+      "trigger_kind": "interval",
+      "trigger": { "every_n_ticks": 30 },
+      "action_kind": "dispatch_to_agent",
+      "action": { "prompt": "Look at the latest Frag captures and say if any failed to send." }
+    }
+  ]
+}
+```
+
+| `trigger_kind` | `trigger` | Fires |
+|---|---|---|
+| `event` | `{"name": "<event>"}` | when the named thing happens |
+| `interval` | `{"every_n_ticks": N}` | every N minutes while Basalisk is running and its desktop page has been seen |
+| `predicate` (the default) | a predicate tree, as above | on a message of yours that matches; the message is still answered |
+
+The events: `desktop_ready` (the desktop page came up), `window_opened:<app>` (a window
+of that app was opened: `window_opened:browser`), and `task_ended` (a task agent ended).
+The page reports its events to `POST /api/agent/events`.
+
+What keeps this in hand:
+
+- None ship. Nothing starts by itself unless you write a trigger.
+- A trigger fires at most once a minute, whatever its `cooldown_seconds` says.
+- The task it starts is a task like any other: it is in the strip and has its window, it
+  asks permission for anything that changes data (its line in the strip says "asks you"),
+  and it counts toward the four that may run at once. A standing "Always" for a tool
+  covers a trigger's task too.
+- A task that a trigger started does not raise `task_ended`, so a trigger on that event
+  cannot set itself off.
 
 `GET /api/agent/automation` lists both: the rules in the order they are tried, the
 reflexes with how often and when each last fired, the two files your own go in, and why

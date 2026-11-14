@@ -17,10 +17,15 @@ import (
 
 // Reflexes are standing rules that look at the conversation each time a message arrives,
 // before the model is called (libs agent/core/reflexes: a trigger over the recent messages,
-// and an action when it fires). Two actions are carried out here:
+// and an action when it fires). Three actions are carried out here:
 //
-//	inject_reminder  {"body": "..."}     the model is told this, with the owner's message
-//	halt_session     {"message": "..."}  the message is answered with this; no model is called
+//	inject_reminder    {"body": "..."}     the model is told this, with the owner's message
+//	halt_session       {"message": "..."}  the message is answered with this; no model is called
+//	dispatch_to_agent  {"prompt": "...", "title": "..."}  a task agent is started on the prompt
+//
+// A reflex whose trigger is an event or an interval is a trigger in the everyday sense:
+// it fires when something happens or as time passes, not when the owner says something.
+// See triggers.go for what the events are.
 //
 // The ones that ship are in reflexes.json. The owner's own go in a file (ReflexSet.file),
 // in the same format; one with the name of a shipped reflex replaces it.
@@ -49,6 +54,8 @@ type Fired struct {
 	Reminder string
 	// Halt answers the message; no model is called.
 	Halt string
+	// Prompt starts a task agent on it, called Title.
+	Prompt, Title string
 }
 
 // ReflexSet holds the reflexes and evaluates them.
@@ -110,16 +117,19 @@ func parseReflexes(raw []byte, about map[string]string) ([]reflexes.Reflex, erro
 		if d.Name == "" {
 			return nil, fmt.Errorf("reflex %d has no name", i+1)
 		}
-		if d.ActionKind != reflexes.ActionInjectReminder && d.ActionKind != reflexes.ActionHaltSession {
-			return nil, fmt.Errorf("reflex %q: action_kind must be inject_reminder or halt_session", d.Name)
+		if d.ActionKind != reflexes.ActionInjectReminder && d.ActionKind != reflexes.ActionHaltSession && d.ActionKind != reflexes.ActionDispatchToAgent {
+			return nil, fmt.Errorf("reflex %q: action_kind must be inject_reminder, halt_session or dispatch_to_agent", d.Name)
 		}
 		var action map[string]any
 		if err := json.Unmarshal(d.Action, &action); err != nil {
 			return nil, fmt.Errorf("reflex %q: action: %w", d.Name, err)
 		}
 		key := "body"
-		if d.ActionKind == reflexes.ActionHaltSession {
+		switch d.ActionKind {
+		case reflexes.ActionHaltSession:
 			key = "message"
+		case reflexes.ActionDispatchToAgent:
+			key = "prompt"
 		}
 		if s, _ := action[key].(string); strings.TrimSpace(s) == "" {
 			return nil, fmt.Errorf("reflex %q: action needs %q", d.Name, key)
@@ -136,6 +146,10 @@ func parseReflexes(raw []byte, about map[string]string) ([]reflexes.Reflex, erro
 			status = "disabled"
 		}
 		cooldown := max(d.CooldownSeconds, 0)
+		if d.ActionKind == reflexes.ActionDispatchToAgent {
+			// Something that starts an agent by itself does not do it more than once a minute.
+			cooldown = max(cooldown, minDispatchCooldown)
+		}
 		out = append(out, reflexes.Reflex{ID: d.Name, Name: d.Name, TriggerKind: d.TriggerKind, TriggerSpec: string(d.Trigger),
 			ActionKind: d.ActionKind, ActionSpec: string(d.Action), Status: status, Priority: d.Priority,
 			CreatedAt: fmt.Sprintf("%06d", i), RecurrenceOverrideSeconds: &cooldown})
@@ -215,6 +229,7 @@ func (rs *ReflexSet) ActionKinds(context.Context) ([]reflexes.ActionKind, error)
 	return []reflexes.ActionKind{
 		{Name: reflexes.ActionInjectReminder, Category: "system_message", CombiningAlgorithm: "all_applicable", DefaultRecurrenceSeconds: &none},
 		{Name: reflexes.ActionHaltSession, Category: "control", CombiningAlgorithm: "first_applicable", DefaultRecurrenceSeconds: &none},
+		{Name: reflexes.ActionDispatchToAgent, Category: "dispatch", CombiningAlgorithm: "all_applicable", DefaultRecurrenceSeconds: &none},
 	}, nil
 }
 
@@ -227,12 +242,13 @@ func (rs *ReflexSet) BumpAgentReflexFired(ctx context.Context, id string, now ti
 	return rs.store.bumpReflex(ctx, id, now)
 }
 
-// Evaluate puts the conversation to the reflexes and returns the ones that fired.
-func (rs *ReflexSet) Evaluate(ctx context.Context, state reflexes.State) []Fired {
+// Evaluate puts the conversation to the reflexes and returns the ones that fired. With
+// kinds, only reflexes of those action kinds are considered.
+func (rs *ReflexSet) Evaluate(ctx context.Context, state reflexes.State, kinds ...string) []Fired {
 	if rs == nil || rs.engine == nil {
 		return nil
 	}
-	res, err := rs.engine.Run(ctx, reflexes.RunInput{AgentID: state.AgentID, State: &state})
+	res, err := rs.engine.Run(ctx, reflexes.RunInput{AgentID: state.AgentID, State: &state, Kinds: kinds})
 	if err != nil {
 		slog.Warn("agent: reflexes not evaluated", "err", err)
 		return nil
@@ -245,8 +261,14 @@ func (rs *ReflexSet) Evaluate(ctx context.Context, state reflexes.State) []Fired
 			f.Reminder, _ = a.Spec["body"].(string)
 		case reflexes.ActionHaltSession:
 			f.Halt, _ = a.Spec["message"].(string)
+		case reflexes.ActionDispatchToAgent:
+			f.Prompt, _ = a.Spec["prompt"].(string)
+			f.Title, _ = a.Spec["title"].(string)
+			if f.Title == "" {
+				f.Title = a.ReflexName
+			}
 		}
-		if f.Reminder != "" || f.Halt != "" {
+		if f.Reminder != "" || f.Halt != "" || f.Prompt != "" {
 			out = append(out, f)
 		}
 	}
@@ -306,9 +328,11 @@ func reflexState(thread, text string, deskContext json.RawMessage, prior []Messa
 
 // ReflexInfo is one reflex, for the interface to list.
 type ReflexInfo struct {
-	Name            string `json:"name"`
-	About           string `json:"about"`
-	Action          string `json:"action"` // inject_reminder or halt_session
+	Name   string `json:"name"`
+	About  string `json:"about"`
+	Action string `json:"action"` // inject_reminder, halt_session or dispatch_to_agent
+	// Trigger is "predicate" (looks at a message), "event" or "interval".
+	Trigger         string `json:"trigger"`
 	Enabled         bool   `json:"enabled"`
 	CooldownSeconds int64  `json:"cooldown_seconds"`
 	FiredCount      int64  `json:"fired_count"`
@@ -326,7 +350,7 @@ func (rs *ReflexSet) List(ctx context.Context) (list []ReflexInfo, file string) 
 	defs, about := append([]reflexes.Reflex(nil), rs.defs...), rs.about
 	rs.mu.Unlock()
 	for _, d := range defs {
-		info := ReflexInfo{Name: d.Name, About: about[d.Name], Action: d.ActionKind, Enabled: d.Status == "active"}
+		info := ReflexInfo{Name: d.Name, About: about[d.Name], Action: d.ActionKind, Trigger: d.TriggerKind, Enabled: d.Status == "active"}
 		if d.RecurrenceOverrideSeconds != nil {
 			info.CooldownSeconds = *d.RecurrenceOverrideSeconds
 		}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -33,6 +34,7 @@ func (a *API) agentRoutes() []route {
 		route{"POST", "/api/agent/runs/{id}/tool-results", w, a.agentToolResult},
 		route{"POST", "/api/agent/runs/{id}/tool-alive", w, a.agentToolAlive},
 		route{"POST", "/api/agent/runs/{id}/approvals", w, a.agentApproval},
+		route{"POST", "/api/agent/events", w, a.agentEvent},
 		route{"GET", "/api/agent/tasks", r, a.agentTasks},
 		route{"DELETE", "/api/agent/tasks/{id}", w, a.agentTaskClose},
 		route{"GET", "/api/agent/tools", r, a.agentTools},
@@ -82,6 +84,38 @@ func (a *API) agentThread(w http.ResponseWriter, r *http.Request) {
 		out["task"] = task
 	}
 	reply(w, 200, out)
+}
+
+// agentEvent is the page saying that something happened on the desktop (a window opened,
+// the desktop came up). Reflexes that fire on the event start their task agents; the page
+// also says what it can do, so a task started with no message sent yet has its tools.
+func (a *API) agentEvent(w http.ResponseWriter, r *http.Request) {
+	owner, err := a.ownerID(r)
+	if err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var in struct {
+		Type     string           `json:"type"`
+		ClientID string           `json:"client_id"`
+		Context  json.RawMessage  `json:"context"`
+		Tools    []agent.ToolSpec `json:"tools"`
+	}
+	if !decodeLimit(w, r, &in, 512<<10) {
+		return
+	}
+	if !agent.ValidEvent(in.Type) {
+		fail(w, 400, "That is not an event name.")
+		return
+	}
+	a.agent.SeePage(owner, in.ClientID, in.Tools, in.Context)
+	// Not the request's context: a task it starts goes on after the answer is sent.
+	started := a.agent.Event(context.WithoutCancel(r.Context()), owner, in.Type)
+	ids := make([]string, 0, len(started))
+	for _, t := range started {
+		ids = append(ids, t.ID)
+	}
+	reply(w, 200, map[string]any{"started": ids})
 }
 
 // agentTasks lists the owner's task agents, newest first, each with its run if one is going.

@@ -57,7 +57,7 @@ export interface Session {
 }
 
 /** This page, to the server: the one that runs the tools of the runs it starts. */
-const CLIENT = crypto.randomUUID()
+export const CLIENT = crypto.randomUUID()
 /** Calls this page has already run, so a replayed stream does not run them again. */
 const ran = new Set<string>()
 let desk: DeskAPI | null = null
