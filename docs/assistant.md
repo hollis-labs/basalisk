@@ -120,9 +120,12 @@ stand, what is next, pointers such as task ids and document names), `context_get
 and the list of slots with when each was written) and `context_switch` (move when the
 question has changed kind and the window has not). Notes are in `agent.db`.
 
-Not yet: the last stretch of conversation kept per slot (the thread and its summary are
-still one), slots the owner can define, and pointers gathered automatically (the thread's
-history, what the assistant looked up).
+When a long conversation is summarised (compaction), the summary is written under a heading
+per context, with what holds across all of them first, so each context can be picked up
+from it.
+
+Not yet: recent messages kept per slot (the recent part of the thread is still one
+stream), slots the owner can define, and pointers gathered automatically.
 
 ## Knowing how things stand (built)
 

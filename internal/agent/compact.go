@@ -39,7 +39,9 @@ Write what the agent needs in order to continue as if it remembered:
 - Facts found along the way that still matter, with the specifics (names, ids, numbers, addresses).
 - What is unfinished or was promised.
 
-Leave out pleasantries and anything that was superseded. Do not address anyone and do not add advice. Plain text, with short headings if it helps, at most about 1,200 words.`
+The owner moves between kinds of work, and the conversation marks each move with a <context name="…"> block (messaging, planning, writing, notes, engineering, reading, general). When the conversation has more than one, write the summary under one short heading per context, in the order of the most recent last, so the agent can pick up any of them: what stands in that context, what is next there, and the ids and names to pick it up from. What holds across all of them (who the owner is working with, standing preferences, what they asked you to keep doing) goes first, under no context.
+
+Leave out pleasantries and anything that was superseded. Do not address anyone and do not add advice. Plain text, with short headings if it helps, at most about 1,500 words.`
 
 // historyFor is what the model is sent of a thread's stored messages: the summary of the
 // part that has been compacted away, if any, then the messages after it.
