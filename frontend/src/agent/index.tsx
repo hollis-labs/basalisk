@@ -16,6 +16,7 @@ import { noteContext, start } from "./session"
 import { startTasks } from "./tasks"
 import "./contexts"
 import "./tools"
+import "./look"
 
 registerPanel({
   id: "agent",

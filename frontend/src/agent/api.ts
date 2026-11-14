@@ -148,8 +148,19 @@ export const agentApi = {
     thread?: string
   }) => request<{ run_id: string }>("agent/turns", "POST", body),
   cancel: (run: string) => request<void>(`agent/runs/${run}/cancel`, "POST", {}),
-  toolResult: (run: string, call_id: string, content: string, is_error: boolean) =>
-    request<void>(`agent/runs/${run}/tool-results`, "POST", { call_id, content, is_error }),
+  toolResult: (
+    run: string,
+    call_id: string,
+    content: string,
+    is_error: boolean,
+    images?: { media_type: string; data: string }[],
+  ) =>
+    request<void>(`agent/runs/${run}/tool-results`, "POST", {
+      call_id,
+      content,
+      is_error,
+      ...(images?.length ? { images } : {}),
+    }),
   /** "Still running this call." Rejects (409) once the run has stopped waiting for it. */
   toolAlive: (run: string, call_id: string) =>
     request<void>(`agent/runs/${run}/tool-alive`, "POST", { call_id }),

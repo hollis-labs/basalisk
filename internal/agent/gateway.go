@@ -78,10 +78,19 @@ type wireBlock struct {
 	Name      string          `json:"name,omitempty"`
 	Input     *map[string]any `json:"input,omitempty"`
 	ToolUseID string          `json:"tool_use_id,omitempty"`
-	Content   string          `json:"content,omitempty"`
-	IsError   bool            `json:"is_error,omitempty"`
+	// Content is a tool result: its text, or its text and pictures as blocks (see images.go).
+	Content any         `json:"content,omitempty"`
+	Source  *wireSource `json:"source,omitempty"`
+	IsError bool        `json:"is_error,omitempty"`
 	// CacheControl marks the end of a prefix the provider may cache (see cached).
 	CacheControl *cacheControl `json:"cache_control,omitempty"`
+}
+
+// wireSource is a picture in an image block.
+type wireSource struct {
+	Type      string `json:"type"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 }
 
 type cacheControl struct {
@@ -104,6 +113,7 @@ type wireTool struct {
 
 func wireMessages(in []llmtypes.ChatMessage) []wireMessage {
 	out := make([]wireMessage, 0, len(in))
+	seen := shownImages(in)
 	for _, m := range in {
 		w := wireMessage{Role: m.Role}
 		if len(m.ContentBlocks) == 0 {
@@ -125,7 +135,7 @@ func wireMessages(in []llmtypes.ChatMessage) []wireMessage {
 				}
 				w.Content = append(w.Content, wireBlock{Type: "tool_use", ID: b.ID, Name: b.Name, Input: &input})
 			case "tool_result":
-				w.Content = append(w.Content, wireBlock{Type: "tool_result", ToolUseID: b.ToolUseID, Content: b.Content, IsError: b.IsError})
+				w.Content = append(w.Content, wireBlock{Type: "tool_result", ToolUseID: b.ToolUseID, Content: resultContent(b.Content, seen[b.ToolUseID]), IsError: b.IsError})
 			}
 			// Thinking blocks are not kept: this client does not ask for extended thinking.
 		}

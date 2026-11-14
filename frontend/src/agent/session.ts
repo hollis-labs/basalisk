@@ -85,7 +85,9 @@ async function execute(
   try {
     const out = await runTool(name, input, d, control.signal)
     if (!control.signal.aborted)
-      await agentApi.toolResult(run, call, out.content, out.isError).catch(() => undefined)
+      await agentApi
+        .toolResult(run, call, out.content, out.isError, out.images)
+        .catch(() => undefined)
   } finally {
     window.clearInterval(beat)
     inFlight.delete(call)

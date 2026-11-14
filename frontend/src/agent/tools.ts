@@ -37,6 +37,23 @@ export interface AgentTool extends ToolSpec {
   ) => unknown | Promise<unknown>
 }
 
+/** A picture a tool hands back with its text (the model sees it). */
+export interface ToolImage {
+  media_type: "image/jpeg" | "image/png" | "image/webp"
+  /** base64, without a data: prefix. */
+  data: string
+}
+
+const PICTURES = Symbol("pictures")
+interface Pictured {
+  [PICTURES]: ToolImage[]
+  text: unknown
+}
+
+/** What a tool returns to show the model something: what it says, and the pictures. */
+export const withImages = (text: unknown, images: ToolImage[]): unknown =>
+  ({ [PICTURES]: images, text }) satisfies Pictured
+
 const tools = new Map<string, AgentTool>()
 
 /** Offer the agent a tool. Call at import time, like registerCommands. */
@@ -70,14 +87,20 @@ export async function runTool(
   input: unknown,
   desk: DeskAPI,
   signal: AbortSignal = new AbortController().signal,
-): Promise<{ content: string; isError: boolean }> {
+): Promise<{ content: string; isError: boolean; images?: ToolImage[] }> {
   const tool = tools.get(name)
   if (!tool) return { content: `The desktop has no tool named "${name}".`, isError: true }
   try {
-    const out = await tool.run((input ?? {}) as Record<string, unknown>, desk, { signal })
+    let out = await tool.run((input ?? {}) as Record<string, unknown>, desk, { signal })
+    let images: ToolImage[] | undefined
+    if (out && typeof out === "object" && PICTURES in out) {
+      images = (out as Pictured)[PICTURES]
+      out = (out as Pictured).text
+    }
     return {
       content: typeof out === "string" ? out : JSON.stringify(out ?? "done"),
       isError: false,
+      images,
     }
   } catch (err) {
     return { content: err instanceof Error ? err.message : String(err), isError: true }

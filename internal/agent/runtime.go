@@ -474,10 +474,13 @@ func (rt *Runtime) find(owner, id string) *run {
 }
 
 // ToolResult is the page's answer to a tool call it was asked to run.
-func (rt *Runtime) ToolResult(owner, id, callID, content string, isError bool) error {
+func (rt *Runtime) ToolResult(owner, id, callID, content string, isError bool, images ...Image) error {
 	r := rt.find(owner, id)
 	if r == nil {
 		return ErrNoRun
+	}
+	if err := validImages(images); err != nil {
+		return err
 	}
 	r.mu.Lock()
 	p := r.waiting[callID]
@@ -485,6 +488,9 @@ func (rt *Runtime) ToolResult(owner, id, callID, content string, isError bool) e
 	r.mu.Unlock()
 	if p == nil {
 		return errors.New("that tool call is not waiting for an answer")
+	}
+	if !isError {
+		keepImages(callID, images)
 	}
 	p.answer <- toolAnswer{content: content, isError: isError}
 	return nil

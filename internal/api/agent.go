@@ -296,11 +296,13 @@ func (a *API) agentToolResult(w http.ResponseWriter, r *http.Request) {
 		CallID  string `json:"call_id"`
 		Content string `json:"content"`
 		IsError bool   `json:"is_error"`
+		// Images are pictures the tool hands back with its text (a look at a window).
+		Images []agent.Image `json:"images"`
 	}
-	if !decodeLimit(w, r, &in, 2<<20) {
+	if !decodeLimit(w, r, &in, 6<<20) {
 		return
 	}
-	if err := a.agent.ToolResult(owner, id, in.CallID, in.Content, in.IsError); err != nil {
+	if err := a.agent.ToolResult(owner, id, in.CallID, in.Content, in.IsError, in.Images...); err != nil {
 		fail(w, 409, err.Error())
 		return
 	}

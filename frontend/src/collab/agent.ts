@@ -3,8 +3,10 @@
  * concrete), answers a mark, adds its own, and proposes a change as a new revision the owner
  * can compare with the one before. Reading is free; writing asks, as with any write tool.
  */
-import { registerAgentTools } from "../agent/tools"
+import { encodePicture } from "../agent/look"
+import { registerAgentTools, withImages } from "../agent/tools"
 import { type CollabKind, type CollabMark, collab } from "../api/collab"
+import { files } from "../api/files"
 import { registerContext } from "../desktop/registry"
 import { locate } from "./diff"
 
@@ -90,6 +92,79 @@ registerAgentTools([
         text: doc.kind === "draft" ? numbered(body) : body,
         marks: marks.map(brief),
       }
+    },
+  },
+  {
+    name: "collab_look",
+    level: "read",
+    description:
+      "See an image under review, the file itself at full detail: you are sent the picture, with the owner's open region marks drawn and numbered on it (the numbers follow the order of the marks that have a region). Give mark (a mark's id) to see only that region, with some of what is around it. For an artifact that is not a still image (a video, a PDF, a mock), a draft or a diagram, use desktop_look on its window instead.",
+    input_schema: object({ name: NAME, mark: str("A mark's id: see only its region, close up.") }, [
+      "name",
+    ]),
+    describe: (input) => `Look at ${String(input.name)}`,
+    run: async (input) => {
+      const { doc, marks } = await collab.get(String(input.name))
+      const m = doc.ref?.match(/^file:([^:]+):(.+)$/)
+      if (doc.kind !== "artifact" || !m || !/\.(png|jpe?g|gif|webp|avif)$/i.test(m[2]))
+        throw new Error("That is not a still image under review. Use desktop_look on its window.")
+      const res = await fetch(files.contentURL(m[1], m[2]), { credentials: "same-origin" })
+      if (!res.ok) throw new Error("The file could not be read.")
+      const img = await createImageBitmap(await res.blob())
+      const placed = marks.filter((x) => x.state === "open" && x.anchor.x !== undefined)
+      const one =
+        typeof input.mark === "string" ? placed.find((x) => x.id === input.mark) : undefined
+      if (input.mark && !one) throw new Error("There is no open mark with a region by that id.")
+      let crop = { x: 0, y: 0, w: img.width, h: img.height }
+      if (one) {
+        // The region with a margin of half its size (a pin: a fifth of the picture around it).
+        const a = one.anchor
+        const w = (a.w || 0.2) * img.width
+        const h = (a.h || 0.2) * img.height
+        const cx = ((a.x ?? 0) + (a.w ?? 0) / 2) * img.width
+        const cy = ((a.y ?? 0) + (a.h ?? 0) / 2) * img.height
+        const x0 = Math.max(0, cx - w)
+        const y0 = Math.max(0, cy - h)
+        crop = {
+          x: x0,
+          y: y0,
+          w: Math.min(img.width - x0, w * 2),
+          h: Math.min(img.height - y0, h * 2),
+        }
+      }
+      const pic = encodePicture(img, crop, (ctx, scale) => {
+        ctx.lineWidth = Math.max(2, 3 * scale)
+        ctx.font = `600 ${Math.max(13, Math.round(18 * scale))}px sans-serif`
+        placed.forEach((x, i) => {
+          const a = x.anchor
+          const px = ((a.x ?? 0) * img.width - crop.x) * scale
+          const py = ((a.y ?? 0) * img.height - crop.y) * scale
+          ctx.strokeStyle = x.by === "agent" ? "#b08cff" : "#ff3b6b"
+          ctx.fillStyle = ctx.strokeStyle
+          if (a.w) ctx.strokeRect(px, py, a.w * img.width * scale, (a.h ?? 0) * img.height * scale)
+          ctx.beginPath()
+          ctx.arc(px, py, Math.max(9, 12 * scale), 0, Math.PI * 2)
+          ctx.fill()
+          ctx.fillStyle = "#fff"
+          ctx.textAlign = "center"
+          ctx.textBaseline = "middle"
+          ctx.fillText(String(i + 1), px, py)
+        })
+      })
+      img.close()
+      return withImages(
+        {
+          showing: one ? `the region of mark ${one.id}, with what is around it` : "the whole image",
+          size: `${pic.width}×${pic.height}`,
+          numbered_marks: placed.map((x, i) => ({
+            number: i + 1,
+            id: x.id,
+            by: x.by,
+            note: x.text,
+          })),
+        },
+        [{ media_type: pic.media_type, data: pic.data }],
+      )
     },
   },
   {

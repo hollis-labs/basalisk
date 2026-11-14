@@ -61,7 +61,7 @@ Files; "Review: mark up the file this window shows" brings a PDF or a mock here.
 
 Files are served as the Files app serves them: an opaque origin, no script. A mock is shown
 as it renders without script. The agent reads an artifact's marks as regions (fractions of
-the width and height) and times; it does not yet see the pixels.
+the width and height) and times, and can look at the pixels (below).
 
 ## Diagram
 
@@ -87,3 +87,22 @@ marks the node or edge. ⌘S saves a revision.
 amber (label, kind, group or note), removed in dashed red at its old place, only moved as
 dotted. Diagrams are not functional; they are a picture of how things fit, kept current by
 saving a revision when the thing changes.
+
+## Looking: the agent sees what is pointed at
+
+A tool can hand the model pictures with its text (`withImages` in
+`frontend/src/agent/tools.ts`). The page posts them with the tool result; the server holds
+them in memory by call (`internal/agent/images.go`) and puts the pictures of the last three
+such results into the request as image blocks. An older look stays in the thread as its line
+of text, and pictures are not kept across a restart: the agent looks again.
+
+- `desktop_look` (runs at once, like any read): a picture of one window, the focused window
+  or the whole desktop, as the desktop app draws it (`GET /api/shell/snapshot`, cropped to
+  the window and scaled to at most 1568 pixels a side). Marks drawn in the Viewer or on a
+  diagram are in the picture. A Browser window's page is a separate native view and is not.
+  It needs the desktop app.
+- `collab_look`: an image under review from the file itself, with the open region marks
+  drawn and numbered, or one mark's region close up.
+
+What a look sends: the pixels of that window go to the model provider with the request, as
+the text of a window already does when the agent reads it.
