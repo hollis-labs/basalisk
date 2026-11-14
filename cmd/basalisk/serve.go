@@ -30,6 +30,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/terminal"
 	"github.com/hollis-labs/basalisk/internal/tetherlink"
 	"github.com/hollis-labs/basalisk/internal/webui"
+	"github.com/hollis-labs/basalisk/internal/work"
 )
 
 // basalisk is what the commands share: the started framework app. ready, when set, learns the
@@ -143,6 +144,25 @@ func (b *basalisk) serve(ctx context.Context) error {
 			slog.Warn("story is off: its store could not be opened", "path", storyPath, "err", err)
 		} else {
 			a.EnableStory(store, tell, keep)
+			go func() {
+				<-ctx.Done()
+				_ = store.Close()
+			}()
+		}
+	}
+	// Work: the engine under Content, Planner and Writer, kept in Caster ("work" and a
+	// namespace per workspace) through the same gateway, with a working copy beside the
+	// database (internal/work).
+	if scratchPath != "" {
+		var caster work.Caster
+		if link.Configured() {
+			caster = work.GatewayCaster{Link: link}
+		}
+		workPath := filepath.Join(filepath.Dir(scratchPath), "work.db")
+		if store, err := work.Open(ctx, workPath, caster); err != nil {
+			slog.Warn("work is off: its store could not be opened", "path", workPath, "err", err)
+		} else {
+			a.EnableWork(store)
 			go func() {
 				<-ctx.Done()
 				_ = store.Close()
