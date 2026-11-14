@@ -22,6 +22,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/agent"
 	"github.com/hollis-labs/basalisk/internal/api"
 	"github.com/hollis-labs/basalisk/internal/hostguard"
+	"github.com/hollis-labs/basalisk/internal/inbox"
 	"github.com/hollis-labs/basalisk/internal/macshell"
 	"github.com/hollis-labs/basalisk/internal/scratch"
 	"github.com/hollis-labs/basalisk/internal/settings"
@@ -117,6 +118,14 @@ func (b *basalisk) serve(ctx context.Context) error {
 				agentRT.AddTools(agent.ScratchTools(store, syncer.Kick, a.ScratchAuto))
 			}
 		}
+	}
+	// The inbox: the owner's Tether mail, through the same gateway (internal/inbox).
+	if link.Configured() {
+		addresses := cfg.InboxAddresses
+		if len(addresses) == 0 {
+			addresses = []string{story.RoundFrom}
+		}
+		a.EnableInbox(inbox.New(&inbox.Tether{Link: link, Addresses: addresses}))
 	}
 	// Story: scripts and storyboards, kept in Caster's "story" namespace through the same
 	// gateway, with a working copy beside the database (internal/story).

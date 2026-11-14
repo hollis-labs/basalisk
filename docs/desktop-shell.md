@@ -51,8 +51,10 @@ through the ordinary API, so nothing in the frontend depends on Wails:
 
 Signed in, the app is a desktop: a bar, an empty canvas, and windows (`frontend/src/desktop`).
 
-- **Bar.** Menu (Apps, Settings, layout, full screen, sign out), one chip per open window, the
-  layout toggle, full screen, the clock. In full screen on a display with a camera housing the
+- **Bar.** Menu (Apps, Settings, layout, kiosk, sign out), one chip per open window, the
+  inbox with its unread count (docs/inbox.md), the layout toggle, two shell toggles (own the
+  keyboard; kiosk, which blocks Cmd-Tab), the clock. The windows that are open are kept as they
+  change and reopened at the next start, after a restart, a shutdown or a crash. In full screen on a display with a camera housing the
   bar sits in the strip beside it and keeps its middle empty.
 - **Window manager** (`wm.ts`, a reducer and a pure layout function; no library). Two layouts:
   *tile* arranges windows as a master on the left and a stack on the right, with a draggable
@@ -184,7 +186,7 @@ Linux adapter would implement the same interface.
 | Keys | Effect |
 | --- | --- |
 | ⌃⌥⌘ Esc | Leave kiosk and stop key swallowing. Handled before anything else; cannot be swallowed. |
-| ⌃⌥⌘ F | Toggle kiosk. Works from any app (it brings Basalisk forward). |
+| ⌃⌥⌘ F | Toggle kiosk (Cmd-Tab blocked while on). Works from any app (it brings Basalisk forward). |
 | ⌃⌥⌘ M | Show or hide the menu bar while in kiosk. |
 | ⌃⌥⌘ J | Summon the agent from any app: Basalisk comes forward and the agent's panel opens with the keyboard in it. |
 | ⌃ ` | Drop the terminal down over any page, or put it away. |

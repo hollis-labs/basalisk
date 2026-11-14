@@ -19,6 +19,7 @@ import (
 
 	"github.com/hollis-labs/basalisk/internal/agent"
 	"github.com/hollis-labs/basalisk/internal/files"
+	"github.com/hollis-labs/basalisk/internal/inbox"
 	"github.com/hollis-labs/basalisk/internal/macshell"
 	"github.com/hollis-labs/basalisk/internal/scratch"
 	"github.com/hollis-labs/basalisk/internal/story"
@@ -55,6 +56,8 @@ type API struct {
 	story     *story.Store
 	storyTell story.Notifier
 	storyKeep story.Archiver
+	// inbox is the owner's messages and notifications (inbox.go); nil unless EnableInbox was called.
+	inbox *inbox.Inbox
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,
@@ -118,6 +121,7 @@ func (a *API) allRoutes() []route {
 	rts = append(rts, a.agentRoutes()...)   // agent.go
 	rts = append(rts, a.scratchRoutes()...) // scratch.go
 	rts = append(rts, a.storyRoutes()...)   // story.go
+	rts = append(rts, a.inboxRoutes()...)   // inbox.go
 	return append(rts, a.fragRoutes()...)   // frag.go
 }
 

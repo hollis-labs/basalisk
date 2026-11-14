@@ -30,6 +30,7 @@ import "../apps"
 import "./commands"
 import "../agent/contexts"
 import { SHELL_EVENT, type ShellEvent, type ShellStatus, shell } from "../api/shell"
+import { InboxBell } from "../apps/inbox/bell"
 import { initCite, setCiteOpener, useCard } from "../cite"
 import { CiteCardLayer } from "../cite/ui"
 import { useSession } from "../session"
@@ -540,6 +541,7 @@ export function Desktop() {
             >
               <Search aria-hidden="true" size={14} strokeWidth={1.6} />
             </button>
+            <InboxBell />
             <button
               type="button"
               className="desk-bar-button"

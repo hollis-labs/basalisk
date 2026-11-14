@@ -39,7 +39,10 @@ type Settings struct {
 	// TetherMCP is the command that starts a Tether MCP gateway on stdio (internal/tetherlink).
 	// Empty means references are not resolved.
 	TetherMCP []string
-	Delivery  api.DeliveryConfig
+	// InboxAddresses are the owner's Tether addresses, whose mail the inbox shows
+	// (internal/inbox). Empty means the operator address alone.
+	InboxAddresses []string
+	Delivery       api.DeliveryConfig
 	// Agent is where the agent's model is (internal/agent). The agent answers only when the
 	// gateway and the model are both set.
 	Agent agent.Config
@@ -127,6 +130,19 @@ func Parse(raw any) (Settings, error) {
 		}
 	default:
 		return s, fmt.Errorf("basalisk.tether_mcp must be a list of strings (a command and its arguments)")
+	}
+	switch list := block["inbox_addresses"].(type) {
+	case nil:
+	case []any:
+		for _, part := range list {
+			t, ok := part.(string)
+			if !ok || !strings.HasPrefix(t, "msg://") {
+				return s, fmt.Errorf("basalisk.inbox_addresses must be a list of Tether addresses (msg://…)")
+			}
+			s.InboxAddresses = append(s.InboxAddresses, t)
+		}
+	default:
+		return s, fmt.Errorf("basalisk.inbox_addresses must be a list of Tether addresses (msg://…)")
 	}
 	switch hosts := block["allowed_hosts"].(type) {
 	case nil:
