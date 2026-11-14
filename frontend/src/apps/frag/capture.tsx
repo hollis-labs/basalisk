@@ -6,7 +6,7 @@ import { CiteText } from "../../cite/ui"
 import { useDesk } from "../../desktop/context"
 import { type Moment, moment } from "./context"
 import { captureIdFor, type Draft, newDraft, parseTags, readDraft, writeDraft } from "./draft"
-import { NoteField, PreviewToggle, usePreview } from "./notefield"
+import { NoteField, PreviewToggle, tagsFieldProps, usePreview } from "./notefield"
 
 type Status = {
   tone: "idle" | "busy" | "ok" | "error"
@@ -226,6 +226,7 @@ export function Capture({ close }: { close: () => void }) {
             aria-label="Tags, separated by commas"
             placeholder="idea, later"
             onChange={(e) => edit({ tags: e.target.value })}
+            {...tagsFieldProps(draft.tags, (tags) => edit({ tags }))}
           />
         </label>
         <footer className="frag-foot">

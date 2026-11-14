@@ -1,12 +1,13 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from "react"
 import { ApiError } from "../../api/account"
+import { nativeBrowser } from "../../api/browser"
 import { type FragState, frag } from "../../api/frag"
 import { CiteText } from "../../cite/ui"
 import { useDesk } from "../../desktop/context"
 import { type ClipPage, mediaSummary } from "./clip"
 import { type Moment, moment } from "./context"
 import { parseTags } from "./draft"
-import { NoteField, PreviewToggle, usePreview } from "./notefield"
+import { NoteField, PreviewToggle, tagsFieldProps, usePreview } from "./notefield"
 
 /** The note, tags and title for one page, kept while the box is away (per address). */
 interface ClipDraft {
@@ -75,7 +76,16 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the box opens
   useEffect(() => {
+    // The keyboard starts in the note. The page being clipped is in a native view, which
+    // holds the keyboard until it is asked to let go; only then can a field here take it.
     noteRef.current?.focus()
+    const st = desk.wmState()
+    const focused = st.wins.find((w) => w.id === st.focus)
+    if (focused?.app === "browser" && nativeBrowser.available())
+      void nativeBrowser
+        .send({ op: "blur", id: focused.id })
+        .catch(() => undefined)
+        .finally(() => noteRef.current?.focus())
     void frag
       .state()
       .then(setState)
@@ -224,6 +234,7 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
             spellCheck={false}
             aria-label="Tags, separated by commas"
             onChange={(e) => edit({ tags: e.target.value })}
+            {...tagsFieldProps(d.tags, (tags) => edit({ tags }))}
           />
         </label>
         <footer className="frag-foot">

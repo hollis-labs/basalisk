@@ -99,3 +99,36 @@ export function PreviewToggle({ on, toggle }: { on: boolean; toggle: () => void 
     </button>
   )
 }
+
+let byPointer = false
+
+/**
+ * For a tags field: when the keyboard comes to it, the caret goes to the end, after a
+ * separator if there are tags already, so the next tag can be typed at once. (A browser
+ * selects the whole value on Tab, and typing would then replace the tags that are there.)
+ * Leaving the field takes a separator nothing was typed after away again.
+ */
+export function tagsFieldProps(value: string, set: (v: string) => void) {
+  return {
+    // A click puts the caret where it was clicked; only the keyboard's arrival moves it.
+    onPointerDown: () => {
+      byPointer = true
+    },
+    onFocus: (e: { currentTarget: HTMLInputElement }) => {
+      if (byPointer) {
+        byPointer = false
+        return
+      }
+      const el = e.currentTarget
+      const trimmed = value.replace(/[\s,]+$/, "")
+      const next = trimmed ? `${trimmed}, ` : ""
+      if (next !== value) set(next)
+      // After the value has been put in the field.
+      requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length))
+    },
+    onBlur: () => {
+      const trimmed = value.replace(/[\s,]+$/, "")
+      if (trimmed !== value) set(trimmed)
+    },
+  }
+}
