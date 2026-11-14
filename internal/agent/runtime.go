@@ -43,6 +43,8 @@ type Config struct {
 	// messages are summarised for the model before the next request (compact.go).
 	// Negative: never.
 	CompactAt int
+	// URN is the agent's own Tether address, for mail (tether.go). Empty: no mail tools.
+	URN string
 }
 
 // Ready says whether a model can be called at all.

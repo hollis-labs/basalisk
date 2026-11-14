@@ -13,6 +13,7 @@
 //	  agent_gateway_url: ""      # the agent's model gateway: an Anthropic-compatible base, requests go to <url>/v1/messages
 //	  agent_key_file: ""         # file holding the gateway's bearer key (default ~/.config/basalisk/agent-key)
 //	  agent_model: ""            # the model or gateway alias the agent uses
+//	  agent_urn: ""              # the agent's own Tether address (msg://agent/…), for mail; empty: no mail tools
 //
 // Delivery stays off while all five delivery keys are empty. Setting some but not all, or an
 // invalid value, is refused when the worker is built (api.Service.NewFragmentWorker).
@@ -67,7 +68,7 @@ func Parse(raw any) (Settings, error) {
 		return strings.TrimSpace(t), nil
 	}
 	known := map[string]bool{"tether_mcp": true, "allowed_hosts": true, "fe_integration_id": true, "public_origin": true, "tether_issuer_url": true, "tether_subject": true, "tether_parent_ref": true,
-		"agent_gateway_url": true, "agent_key_file": true, "agent_model": true}
+		"agent_gateway_url": true, "agent_key_file": true, "agent_model": true, "agent_urn": true}
 	var unknown []string
 	for k := range block {
 		if !known[k] {
@@ -107,6 +108,12 @@ func Parse(raw any) (Settings, error) {
 	}
 	if s.Agent.Model, err = str("agent_model"); err != nil {
 		return s, err
+	}
+	if s.Agent.URN, err = str("agent_urn"); err != nil {
+		return s, err
+	}
+	if s.Agent.URN != "" && !strings.HasPrefix(s.Agent.URN, "msg://agent/") {
+		return s, fmt.Errorf("basalisk.agent_urn must be a Tether agent address (msg://agent/…)")
 	}
 	switch argv := block["tether_mcp"].(type) {
 	case nil:

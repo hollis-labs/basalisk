@@ -48,6 +48,57 @@ var tetherTools = map[string]string{
 	"torque_comment_add":       LevelWrite,
 	"torque_task_subtodo_add":  LevelWrite,
 	"torque_task_subtodo_done": LevelWrite,
+	// Tesseract: writing what is known. tesseract_skills is the store's own guide to the
+	// shape of a write, which its tools tell the model to read first.
+	"tesseract_skills": LevelRead,
+	"memory_write":     LevelWrite,
+	"knowledge_write":  LevelWrite,
+	"workspace_write":  LevelWrite,
+}
+
+// mailTools are the gateway's mail tools the agent is given when it has an address of its
+// own (TetherOptions.URN). Whatever the model passes, mail is sent from that address and
+// read from that address's box: the agent cannot write as the owner or anyone else, and
+// cannot read another's mail.
+var mailTools = map[string]string{
+	"tether_registry_search":   LevelRead, // who there is to write to
+	"tether_message_list":      LevelRead,
+	"tether_message_get":       LevelRead,
+	"tether_message_mark_read": LevelAct,
+	"tether_message_notify":    LevelWrite, // send, and wake the recipient if it is running
+}
+
+// TetherOptions is what the gateway tools need to know about this agent.
+type TetherOptions struct {
+	// URN is the agent's own Tether address ("msg://agent/…"). Empty: no mail tools.
+	URN string
+}
+
+// authorID is who the agent's writes to Tesseract are recorded as made by.
+const authorID = "basalisk"
+
+// guard adjusts a call's arguments to what this agent may do, or refuses it.
+func (o TetherOptions) guard(tool string, args map[string]any) error {
+	switch tool {
+	case "memory_write", "knowledge_write", "workspace_write":
+		// The owner's own scope is theirs to write; the agent writes as itself, elsewhere.
+		ns, _ := args["namespace"].(string)
+		ns = strings.ToLower(strings.TrimSpace(ns))
+		if ns == "system" || strings.HasPrefix(ns, "system/") || ns == "user" || strings.HasPrefix(ns, "user/") {
+			return fmt.Errorf("the agent does not write to %q: that scope is the owner's own. Use a project or app namespace (for example app/basalisk/…), or tell the owner what to record", ns)
+		}
+		if actor, _ := args["actor"].(string); strings.EqualFold(actor, "user") {
+			delete(args, "actor")
+		}
+		args["author_agent_id"] = authorID
+	case "tether_message_notify":
+		args["from"] = o.URN
+	case "tether_message_list":
+		args["to"] = o.URN
+	case "tether_message_get", "tether_message_mark_read":
+		args["as"] = o.URN
+	}
+	return nil
 }
 
 // tetherLink is what the source needs of the gateway client.
@@ -60,7 +111,11 @@ type tetherLink interface {
 // TetherTools is the source of the gateway's tools. The first run after a start asks the
 // gateway what it has (in the background: starting the gateway can take seconds, and a
 // message does not wait for it); later runs use that list, refreshed now and then.
-func TetherTools(link tetherLink) ToolSource {
+func TetherTools(link tetherLink, opts ...TetherOptions) ToolSource {
+	var opt TetherOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
 	var (
 		mu       sync.Mutex
 		tools    []ServerTool
@@ -88,6 +143,9 @@ func TetherTools(link tetherLink) ToolSource {
 		full := map[string]tetherlink.ToolInfo{}
 		for _, info := range list {
 			level, ok := tetherTools[info.Name]
+			if !ok && opt.URN != "" {
+				level, ok = mailTools[info.Name]
+			}
 			if !ok {
 				continue
 			}
@@ -106,6 +164,12 @@ func TetherTools(link tetherLink) ToolSource {
 			next = append(next, ServerTool{
 				Spec: spec,
 				Run: func(ctx context.Context, input map[string]any) (string, error) {
+					if input == nil {
+						input = map[string]any{}
+					}
+					if err := opt.guard(name, input); err != nil {
+						return "", err
+					}
 					out, err := link.Call(ctx, name, input)
 					if err != nil && brief {
 						// Most likely the arguments were guessed.

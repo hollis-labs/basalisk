@@ -92,6 +92,16 @@ ones named in that file, each with the level the file gives it:
 - Torque, read: projects, epics, sprints, tasks, comments and subtodos (list and get).
 - Torque, asks first: `torque_task_create`, `torque_task_update`, `torque_task_transition`,
   `torque_comment_add`, `torque_task_subtodo_add`, `torque_task_subtodo_done`.
+- Tesseract, asks first: `memory_write`, `knowledge_write`, `workspace_write`, with
+  `tesseract_skills` (read) for the shape of a write. The agent writes as itself
+  (`author_agent_id` is always `basalisk`) and never in your own scope: a write to a
+  `user/…` or `system` namespace is refused before it reaches the gateway.
+- Mail, when the agent has an address of its own (`agent_urn`): `tether_registry_search`,
+  `tether_message_list` and `tether_message_get` (read), `tether_message_mark_read`, and
+  `tether_message_notify` to send (asks first). Whatever the model passes, mail is sent
+  from the agent's own address and read from its own box: it cannot write as you or as
+  anyone else, and cannot read another's mail. It reads mail only when asked; nothing
+  wakes it.
 
 A tool that is not in that list cannot be called, whatever the gateway offers. The list is
 read from the gateway in the background when Basalisk starts (starting the gateway can
@@ -357,6 +367,7 @@ In the `basalisk` block of the config (or the environment, for a development run
 | `agent_gateway_url` | `BASALISK_AGENT_GATEWAY` | Anthropic-compatible base URL; requests go to `<url>/v1/messages` |
 | `agent_model` | `BASALISK_AGENT_MODEL` | the model, or the gateway's alias for one |
 | `agent_key_file` | `BASALISK_AGENT_KEY_FILE` | file with the bearer key; default `~/.config/basalisk/agent-key` |
+| `agent_urn` | | the agent's own Tether address (`msg://agent/…`), for mail; empty: no mail tools |
 
 The key is read from its file at each request, so a rotated key needs no restart; it is
 never logged. Without a gateway and a model the panel opens and says what to set.
@@ -365,7 +376,7 @@ never logged. Without a gateway and a model the panel opens and says what to set
 
 - The first use of a Torque or Tesseract tool in a conversation takes one extra step (the
   model reads its definition first).
-- No Tesseract writes and no mail yet.
+- The agent does not check its mail by itself. A trigger can ask it to (see Triggers).
 - Tool calls run one after another.
 - If the page is reloaded while it is running a tool call, the call is given up on after
   45 seconds and the model is told the desktop did not answer.
