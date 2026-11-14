@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useState } from "react"
 import { request } from "../api/account"
+import { openFileRef, placeOf, usePlaces } from "../cite/files"
 import { type AgentState, agentApi } from "./api"
 import { toolSpecs } from "./tools"
 
@@ -105,22 +106,6 @@ export function AgentSettings() {
                 </span>
               )}
             </dd>
-            {state.rules_problem && (
-              <>
-                <dt>Router rules</dt>
-                <dd className="text-danger">
-                  Not in use: {state.rules_problem} (see “The router” in docs/agent.md)
-                </dd>
-              </>
-            )}
-            {state.reflexes_problem && (
-              <>
-                <dt>Reflexes</dt>
-                <dd className="text-danger">
-                  Not in use: {state.reflexes_problem} (see “Reflexes” in docs/agent.md)
-                </dd>
-              </>
-            )}
           </dl>
         )}
       </section>
@@ -154,6 +139,8 @@ export function AgentSettings() {
           </dl>
         )}
       </section>
+
+      <Automation />
 
       {/* The list is long: it takes the page's full width. */}
       <section className="panel shell-section" style={{ gridColumn: "1 / -1" }}>
@@ -198,5 +185,159 @@ function Row({
       <dt title={title}>{label}</dt>
       <dd>{children}</dd>
     </>
+  )
+}
+
+// ---- What runs without the model (GET /api/agent/automation) ----
+
+interface Automation {
+  rules: { id: string; target: string; help?: string }[]
+  rules_file?: string
+  rules_problem?: string
+  reflexes: {
+    name: string
+    about?: string
+    action: string
+    enabled: boolean
+    cooldown_seconds?: number
+    fired_count?: number
+    last_fired_at?: string
+  }[]
+  reflexes_file?: string
+  reflexes_problem?: string
+}
+
+const TARGETS: Record<string, string> = {
+  say: "answers with a fixed reply",
+  help: "lists these",
+  model: "hands the message to the model",
+}
+const targetText = (t: string) =>
+  t.startsWith("tool:") ? `calls ${t.slice(5).replaceAll("_", " ")}` : (TARGETS[t] ?? t)
+
+const ACTIONS: Record<string, string> = {
+  inject_reminder: "reminds the agent",
+  halt_session: "stops the run",
+}
+
+function when(iso?: string) {
+  if (!iso) return ""
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+}
+
+function Automation() {
+  const [a, setA] = useState<Automation | null>(null)
+  const [error, setError] = useState("")
+  useEffect(() => {
+    request<Automation>("agent/automation")
+      .then(setA)
+      .catch((e) => setError(e instanceof Error ? e.message : "Could not read them."))
+  }, [])
+  return (
+    <section className="panel shell-section" style={{ gridColumn: "1 / -1" }}>
+      <h2>Without the model</h2>
+      <p className="text-fg-muted">
+        What answers or acts before any model is asked. Read only here; the files below are where
+        your own go (see “The router” and “Reflexes” in docs/agent.md).
+      </p>
+      {error && <p className="text-danger">{error}</p>}
+      {!a && !error && <p className="text-fg-muted">Reading them…</p>}
+      {a && (
+        <>
+          <div className="agent-settings-group">
+            <h3>Router rules</h3>
+            <p className="text-fg-muted">Tried in this order; the first that matches runs.</p>
+            {a.rules.length === 0 ? (
+              <p>No rules are in use.</p>
+            ) : (
+              <dl className="shell-facts">
+                {a.rules.map((r) => (
+                  <Row key={r.id} label={r.id}>
+                    {r.help ? (
+                      <span>{r.help}</span>
+                    ) : (
+                      <span className="text-fg-muted">{targetText(r.target)}</span>
+                    )}
+                  </Row>
+                ))}
+              </dl>
+            )}
+            <OwnFile path={a.rules_file} problem={a.rules_problem} />
+          </div>
+          <div className="agent-settings-group">
+            <h3>Reflexes</h3>
+            {a.reflexes.length === 0 ? (
+              <p>No reflexes are in use.</p>
+            ) : (
+              <dl className="shell-facts">
+                {a.reflexes.map((r) => (
+                  <Row key={r.name} label={r.name}>
+                    <span>
+                      <strong>{r.enabled ? "On" : "Off"}</strong>
+                      {r.about ? ` · ${r.about}` : ""}
+                      <span className="text-fg-muted">
+                        {` · ${ACTIONS[r.action] ?? r.action}`}
+                        {r.fired_count
+                          ? ` · fired ${r.fired_count} time${r.fired_count === 1 ? "" : "s"}, last ${when(r.last_fired_at)}`
+                          : " · has not fired"}
+                        {r.cooldown_seconds
+                          ? ` · at most once in ${cooldown(r.cooldown_seconds)}`
+                          : ""}
+                      </span>
+                    </span>
+                  </Row>
+                ))}
+              </dl>
+            )}
+            <OwnFile path={a.reflexes_file} problem={a.reflexes_problem} />
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+function cooldown(s: number) {
+  if (s < 120) return `${s} seconds`
+  if (s < 7200) return `${Math.round(s / 60)} minutes`
+  return `${Math.round(s / 3600)} hours`
+}
+
+/** Where the owner's own go: a link that opens it in its app when a place holds it. */
+function OwnFile({ path, problem }: { path?: string; problem?: string }) {
+  const places = usePlaces()
+  if (!path && !problem) return null
+  const ref = path ? placeOf(path, places) : null
+  return (
+    <dl className="shell-facts">
+      {path && (
+        <>
+          <dt>Your own</dt>
+          <dd>
+            {ref ? (
+              <button
+                type="button"
+                className="cite-file"
+                title={`Open ${path}`}
+                onClick={(e) => void openFileRef(ref, e.currentTarget)}
+              >
+                <code>{path}</code>
+              </button>
+            ) : (
+              <code>{path}</code>
+            )}
+          </dd>
+        </>
+      )}
+      {problem && (
+        <>
+          <dt>Not in use</dt>
+          <dd className="text-danger">{problem}</dd>
+        </>
+      )}
+    </dl>
   )
 }
