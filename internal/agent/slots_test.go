@@ -65,3 +65,50 @@ func TestSlots(t *testing.T) {
 		t.Fatal("a note longer than a page is refused")
 	}
 }
+
+func TestProjects(t *testing.T) {
+	ctx := context.Background()
+	store, err := OpenStore(ctx, filepath.Join(t.TempDir(), "agent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := &Runtime{store: store}
+	slotState.Lock()
+	slotState.current, slotState.project, slotState.told = "general", "", map[string]string{}
+	slotState.Unlock()
+	if err := store.SaveProject(ctx, Project{Name: "Engineering"}); err == nil {
+		t.Fatal("a project may not take the name of a kind of work")
+	}
+	if err := store.SaveProject(ctx, Project{Name: "basalisk", About: "the desktop", Match: []string{"apps/basalisk", "x"}, Torque: "PRJ-1", Instructions: "Small commits."}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetSlotInstructions(ctx, "engineering", "Tests before push."); err != nil {
+		t.Fatal(err)
+	}
+	page, _ := json.Marshal(map[string]any{"focused": map[string]any{"app": "terminal", "title": "zsh", "cwd": "/work/src/apps/Basalisk-wt"}})
+	block := rt.slotBlock(ctx, "t9", page, map[string]ToolSpec{})
+	for _, want := range []string{`<context name="engineering">`, "Tests before push.", "Project: basalisk (the desktop)", "Torque project PRJ-1", "Small commits.", "no note for this project yet"} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("missing %q in:\n%s", want, block)
+		}
+	}
+	tools := map[string]ServerTool{}
+	for _, tl := range rt.SlotTools()(ctx) {
+		tools[tl.Spec.Name] = tl
+	}
+	if _, err := tools["context_note"].Run(ctx, map[string]any{"project": "basalisk", "note": "Step 5 merged; step 6 next."}); err != nil {
+		t.Fatal(err)
+	}
+	// Another window with no project of its own: the project holds, and its new note is told.
+	other, _ := json.Marshal(map[string]any{"focused": map[string]any{"app": "notes", "title": "Ideas"}})
+	block = rt.slotBlock(ctx, "t9", other, map[string]ToolSpec{})
+	if !strings.Contains(block, `<context name="notes">`) || !strings.Contains(block, "Step 5 merged") {
+		t.Fatalf("the project is carried across a change of kind:\n%s", block)
+	}
+	if err := rt.PickProject(ctx, "none"); err != nil || rt.ProjectNow() != "" {
+		t.Fatal("none clears the project")
+	}
+	if len(store.Projects(ctx)[0].Match) != 1 {
+		t.Fatal("a match word shorter than three letters is dropped")
+	}
+}

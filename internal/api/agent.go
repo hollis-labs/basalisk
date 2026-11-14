@@ -37,6 +37,9 @@ func (a *API) agentRoutes() []route {
 		route{"POST", "/api/agent/events", w, a.agentEvent},
 		route{"GET", "/api/agent/contexts", r, a.agentContexts},
 		route{"POST", "/api/agent/contexts", w, a.agentPickContext},
+		route{"PUT", "/api/agent/contexts/{name}/instructions", w, a.agentContextInstructions},
+		route{"PUT", "/api/agent/projects/{name}", w, a.agentSaveProject},
+		route{"DELETE", "/api/agent/projects/{name}", w, a.agentDropProject},
 		route{"GET", "/api/agent/tasks", r, a.agentTasks},
 		route{"POST", "/api/agent/tasks", w, a.agentTaskStart},
 		route{"DELETE", "/api/agent/tasks/{id}", w, a.agentTaskClose},
@@ -400,7 +403,7 @@ func (a *API) agentContexts(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "Please sign in.")
 		return
 	}
-	out := map[string]any{"contexts": a.agent.SlotList(r.Context())}
+	out := map[string]any{"contexts": a.agent.SlotList(r.Context()), "projects": a.agent.Store().Projects(r.Context()), "project": a.agent.ProjectNow()}
 	if name := r.URL.Query().Get("note"); name != "" {
 		note, when := a.agent.SlotNote(r.Context(), name)
 		out["note"], out["written"] = note, when
@@ -415,14 +418,73 @@ func (a *API) agentPickContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name string `json:"name"`
+		Name    string  `json:"name"`
+		Project *string `json:"project"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	if err := a.agent.PickSlot(in.Name); err != nil {
+	if in.Name != "" {
+		if err := a.agent.PickSlot(in.Name); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+	}
+	if in.Project != nil {
+		if err := a.agent.PickProject(r.Context(), *in.Project); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+	}
+	reply(w, 200, map[string]any{"contexts": a.agent.SlotList(r.Context()), "projects": a.agent.Store().Projects(r.Context()), "project": a.agent.ProjectNow()})
+}
+
+func (a *API) agentContextInstructions(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var in struct {
+		Text string `json:"text"`
+	}
+	if !decodeLimit(w, r, &in, 16<<10) {
+		return
+	}
+	if err := a.agent.Store().SetSlotInstructions(r.Context(), r.PathValue("name"), in.Text); err != nil {
 		fail(w, 400, err.Error())
 		return
 	}
-	reply(w, 200, map[string]any{"contexts": a.agent.SlotList(r.Context())})
+	w.WriteHeader(204)
+}
+
+func (a *API) agentSaveProject(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var p agent.Project
+	if !decodeLimit(w, r, &p, 32<<10) {
+		return
+	}
+	p.Name = r.PathValue("name")
+	if err := a.agent.Store().SaveProject(r.Context(), p); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (a *API) agentDropProject(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	if a.agent.ProjectNow() == r.PathValue("name") {
+		_ = a.agent.PickProject(r.Context(), "")
+	}
+	if err := a.agent.Store().DropProject(r.Context(), r.PathValue("name")); err != nil {
+		fail(w, 500, "The project could not be removed.")
+		return
+	}
+	w.WriteHeader(204)
 }

@@ -15,7 +15,7 @@ import "./assist.css"
 interface Entry {
   id: number
   at: string
-  kind: "ack" | "route" | "status_ask" | "reply" | "send" | "settle"
+  kind: "ack" | "route" | "status_ask" | "reply" | "send" | "settle" | "consult" | "command"
   summary: string
   with?: string
   ref?: string
@@ -30,6 +30,8 @@ const KIND: Record<string, string> = {
   send: "sent",
   settle: "settled",
   route: "passed on",
+  consult: "asked",
+  command: "command",
 }
 
 interface MailRule {
@@ -96,8 +98,62 @@ function Rules() {
   )
 }
 
+interface NamedCommand {
+  name: string
+  about: string
+  where: string
+  changes?: boolean
+  run: "outright" | "ask"
+  params?: Record<string, { about: string }>
+  guards?: { about: string }[]
+}
+
+/** The owner's named commands: what Bas may run at a command line, and which run without asking. */
+function Commands() {
+  const [data, setData] = useState<{
+    commands: NamedCommand[]
+    hosts: string[]
+    file: string
+    problem?: string
+  } | null>(null)
+  useEffect(() => {
+    void request<{ commands: NamedCommand[]; hosts: string[]; file: string; problem?: string }>(
+      "assist/commands",
+    )
+      .then(setData)
+      .catch(() => setData(null))
+  }, [])
+  if (!data) return <p className="assist-none">This Basalisk runs no commands (it has no shell).</p>
+  return (
+    <div className="assist-rules">
+      <p className="assist-none">
+        These are the command lines Bas may run for you, by name. One marked outright runs without
+        asking; one that changes something runs outright only if it says so and its checks pass; the
+        rest ask you each time. Anything not listed, Bas types ready in a terminal or hands to
+        @chief. Add, change or switch off commands in <code>{data.file}</code>. Hosts:{" "}
+        {data.hosts.join(", ") || "none in your ssh config"}.
+      </p>
+      {data.problem && <p className="assist-error">{data.problem}</p>}
+      {data.commands.map((c) => (
+        <div key={c.name} className="assist-row assist-rule" title={c.about}>
+          <span>
+            {c.name}
+            {c.params ? ` (${Object.keys(c.params).join(", ")})` : ""}
+          </span>
+          <i>
+            {c.where === "any" ? "here or a host" : c.where === "host" ? "a host" : "here"}
+            {c.changes ? " · changes" : ""}
+            {c.guards?.length ? " · checked first" : ""}
+          </i>
+          <em>{c.run === "outright" ? "outright" : "asks"}</em>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function AssistWindow() {
-  const [tab, setTab] = useState<"done" | "rules">("done")
+  const [tab, setTab] = useState<"done" | "rules" | "commands">("done")
   const [list, setList] = useState<Entry[]>([])
   const [open, setOpen] = useState(0)
   const [error, setError] = useState("")
@@ -135,6 +191,9 @@ function AssistWindow() {
           <button type="button" data-on={tab === "rules"} onClick={() => setTab("rules")}>
             Mail rules
           </button>
+          <button type="button" data-on={tab === "commands"} onClick={() => setTab("commands")}>
+            Commands
+          </button>
         </div>
         <span>
           {tab === "done"
@@ -146,6 +205,7 @@ function AssistWindow() {
         </button>
       </header>
       {tab === "rules" && <Rules />}
+      {tab === "commands" && <Commands />}
       {error && <p className="assist-error">{error}</p>}
       {tab === "done" && runs.length > 0 && (
         <div className="assist-runs">

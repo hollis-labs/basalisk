@@ -1,0 +1,138 @@
+/* Contexts: kinds of work and projects (index.tsx). */
+.ctx {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  font-family: var(--desk-font);
+  font-size: 13px;
+  color: var(--desk-fg);
+  background: var(--desk-surface);
+}
+.ctx nav {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 6px;
+  overflow-y: auto;
+  border-right: 1px solid var(--desk-border);
+}
+.ctx nav h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 6px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--desk-fg-soft);
+}
+.ctx nav > button {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--desk-fg-soft);
+}
+.ctx nav > button:hover,
+.ctx nav > button[data-on="true"] {
+  background: var(--desk-accent-soft);
+  color: var(--desk-fg);
+}
+.ctx nav em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--desk-accent);
+}
+.ctx nav p,
+.ctx-intro,
+.ctx-about {
+  margin: 4px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--desk-fg-soft);
+}
+.ctx section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+.ctx h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.ctx-intro,
+.ctx-about {
+  margin: 0;
+}
+.ctx label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--desk-fg-soft);
+}
+.ctx input,
+.ctx textarea {
+  padding: 5px 8px;
+  border: 1px solid var(--desk-border);
+  border-radius: 6px;
+  background: var(--desk-bg);
+  color: var(--desk-fg);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+.ctx-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.ctx-note {
+  padding: 8px 10px;
+  border-left: 2px solid var(--desk-border);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--desk-fg-soft);
+  user-select: text;
+}
+.ctx-note strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--desk-fg);
+}
+.ctx footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.ctx footer span {
+  flex: 1 1 auto;
+  font-size: 12px;
+  color: var(--desk-fg-soft);
+}
+.ctx-save {
+  padding: 5px 14px;
+  border-radius: 6px;
+  background: var(--desk-accent);
+  color: var(--desk-bg);
+  font-weight: 600;
+}
+.ctx-drop {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--desk-fg-soft);
+}

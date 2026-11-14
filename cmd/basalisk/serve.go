@@ -24,6 +24,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/api"
 	"github.com/hollis-labs/basalisk/internal/assist"
 	"github.com/hollis-labs/basalisk/internal/collab"
+	"github.com/hollis-labs/basalisk/internal/commands"
 	"github.com/hollis-labs/basalisk/internal/feeds"
 	"github.com/hollis-labs/basalisk/internal/hostguard"
 	"github.com/hollis-labs/basalisk/internal/inbox"
@@ -239,6 +240,13 @@ func (b *basalisk) serve(ctx context.Context) error {
 		// The agent reaches Torque and Tesseract through the same gateway (internal/agent/tether.go).
 		tools := agent.TetherTools(link, agent.TetherOptions{URN: agentRT.Config().URN})
 		agentRT.AddTools(tools)
+		// The owner's named commands (internal/commands), where this Basalisk has a shell at
+		// all: the desktop app, or a server started with the terminal on.
+		if home, err := os.UserHomeDir(); err == nil && (b.shell != nil || os.Getenv("BASALISK_TERMINAL") == "1") {
+			list := commands.List{File: filepath.Join(home, ".config", "basalisk", "commands.json"), Home: home}
+			agentRT.AddTools(agent.CommandTools(list, a.AssistLog()))
+			a.EnableCommands(list)
+		}
 		// Its own notes for each kind of work the owner moves between (internal/agent/slots.go).
 		agentRT.AddTools(agentRT.SlotTools())
 		// Ask the gateway for them now, not at the first message: a message sent before they

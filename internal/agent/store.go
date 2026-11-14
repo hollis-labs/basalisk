@@ -90,6 +90,19 @@ var migrations = []string{
 		note TEXT NOT NULL DEFAULT '',
 		updated_at TEXT NOT NULL
 	)`,
+	// The owner's projects (what they hop between), each with the assistant's note, and
+	// their standing instructions for a kind of work (projects.go).
+	`CREATE TABLE projects (
+		name TEXT PRIMARY KEY,
+		def TEXT NOT NULL,
+		note TEXT NOT NULL DEFAULT '',
+		note_at TEXT NOT NULL DEFAULT '',
+		position INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE TABLE slot_instructions (
+		name TEXT PRIMARY KEY,
+		text TEXT NOT NULL
+	)`,
 }
 
 // OpenStore opens (and creates or upgrades) the file at path.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -54,7 +55,7 @@ var Slots = []Slot{
 		Where: "the notes folder (notes_list); scratch; Fragments Engine (frag_recent); Tesseract"},
 	{Name: "engineering", About: "building and fixing: code, files, terminals, diagrams, artifacts under review",
 		Apps:  []string{"terminal", "files", "files-find", "diagram", "viewer", "shell"},
-		Tools: []string{"files_list", "files_read", "files_grep", "terminal_list", "terminal_read", "terminal_prepare", "terminal_run", "collab_read", "collab_look", "desktop_look", "torque_task_get", "consult", "chief_delegate"},
+		Tools: []string{"files_list", "files_read", "files_grep", "terminal_list", "terminal_read", "command_list", "command_run", "terminal_prepare", "terminal_run", "cerberus_resource_status", "cerberus_resource_logs", "collab_read", "collab_look", "desktop_look", "torque_task_get", "consult", "chief_delegate"},
 		Where: "the files and the shell in front; the diagram or artifact with its marks (collab_read); the task this is for (Torque)"},
 	{Name: "reading", About: "reading and watching: pages, saved articles, videos, feeds",
 		Apps:  []string{"browser", "browser-history", "reader", "watch"},
@@ -104,6 +105,7 @@ var slotState = struct {
 	pinned  bool              // set by context_switch: holds until the window in front selects another
 	told    map[string]string // thread -> slot and note stamp last put in a message
 	thread  string            // the owner's running thread, for thread_recall
+	project string            // the project the conversation is on, or ""
 }{current: "general", told: map[string]string{}}
 
 // slotBlock decides the slot for a message of the owner's and returns the <context> block
@@ -120,9 +122,20 @@ func slotNow(thread string, pageContext json.RawMessage) string {
 	return slotState.current
 }
 
+// projectNow moves the project to the one the window in front selects, when it selects one.
+func (rt *Runtime) projectNow(ctx context.Context, pageContext json.RawMessage) {
+	if by := projectFor(rt.store.Projects(ctx), pageContext); by != "" {
+		slotState.Lock()
+		slotState.project = by
+		slotState.Unlock()
+	}
+}
+
 func (rt *Runtime) slotBlock(ctx context.Context, thread string, pageContext json.RawMessage, have map[string]ToolSpec) string {
 	slotNow(thread, pageContext)
+	rt.projectNow(ctx, pageContext)
 	slotState.Lock()
+	onProject := slotState.project
 	name := slotState.current
 	// Where this thread was before, to ask for a note on leaving it.
 	left, _, _ := strings.Cut(slotState.told[thread], "@")
@@ -132,7 +145,18 @@ func (rt *Runtime) slotBlock(ctx context.Context, thread string, pageContext jso
 		return ""
 	}
 	note, when := rt.store.slotNote(ctx, name)
-	stamp := name + "@" + when
+	rules := rt.store.SlotInstructions(ctx, name)
+	var project *Project
+	for _, p := range rt.store.Projects(ctx) {
+		if p.Name == onProject {
+			project = &p
+			break
+		}
+	}
+	stamp := name + "@" + when + "#" + fmt.Sprint(len(rules))
+	if project != nil {
+		stamp += "/" + project.Name + "@" + project.NoteAt + "#" + fmt.Sprint(len(project.Instructions))
+	}
 	slotState.Lock()
 	same := slotState.told[thread] == stamp
 	slotState.told[thread] = stamp
@@ -158,6 +182,12 @@ func (rt *Runtime) slotBlock(ctx context.Context, thread string, pageContext jso
 	}
 	if slot.Where != "" {
 		b.WriteString("Where the rest is: " + slot.Where + ".\n")
+	}
+	if rules != "" {
+		b.WriteString("The owner's standing instructions for this kind of work:\n" + rules + "\n")
+	}
+	if project != nil {
+		b.WriteString(projectLines(*project))
 	}
 	if left != "" && left != name && left != "general" {
 		fmt.Fprintf(&b, "You have just come from the %s context. If something there is worth carrying and your note for it does not have it yet, write it now with context_note (context: %q) before you go on; say nothing of this to the owner.\n", left, left)
@@ -192,15 +222,22 @@ func (rt *Runtime) SlotTools() ToolSource {
 		{
 			Spec: ToolSpec{Name: "context_note", Level: LevelAct,
 				Description: "Write your note for a context: what you want to know the next time the owner is back in this kind of work. Where things stand, what was decided, what is next, and pointers to the rest (task ids, document names, Tesseract keys, file paths, who is waiting on whom), not the detail itself. It replaces the note that was there, so carry forward what still holds. Keep it under a page. Write it when something worth keeping happened, and before the owner moves on to something else.",
-				InputSchema: map[string]any{"type": "object", "properties": map[string]any{"note": map[string]any{"type": "string", "description": "The whole note, plain text or Markdown."}, "context": which}, "required": []string{"note"}, "additionalProperties": false}},
+				InputSchema: map[string]any{"type": "object", "properties": map[string]any{"note": map[string]any{"type": "string", "description": "The whole note, plain text or Markdown."}, "context": which,
+					"project": map[string]any{"type": "string", "description": "Write the note for this project instead of a kind of work: what stands on the project whatever kind of work it is."}}, "required": []string{"note"}, "additionalProperties": false}},
 			Run: func(ctx context.Context, in map[string]any) (string, error) {
-				s, err := pick(in)
-				if err != nil {
-					return "", err
-				}
 				note := strings.TrimSpace(fmt.Sprint(in["note"]))
 				if len(note) > maxSlotNote {
 					return "", fmt.Errorf("the note is %d characters; keep it under %d: pointers, not detail", len(note), maxSlotNote)
+				}
+				if project, _ := in["project"].(string); project != "" {
+					if err := rt.store.setProjectNote(ctx, project, note); err != nil {
+						return "", err
+					}
+					return "kept for the project " + project, nil
+				}
+				s, err := pick(in)
+				if err != nil {
+					return "", err
 				}
 				if err := rt.store.setSlotNote(ctx, s.Name, note); err != nil {
 					return "", err
@@ -228,18 +265,27 @@ func (rt *Runtime) SlotTools() ToolSource {
 					_, w := rt.store.slotNote(ctx, x.Name)
 					all = append(all, row{x.Name, x.About, w})
 				}
-				raw, _ := json.Marshal(map[string]any{"context": s.Name, "note": note, "written": when, "where_the_rest_is": s.Where, "contexts": all})
+				slotState.Lock()
+				on := slotState.project
+				slotState.Unlock()
+				raw, _ := json.Marshal(map[string]any{"context": s.Name, "note": note, "written": when, "where_the_rest_is": s.Where, "contexts": all, "project_now": on, "projects": rt.store.Projects(ctx)})
 				return string(raw), nil
 			},
 		},
 		{
 			Spec: ToolSpec{Name: "context_switch", Level: LevelAct,
 				Description: "Move to another context when what the owner is asking about has changed kind and the window in front does not say so (they ask about mail while a terminal is in front). You get that context's note and what is top of mind there. Nothing else about you changes.",
-				InputSchema: map[string]any{"type": "object", "properties": map[string]any{"context": which}, "required": []string{"context"}, "additionalProperties": false}},
+				InputSchema: map[string]any{"type": "object", "properties": map[string]any{"context": which,
+					"project": map[string]any{"type": "string", "description": "Move to this project too (its name), or \"none\" for no project."}}, "additionalProperties": false}},
 			Run: func(ctx context.Context, in map[string]any) (string, error) {
 				s, err := pick(in)
 				if err != nil {
 					return "", err
+				}
+				if project, _ := in["project"].(string); project != "" {
+					if err := rt.PickProject(ctx, project); err != nil {
+						return "", err
+					}
 				}
 				slotState.Lock()
 				slotState.current, slotState.pinned = s.Name, true
@@ -250,7 +296,45 @@ func (rt *Runtime) SlotTools() ToolSource {
 			},
 		},
 	}
-	tools = append(tools, rt.recallTool(names))
+	tools = append(tools, rt.recallTool(names),
+		ServerTool{
+			Spec: ToolSpec{Name: "project_define", Level: LevelWrite,
+				Description: "Add one of the owner's projects, or change its definition, when they ask you to (\"make a context for the video project\"). A project is what work is on, as against the kind of work: it says where the project's state lives (a Torque project id, a Tesseract namespace, a workspace, a repository), which words in a window select it (a folder name, a repo name, a workspace), and the owner's standing instructions for it. Look up the ids before you write them (torque_project_list, tesseract_recall). Your note for the project is kept. The owner is asked first unless they chose Always.",
+				InputSchema: map[string]any{"type": "object", "properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Lowercase letters, digits and dashes."}, "about": map[string]any{"type": "string"},
+					"match":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Words that select it when in the window in front: a folder, a repo name, a workspace."},
+					"torque":    map[string]any{"type": "string", "description": "Its Torque project id."},
+					"tesseract": map[string]any{"type": "string", "description": "Its Tesseract namespace."},
+					"workspace": map[string]any{"type": "string"}, "repo": map[string]any{"type": "string"}, "where": map[string]any{"type": "string"},
+					"instructions": map[string]any{"type": "string", "description": "The owner's standing instructions for this project, in their words."},
+				}, "required": []string{"name"}, "additionalProperties": false}},
+			Run: func(ctx context.Context, in map[string]any) (string, error) {
+				raw, _ := json.Marshal(in)
+				var p Project
+				if err := json.Unmarshal(raw, &p); err != nil {
+					return "", err
+				}
+				if err := rt.store.SaveProject(ctx, p); err != nil {
+					return "", err
+				}
+				return "saved the project " + strings.ToLower(p.Name), nil
+			},
+		},
+		ServerTool{
+			Spec: ToolSpec{Name: "context_instruct", Level: LevelWrite,
+				Description: "Set the owner's standing instructions for a kind of work, when they tell you how they want that kind of work done from now on (\"when I'm writing, suggest, never rewrite\"). It replaces what was there; empty clears it. For a project's instructions use project_define. The owner is asked first unless they chose Always.",
+				InputSchema: map[string]any{"type": "object", "properties": map[string]any{"context": which, "instructions": map[string]any{"type": "string"}}, "required": []string{"context", "instructions"}, "additionalProperties": false}},
+			Run: func(ctx context.Context, in map[string]any) (string, error) {
+				s, err := pick(in)
+				if err != nil {
+					return "", err
+				}
+				if err := rt.store.SetSlotInstructions(ctx, s.Name, fmt.Sprint(in["instructions"])); err != nil {
+					return "", err
+				}
+				return "set for " + s.Name, nil
+			},
+		})
 	return func(context.Context) []ServerTool { return tools }
 }
 
@@ -427,10 +511,67 @@ func (rt *Runtime) recallTool(names []string) ServerTool {
 
 // SlotInfo is a slot as the interface shows it.
 type SlotInfo struct {
-	Name    string `json:"name"`
-	About   string `json:"about"`
-	Written string `json:"note_written,omitempty"`
-	Current bool   `json:"current"`
+	Name         string `json:"name"`
+	About        string `json:"about"`
+	Written      string `json:"note_written,omitempty"`
+	Current      bool   `json:"current"`
+	Instructions string `json:"instructions,omitempty"`
+}
+
+// PickProject is the owner (or the assistant) choosing the project; "none" or "" for none.
+func (rt *Runtime) PickProject(ctx context.Context, name string) error {
+	if name == "none" {
+		name = ""
+	}
+	if name != "" {
+		found := false
+		for _, p := range rt.store.Projects(ctx) {
+			found = found || p.Name == name
+		}
+		if !found {
+			return errors.New("there is no such project")
+		}
+	}
+	slotState.Lock()
+	slotState.project = name
+	slotState.Unlock()
+	return nil
+}
+
+// ProjectNow is the project the conversation is on, or "".
+func (rt *Runtime) ProjectNow() string {
+	slotState.Lock()
+	defer slotState.Unlock()
+	return slotState.project
+}
+
+// ImportProjects reads projects from a JSON file ({"projects": [...], "instructions":
+// {"<kind>": "..."}}) when the owner has none yet: a way to start from a list.
+func (rt *Runtime) ImportProjects(ctx context.Context, path string) (int, error) {
+	if len(rt.store.Projects(ctx)) > 0 {
+		return 0, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, nil // no file: nothing to start from
+	}
+	var doc struct {
+		Projects     []Project         `json:"projects"`
+		Instructions map[string]string `json:"instructions"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return 0, fmt.Errorf("%s: %w", path, err)
+	}
+	n := 0
+	for _, p := range doc.Projects {
+		if rt.store.SaveProject(ctx, p) == nil {
+			n++
+		}
+	}
+	for name, text := range doc.Instructions {
+		_ = rt.store.SetSlotInstructions(ctx, name, text)
+	}
+	return n, nil
 }
 
 // SlotList is the slots, with which one the conversation is in.
@@ -441,7 +582,7 @@ func (rt *Runtime) SlotList(ctx context.Context) []SlotInfo {
 	out := make([]SlotInfo, 0, len(Slots))
 	for _, s := range Slots {
 		_, when := rt.store.slotNote(ctx, s.Name)
-		out = append(out, SlotInfo{Name: s.Name, About: s.About, Written: when, Current: s.Name == cur})
+		out = append(out, SlotInfo{Name: s.Name, About: s.About, Written: when, Current: s.Name == cur, Instructions: rt.store.SlotInstructions(ctx, s.Name)})
 	}
 	return out
 }

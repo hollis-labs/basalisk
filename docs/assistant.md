@@ -139,7 +139,27 @@ hand (it holds until a window with a slot of its own comes to the front) and sho
 assistant's note for each slot. `GET /api/agent/contexts` (`?note=<slot>` for a note),
 `POST /api/agent/contexts {name}`.
 
-Not yet: slots the owner can define, and pointers gathered automatically.
+**Projects.** A slot is a kind of work; a project is what the work is on, and the owner
+defines them (`internal/agent/projects.go`, in `agent.db`). A project has what selects it
+(words found in the title, path, address or details of the window in front), where its
+state lives (a Torque project, a Tesseract namespace, a Work workspace, a repository,
+anything else worth knowing), and the owner's standing instructions for it. The assistant
+keeps a note per project. The project holds while the owner moves between kinds of work,
+until a window selects another or it is changed by hand. The `<context>` block carries the
+project's lines after the slot's.
+
+**Standing instructions.** Each kind of work and each project can carry the owner's
+instructions, told to the assistant in the `<context>` block whenever that context is
+entered or the instructions change.
+
+**Editing.** The Contexts window (the chip's menu, or the Apps menu): the kinds of work
+with their instructions; projects with add, edit and remove. The assistant has
+`project_define` and `context_instruct`, which ask first. A starting list is read once from
+`~/.config/basalisk/projects.json` (`{"projects": [...], "instructions": {...}}`) when
+there are no projects yet. Routes: `PUT|DELETE /api/agent/projects/{name}`,
+`PUT /api/agent/contexts/{name}/instructions`.
+
+Not yet: pointers gathered automatically.
 
 ## Seen with the window put away (built)
 
@@ -168,6 +188,38 @@ bar shows **Update**: closing the window does not load a new build, restarting d
   blocked: totals, by team tag, the twenty most recently touched; `team` narrows to a tag).
   It is the first call for "where are things".
 
+## The standing rule, and commands (built)
+
+The assistant's instructions carry the owner's rule: ask first for anything destructive,
+disruptive or financial; otherwise go by the standing approvals (tools that run without
+asking, the "Always" answers, commands marked outright).
+
+**Named commands** (`internal/commands`): the command lines the assistant may run, each a
+fixed program and arguments with parameters checked against a pattern. Nothing goes through
+a shell here; on a host the words are quoted one by one. A host must be named in the
+owner's ssh config. Each run is in Done for you.
+
+| Marked | Means |
+|---|---|
+| outright, looks | runs at once (`command_run`) |
+| outright, changes | runs at once only when its guards (checks run first on the same machine) pass |
+| ask | the owner is asked every time (`command_run_asking`) |
+
+Built in: `host-reachable`, `host-uptime`, `host-disk`, `host-memory`, `service-status`,
+`service-user-status`, `service-log`, `caddy-validate`, `git-status`, `git-log`,
+`git-fetch` and `secret-generate` run outright; `service-restart` and `caddy-reload`
+(validated first) ask. `secret-generate` writes a new secret to a file of its own under
+`~/.config/basalisk/secrets/` and returns the path, never the secret, and never replaces
+one. The owner's file `~/.config/basalisk/commands.json` (`{"commands": [...]}`) adds
+commands, replaces built-in ones by name, or switches one off (`"off": true`). The
+Commands tab of Done for you lists them. They exist only where Basalisk has a shell (the
+desktop app, or `BASALISK_TERMINAL=1`).
+
+**Through the gateway**: Cerberus (health, projects, resources, hosts, logs, schedules) and
+Tether (health, sessions, seat status, message trace) to look, at once;
+`cerberus_resource_reload`, `cerberus_resource_deploy` and
+`cerberus_resource_ensure_fresh` ask first, and "Always" for one is a standing approval.
+
 ## Handing work on (built)
 
 - **`consult`** (runs at once): the assistant asks another seat a question as itself, from
@@ -193,8 +245,8 @@ bar shows **Update**: closing the window does not load a new build, restarting d
    slot; slots the owner defines; pointers gathered as the assistant works.
 4. Status, second part: seat status in the overview; a check that a note or a plan is
    current before it is relied on.
-5. Host and command-line work: a list of command kinds the assistant may run outright, and
-   a delegation to @chief that follows its create-task shape.
+5. Commands: the assistant proposing a new named command for the owner to approve; guards
+   that read a condition from another tool (nothing running, nobody connected).
 6. Tuning: the standing "Always" answers listed beside the mail rules (the rules are in the
    Done for you window, under Mail rules, with Remove).
 

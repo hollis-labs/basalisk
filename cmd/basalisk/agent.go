@@ -48,6 +48,14 @@ func enableAgent(ctx context.Context, a *api.API, cfg agent.Config, dbPath strin
 		_ = store.Close()
 	}()
 	rt := agent.New(ctx, cfg, store, agent.NewGateway(cfg))
+	// The owner's projects, from a starting list if they have none yet.
+	if home != "" {
+		if n, err := rt.ImportProjects(ctx, filepath.Join(home, ".config", "basalisk", "projects.json")); err != nil {
+			slog.Warn("agent: the starting list of projects was not read", "err", err)
+		} else if n > 0 {
+			slog.Info("agent: projects read from the starting list", "count", n)
+		}
+	}
 	// The router's rules: the ones that ship, and the owner's own from this file if it exists.
 	rules := os.Getenv("BASALISK_AGENT_RULES_FILE")
 	if rules == "" && home != "" {

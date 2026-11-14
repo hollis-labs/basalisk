@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	"github.com/hollis-labs/basalisk/internal/assist"
+	"github.com/hollis-labs/basalisk/internal/commands"
 )
 
 // The assistant's record and its sorting of the owner's mail (internal/assist).
@@ -14,6 +15,12 @@ import (
 func (a *API) EnableAssist(log *assist.Log, watch *assist.Watcher) {
 	a.assist, a.assistWatch = log, watch
 }
+
+// EnableCommands lets the interface list the owner's named commands (internal/commands).
+func (a *API) EnableCommands(list commands.List) { a.commandList = &list }
+
+// AssistLog is the record of what the assistant did in the owner's name, or nil.
+func (a *API) AssistLog() *assist.Log { return a.assist }
 
 // assistOwner is the owner whose page last asked: who a background run works for.
 var assistOwner atomic.Value
@@ -24,12 +31,29 @@ func (a *API) AssistOwner() string {
 	return s
 }
 
+func (a *API) assistCommands(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	all, problem := a.commandList.All()
+	out := map[string]any{"commands": all, "hosts": a.commandList.Hosts(), "file": a.commandList.File}
+	if problem != nil {
+		out["problem"] = problem.Error()
+	}
+	reply(w, 200, out)
+}
+
 func (a *API) assistRoutes() []route {
+	var rts []route
+	if a.commandList != nil {
+		rts = append(rts, route{"GET", "/api/assist/commands", ScopeRead, a.assistCommands})
+	}
 	if a.assist == nil {
-		return nil
+		return rts
 	}
 	r, w := ScopeRead, ScopeWrite
-	rts := []route{{"GET", "/api/assist/activity", r, a.assistActivity}}
+	rts = append(rts, route{"GET", "/api/assist/activity", r, a.assistActivity})
 	if a.assistWatch != nil {
 		rts = append(rts,
 			route{"GET", "/api/assist/needs", r, a.assistNeeds},

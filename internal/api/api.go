@@ -20,6 +20,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/agent"
 	"github.com/hollis-labs/basalisk/internal/assist"
 	"github.com/hollis-labs/basalisk/internal/collab"
+	"github.com/hollis-labs/basalisk/internal/commands"
 	"github.com/hollis-labs/basalisk/internal/feeds"
 	"github.com/hollis-labs/basalisk/internal/files"
 	"github.com/hollis-labs/basalisk/internal/inbox"
@@ -72,6 +73,7 @@ type API struct {
 	// assist is the record of what the assistant did in the owner's name (assist.go).
 	assist      *assist.Log
 	assistWatch *assist.Watcher
+	commandList *commands.List // the owner's named commands, for the interface to list
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,

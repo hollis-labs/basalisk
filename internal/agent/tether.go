@@ -62,6 +62,33 @@ var tetherTools = map[string]string{
 	"caster_log":    LevelRead,
 	"caster_search": LevelRead,
 	"caster_put":    LevelWrite,
+	// Cerberus: what runs where. Looking is free; anything that changes a running service
+	// asks first (the owner may answer "always" for one, which is a standing approval).
+	"cerberus_health":                LevelRead,
+	"cerberus_portfolio_health":      LevelRead,
+	"cerberus_project_list":          LevelRead,
+	"cerberus_resource_list":         LevelRead,
+	"cerberus_resource_status":       LevelRead,
+	"cerberus_resource_inspect":      LevelRead,
+	"cerberus_resource_logs":         LevelRead,
+	"cerberus_resource_doctor":       LevelRead,
+	"cerberus_host_list":             LevelRead,
+	"cerberus_host_get":              LevelRead,
+	"cerberus_host_status":           LevelRead,
+	"cerberus_host_capacity":         LevelRead,
+	"cerberus_host_logs":             LevelRead,
+	"cerberus_schedule_list":         LevelRead,
+	"cerberus_resource_ensure_fresh": LevelWrite,
+	"cerberus_resource_reload":       LevelWrite,
+	"cerberus_resource_deploy":       LevelWrite,
+	// Tether: the agents themselves. Who is running, how a seat stands, where a message went.
+	"tether_health":         LevelRead,
+	"tether_gateway_status": LevelRead,
+	"tether_session_list":   LevelRead,
+	"tether_session_get":    LevelRead,
+	"tether_session_health": LevelRead,
+	"tether_status_get":     LevelRead,
+	"tether_message_trace":  LevelRead,
 }
 
 // mailTools are the gateway's mail tools the agent is given when it has an address of its

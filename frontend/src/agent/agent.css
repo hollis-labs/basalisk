@@ -629,3 +629,24 @@
   margin-bottom: 3px;
   color: var(--desk-fg);
 }
+
+.agent-context-head {
+  margin: 6px 8px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--desk-fg-soft);
+}
+.agent-context-menu {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.agent-context-edit {
+  margin-top: 4px;
+  padding: 5px 8px;
+  border-top: 1px solid var(--desk-border);
+  font-size: 12px;
+  text-align: left;
+  color: var(--desk-accent);
+}
