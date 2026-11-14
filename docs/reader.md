@@ -37,7 +37,7 @@ research for one piece); see FE's `docs/reader-collections.md`. The sidebar list
 their counts and makes new ones. An item's header shows the collections it is in and adds it
 to one, or to a new one. A collection's view lists its items in order; dragging a card onto
 another moves it there (the whole order is sent, so reordering waits until every page is
-loaded). Deleting a collection leaves its items in the library.
+loaded). A collection is renamed from its view. Deleting a collection leaves its items in the library.
 
 Every change carries the collection's revision. When FE answers that it moved on, the list
 is read again and the change is tried once more.
@@ -61,6 +61,8 @@ copies nothing to FE.
 - Feeds are fetched when the Reader opens and every 30 minutes while Basalisk runs, with
   conditional requests, from public addresses only (the clip media fetcher's client), with
   no cookies.
+- An OPML file (another reader's export) is imported from the Feeds heading: every feed in
+  it is followed, in its folder; one that cannot be reached is counted and skipped.
 - Save sends the entry's link and text to FE as a capture, tagged `feed`. To keep the whole
   page, open it in the Browser and clip it.
 
@@ -74,5 +76,4 @@ Routes: `GET|POST /api/reader/feeds`, `PUT|DELETE /api/reader/feeds/{id}`,
 
 ## Not yet
 
-The change feed (in review at FE); renaming a collection and setting its kind; feed entry
-highlights; importing an OPML list.
+The change feed (in review at FE); setting a collection's kind; feed entry highlights.

@@ -2,11 +2,13 @@ import {
   Archive,
   BookOpen,
   Clock,
+  FileUp,
   FolderPlus,
   Inbox,
   Library,
   ListVideo,
   MonitorPlay,
+  Pencil,
   Plus,
   RefreshCw,
   Rss,
@@ -121,6 +123,9 @@ export function ReaderWindow({ start }: { start: string }) {
   const [collections, setCollections] = useState<ReaderCollection[]>([])
   const [naming, setNaming] = useState<string | null>(null)
   const [dragging, setDragging] = useState("")
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [note, setNote] = useState("")
+  const opml = useRef<HTMLInputElement>(null)
   const seq = useRef(0)
 
   const fail = useCallback(
@@ -302,6 +307,47 @@ export function ReaderWindow({ start }: { start: string }) {
       fail(e)
     }
   }
+  const renameCollection = async (id: string, name: string) => {
+    setRenaming(null)
+    if (!name.trim()) return
+    await withCollection(id, (c) =>
+      c.name === name.trim()
+        ? Promise.resolve()
+        : reader.updateCollection(c, { name: name.trim() }),
+    )
+    setView((v) =>
+      v.kind === "collection" && v.collection === id ? { ...v, label: name.trim() } : v,
+    )
+  }
+  // An OPML file (the list another reader exports): follow every feed in it, in its folders.
+  const importOPML = async (file: File) => {
+    try {
+      const doc = new DOMParser().parseFromString(await file.text(), "text/xml")
+      const found = [...doc.querySelectorAll("outline[xmlUrl]")].map((o) => ({
+        url: o.getAttribute("xmlUrl") ?? "",
+        folder:
+          o.parentElement?.tagName === "outline"
+            ? (o.parentElement.getAttribute("title") ?? o.parentElement.getAttribute("text") ?? "")
+            : "",
+      }))
+      if (!found.length) return setError("That file lists no feeds (it should be an OPML export).")
+      const have = new Set(feeds.map((f) => f.url))
+      let added = 0
+      let failed = 0
+      for (const [i, f] of found.entries()) {
+        setNote(`Following feed ${i + 1} of ${found.length}…`)
+        if (have.has(f.url)) continue
+        await reader.addFeed(f.url, f.folder).then(
+          () => added++,
+          () => failed++,
+        )
+      }
+      setNote(`${added} feeds followed${failed ? `; ${failed} could not be reached` : ""}.`)
+      await loadFeeds()
+    } catch (e) {
+      fail(e)
+    }
+  }
   const dropCollection = async (c: ReaderCollection) => {
     const yes = await desk.confirm({
       title: `Delete the collection “${c.name}”?`,
@@ -452,6 +498,26 @@ export function ReaderWindow({ start }: { start: string }) {
         )}
         <h3>
           Feeds
+          <input
+            ref={opml}
+            type="file"
+            accept=".opml,.xml,text/xml,text/x-opml"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ""
+              if (f) void importOPML(f)
+            }}
+          />
+          <button
+            type="button"
+            className="reader-mini reader-mini-push"
+            title="Import feeds from an OPML file (another reader's export)"
+            aria-label="Import feeds from an OPML file"
+            onClick={() => opml.current?.click()}
+          >
+            <FileUp {...ICON} />
+          </button>
           <button
             type="button"
             className="reader-mini"
@@ -557,6 +623,17 @@ export function ReaderWindow({ start }: { start: string }) {
             <button
               type="button"
               className="reader-mini"
+              title="Rename this collection"
+              aria-label="Rename this collection"
+              onClick={() => setRenaming(view.label)}
+            >
+              <Pencil {...ICON} />
+            </button>
+          )}
+          {view.kind === "collection" && (
+            <button
+              type="button"
+              className="reader-mini"
               title="Delete this collection (its items stay in the library)"
               aria-label="Delete this collection"
               onClick={() => {
@@ -604,6 +681,30 @@ export function ReaderWindow({ start }: { start: string }) {
           <p className="reader-error" role="alert">
             {error}
           </p>
+        )}
+        {note && !error && (
+          <p className="reader-error reader-note" role="status">
+            {note}
+          </p>
+        )}
+        {renaming !== null && view.kind === "collection" && (
+          <form
+            className="reader-add"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void renameCollection(view.collection, renaming)
+            }}
+          >
+            <input
+              // biome-ignore lint/a11y/noAutofocus: the field was just asked for
+              autoFocus
+              value={renaming}
+              aria-label="The collection's name"
+              onChange={(e) => setRenaming(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && setRenaming(null)}
+              onBlur={() => setRenaming(null)}
+            />
+          </form>
         )}
         <ul>
           {view.kind !== "feeds"

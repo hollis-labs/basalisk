@@ -491,3 +491,10 @@
 .reader-list li[data-dragging="true"] {
   opacity: 0.4;
 }
+
+.reader-note {
+  color: var(--desk-fg-soft);
+}
+.reader-mini-push {
+  margin-left: auto;
+}
