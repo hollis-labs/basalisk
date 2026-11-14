@@ -52,7 +52,8 @@ type API struct {
 	scratchSync *scratch.Syncer
 	scratchLink scratch.Putter // the Tether gateway, for making a Torque task of an item
 	// story is the scripts and storyboards (story.go); nil unless EnableStory was called.
-	story *story.Store
+	story     *story.Store
+	storyTell story.Notifier
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,

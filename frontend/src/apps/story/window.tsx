@@ -9,11 +9,13 @@ import {
   clock,
   type StoryCard,
   type StoryNote,
+  type StoryRound,
   type StoryScene,
   type StoryScript,
   spoken,
   story,
 } from "../../api/story"
+import { useDesk } from "../../desktop/context"
 import "./story.css"
 
 const STAGE_LABEL: Record<string, string> = {
@@ -263,6 +265,8 @@ function NewScript({ projects, done }: { projects: string[]; done: (key?: string
 function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }) {
   const [s, setS] = useState<StoryScript | null>(null)
   const [drafts, setDrafts] = useState<StoryNote[]>([])
+  const [rounds, setRounds] = useState<StoryRound[]>([])
+  const [roundOpen, setRoundOpen] = useState(false)
   const [problem, setProblem] = useState("")
   const [error, setError] = useState("")
   const [picked, setPicked] = useState<string | null>(null)
@@ -280,6 +284,7 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
         const r = await story.script(scriptKey, refresh)
         setS(r.script)
         setDrafts(r.drafts)
+        setRounds(r.rounds ?? [])
         setProblem(r.problem ?? "")
       } catch (e) {
         setError(message(e))
@@ -371,11 +376,20 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
           {clock(s.duration_s)}
           {s.length_s ? ` of ${clock(s.length_s)}` : ""} · spoken {clock(spoken(words))}
         </span>
-        {s.draft_notes > 0 && (
-          <span className="story-drafts">
-            {s.draft_notes} draft note{s.draft_notes === 1 ? "" : "s"}
-          </span>
-        )}
+        <button
+          type="button"
+          className="story-drafts"
+          data-open={roundOpen}
+          onClick={() => {
+            setRoundOpen((o) => !o)
+            setPicked(null)
+          }}
+          title="The notes for the next round, and Send round"
+        >
+          {s.draft_notes > 0
+            ? `${s.draft_notes} draft note${s.draft_notes === 1 ? "" : "s"}`
+            : "Round"}
+        </button>
         <span className="story-spacer" />
         <button
           type="button"
@@ -521,6 +535,15 @@ function Storyboard({ scriptKey, back }: { scriptKey: string; back: () => void }
             </div>
           )}
         </div>
+        {roundOpen && !scene && (
+          <RoundPanel
+            script={s}
+            drafts={drafts}
+            rounds={rounds}
+            close={() => setRoundOpen(false)}
+            changed={() => void load()}
+          />
+        )}
         {scene && (
           <SceneDetail
             key={`${scene.id}@${scene.rev}`}
@@ -567,7 +590,22 @@ function SceneDetail({
   const [title, setTitle] = useState(scene.title)
   const [duration, setDuration] = useState(String(scene.duration_s || ""))
   const [edit, setEdit] = useState<{ section: string; text: string } | null>(null)
+  // A note being written: a comment (on a section, or the scene when section is ""), or a
+  // suggestion to replace the passage the owner selected.
+  const [noting, setNoting] = useState<{ section: string; quote?: string } | null>(null)
   const base = scene.rev
+  const startEdit = (sec: string) => {
+    editing(true)
+    setEdit({ section: sec, text: scene.sections[sec] ?? "" })
+  }
+  // A click edits the section in place; a selection made in it is a passage to suggest on.
+  const clickSection = (sec: string, el: HTMLElement) => {
+    const sel = window.getSelection()
+    const quote =
+      sel && !sel.isCollapsed && el.contains(sel.anchorNode) ? sel.toString().trim() : ""
+    if (quote) setNoting({ section: sec, quote })
+    else startEdit(sec)
+  }
 
   const save = async (change: {
     title?: string
@@ -633,7 +671,16 @@ function SceneDetail({
       )}
       {SECTIONS.map((sec) => (
         <section key={sec} className="story-sec">
-          <h4>{sec}</h4>
+          <h4>
+            {sec}
+            <button
+              type="button"
+              className="story-sec-act"
+              onClick={() => setNoting({ section: sec })}
+            >
+              Comment
+            </button>
+          </h4>
           {edit?.section === sec ? (
             <textarea
               // biome-ignore lint/a11y/noAutofocus: the section the owner clicked to edit
@@ -662,33 +709,300 @@ function SceneDetail({
             <div
               className="story-sec-text"
               data-empty={!scene.sections[sec]}
-              onClick={() => {
-                editing(true)
-                setEdit({ section: sec, text: scene.sections[sec] ?? "" })
-              }}
+              onMouseUp={(e) => clickSection(sec, e.currentTarget)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  editing(true)
-                  setEdit({ section: sec, text: scene.sections[sec] ?? "" })
-                }
+                if (e.key === "Enter") startEdit(sec)
               }}
+              title="Click to edit; select a passage to suggest a change"
             >
               {scene.sections[sec] || "Click to write"}
             </div>
           )}
+          {noting?.section === sec && (
+            <NoteForm
+              quote={noting.quote}
+              cancel={() => setNoting(null)}
+              add={async (n) => {
+                await story.addNote(scriptKey, { scene: scene.id, section: sec, ...n })
+                setNoting(null)
+                saved()
+              }}
+            />
+          )}
         </section>
       ))}
+      {noting?.section === "" ? (
+        <NoteForm
+          cancel={() => setNoting(null)}
+          add={async (n) => {
+            await story.addNote(scriptKey, { scene: scene.id, ...n })
+            setNoting(null)
+            saved()
+          }}
+        />
+      ) : (
+        <button type="button" className="story-link" onClick={() => setNoting({ section: "" })}>
+          Comment on this scene
+        </button>
+      )}
       {status && <p className="story-status">{status}</p>}
       {notes.length > 0 && (
         <section className="story-sec">
           <h4>Draft notes</h4>
           {notes.map((n) => (
-            <div key={n.id} className="story-note">
-              <b>{n.kind}</b>
-              {n.section ? ` · ${n.section}` : ""}: {n.text}
-              {n.replace && <div className="story-note-replace">→ {n.replace}</div>}
-            </div>
+            <NoteRow
+              key={n.id}
+              note={n}
+              drop={async () => {
+                await story.dropNote(scriptKey, n.id)
+                saved()
+              }}
+            />
           ))}
+        </section>
+      )}
+    </aside>
+  )
+}
+
+/** Writing one note: a comment, or (with a quote) a suggestion to replace it. */
+function NoteForm({
+  quote,
+  add,
+  cancel,
+}: {
+  quote?: string
+  add: (n: { kind: string; quote?: string; replace?: string; text?: string }) => Promise<void>
+  cancel: () => void
+}) {
+  const [replace, setReplace] = useState(quote ?? "")
+  const [text, setText] = useState("")
+  const [error, setError] = useState("")
+  const suggesting = quote !== undefined
+  const go = async () => {
+    try {
+      await add(
+        suggesting ? { kind: "suggestion", quote, replace, text } : { kind: "comment", text },
+      )
+    } catch (e) {
+      setError(message(e))
+    }
+  }
+  return (
+    <form
+      className="story-noteform"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void go()
+      }}
+    >
+      {suggesting && (
+        <>
+          <div className="story-quote">Instead of: {quote}</div>
+          <textarea
+            // biome-ignore lint/a11y/noAutofocus: the owner just asked to suggest
+            autoFocus
+            value={replace}
+            onChange={(e) => setReplace(e.target.value)}
+            rows={Math.max(2, replace.split("\n").length)}
+            aria-label="What to put instead"
+          />
+        </>
+      )}
+      <input
+        // biome-ignore lint/a11y/noAutofocus: the owner just asked to comment
+        autoFocus={!suggesting}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={suggesting ? "Why (optional)" : "Your comment"}
+        onKeyDown={(e) => e.key === "Escape" && cancel()}
+      />
+      <div className="story-noteform-actions">
+        <button
+          type="submit"
+          className="desk-button"
+          data-primary="true"
+          disabled={suggesting ? replace.trim() === (quote ?? "").trim() : !text.trim()}
+        >
+          {suggesting ? "Add suggestion" : "Add comment"}
+        </button>
+        <button type="button" className="desk-button" onClick={cancel}>
+          Cancel
+        </button>
+        {error && <span className="story-problem">{error}</span>}
+      </div>
+    </form>
+  )
+}
+
+const KIND_LABEL: Record<string, string> = {
+  comment: "Comment",
+  suggestion: "Suggestion",
+  move: "Moved",
+  cut: "Cut",
+  add: "Added",
+}
+
+/** One draft note. */
+function NoteRow({ note, drop, scene }: { note: StoryNote; drop?: () => void; scene?: string }) {
+  return (
+    <div className="story-note" data-kind={note.kind}>
+      <div className="story-note-head">
+        <b>{KIND_LABEL[note.kind] ?? note.kind}</b>
+        {scene && <span>{scene}</span>}
+        {note.section && <span>{note.section}</span>}
+        <span className="story-spacer" />
+        {drop && (
+          <button
+            type="button"
+            className="story-icon"
+            title="Take it out of the round"
+            onClick={drop}
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {note.quote && <div className="story-quote">− {note.quote}</div>}
+      {note.kind === "suggestion" && <div className="story-note-replace">+ {note.replace}</div>}
+      {note.text && <div className="story-note-text">{note.text}</div>}
+    </div>
+  )
+}
+
+/** The draft round (notes not yet sent), Send round, and the rounds sent before. */
+function RoundPanel({
+  script,
+  drafts,
+  rounds,
+  close,
+  changed,
+}: {
+  script: StoryScript
+  drafts: StoryNote[]
+  rounds: StoryRound[]
+  close: () => void
+  changed: () => void
+}) {
+  const desk = useDesk()
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState("")
+  const [commenting, setCommenting] = useState(false)
+  const titleOf = (id?: string) => {
+    if (!id) return "The script"
+    const i = script.scene_list.findIndex((x) => x.id === id)
+    const sc = script.scene_list[i] ?? script.unused.find((x) => x.id === id)
+    return sc ? `${i >= 0 ? `${i + 1}. ` : ""}${sc.title}` : id
+  }
+  const groups = new Map<string, StoryNote[]>()
+  for (const n of drafts) groups.set(n.scene ?? "", [...(groups.get(n.scene ?? "") ?? []), n])
+  const scenes = [...groups.keys()].filter(Boolean).length
+  const next = (script.round || 0) + 1
+  const owners = script.owners ?? []
+
+  const send = async () => {
+    const ok = await desk.confirm({
+      title: `Send round ${next} to the team?`,
+      message: `${drafts.length} note${drafts.length === 1 ? "" : "s"} on ${scenes} scene${scenes === 1 ? "" : "s"}. The round is written to Caster, the script moves to Revising, and ${owners.length ? owners.join(", ") : "nobody (the script has no owners)"} ${owners.length === 1 ? "is" : "are"} told.`,
+      confirmLabel: "Send round",
+    })
+    if (!ok) return
+    setBusy(true)
+    try {
+      const r = await story.send(script.key)
+      const told = r.mailed.length ? `Told ${r.mailed.join(", ")}.` : "Nobody was told by mail."
+      const not = r.not_mailed.length ? ` Not mailed: ${r.not_mailed.join(", ")}.` : ""
+      setResult(
+        `Round ${r.round} sent: ${r.ref}. ${told}${not}${r.commented ? ` Commented on ${r.commented}.` : ""}${r.problem ? ` ${r.problem}` : ""}`,
+      )
+    } catch (e) {
+      setResult(message(e))
+    } finally {
+      setBusy(false)
+      changed()
+    }
+  }
+
+  return (
+    <aside className="story-detail">
+      <header>
+        <span className="story-detail-title">Round {next}</span>
+        <button type="button" className="story-icon" onClick={close} title="Close">
+          ×
+        </button>
+      </header>
+      <p className="story-detail-meta">
+        {drafts.length
+          ? `${drafts.length} note${drafts.length === 1 ? "" : "s"} on ${scenes} scene${scenes === 1 ? "" : "s"}, not sent yet.`
+          : "No notes yet: comment on a section, select a passage to suggest a change, or move and cut scenes."}
+      </p>
+      {[...groups.entries()].map(([scene, list]) => (
+        <section key={scene || "script"} className="story-sec">
+          <h4>{titleOf(scene)}</h4>
+          {list.map((n) => (
+            <NoteRow
+              key={n.id}
+              note={n}
+              drop={async () => {
+                await story.dropNote(script.key, n.id)
+                changed()
+              }}
+            />
+          ))}
+        </section>
+      ))}
+      {commenting ? (
+        <NoteForm
+          cancel={() => setCommenting(false)}
+          add={async (n) => {
+            await story.addNote(script.key, n)
+            setCommenting(false)
+            changed()
+          }}
+        />
+      ) : (
+        <button type="button" className="story-link" onClick={() => setCommenting(true)}>
+          Comment on the whole script
+        </button>
+      )}
+      <div className="story-noteform-actions">
+        <button
+          type="button"
+          className="desk-button"
+          data-primary="true"
+          disabled={busy || drafts.length === 0}
+          onClick={() => void send()}
+        >
+          Send round {next}
+        </button>
+      </div>
+      {result && <p className="story-status">{result}</p>}
+      {rounds.length > 0 && (
+        <section className="story-sec">
+          <h4>Sent</h4>
+          {rounds.map((r) => {
+            const open = r.notes.filter((n) => n.state === "open").length
+            return (
+              <div key={r.round} className="story-note">
+                <div className="story-note-head">
+                  <b>Round {r.round}</b>
+                  <span>{r.sent_at ? new Date(r.sent_at).toLocaleString() : ""}</span>
+                  <span className="story-spacer" />
+                  <span>
+                    {r.notes.length - open} of {r.notes.length} answered
+                  </span>
+                </div>
+                {r.notes
+                  .filter((n) => n.state !== "open" || n.reply)
+                  .map((n) => (
+                    <div key={n.id} className="story-note-text">
+                      {titleOf(n.scene)}: {n.state}
+                      {n.reply ? ` · ${n.reply}` : ""}
+                    </div>
+                  ))}
+              </div>
+            )
+          })}
         </section>
       )}
     </aside>

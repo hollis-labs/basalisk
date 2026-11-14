@@ -58,8 +58,33 @@ letters, digits and `-`, so the separators stay unambiguous.
   ## Notes
   ```
 
-- **Round** `caster://story/<project>.<script>.round-<n>`: what the owner sent in round n
-  (step 2).
+- **Round** `caster://story/<project>.<script>.round-<n>`: what the owner sent in round n.
+
+  ```
+  ---
+  story: v1
+  round: 1
+  sent_at: "2026-11-14T10:08:05Z"
+  from: msg://user/local/operator
+  manifest_rev: 2
+  revs: {s01: 1, s02: 1, s03: 1}   # every listed scene's revision when the round was sent
+  notes:
+    - id: n7k2…
+      scene: s01
+      scene_rev: 1
+      kind: suggestion            # comment | suggestion | move | cut | add
+      section: Narration
+      quote: a few words long     # the passage (a suggestion)
+      replace: short and sharp    # what to put instead
+      text: Tighter.
+      state: open                 # open | done | declined (the team sets it)
+      reply: …                    # the team's answer, optional
+  ---
+  The round written out for reading.
+  ```
+
+  The team answers by putting new scene revisions and setting each note's `state` (and
+  `reply`) in the same round item.
 
 Keys the app does not know are kept as they are when it writes an item again: rewriting a
 manifest changes only `scenes`, `stage`, `round` and `approved`, and a scene edit changes
@@ -81,6 +106,23 @@ text before the first heading, stay as they are.
   listed under Cut scenes, from where it can be put back.
 - **Scene detail** (click a card; beside the board): title and duration, and the four
   sections, each edited in place (click; ⌘↩ or clicking away keeps it, Esc does not).
+
+## Rounds
+
+- **Draft notes.** In a scene's detail: **Comment** on a section (or on the scene); select a
+  passage in a section to **suggest** what to put instead. Moving, cutting and adding scenes
+  are noted too: one "moved" note holding the order as it is now, and a scene added and cut
+  in the same round cancels out. The notes are kept here until the round is sent, and can be
+  taken out.
+- **Send round** (the round panel in the storyboard's header) asks first, then:
+  - writes `<key>.round-<n>` (the next round after the manifest's `round`; a round already
+    in Caster is never written over);
+  - sets the manifest's `stage: revising` and `round: n`;
+  - mails each owner that is a Tether address (`msg://…`) the round's `caster://` reference,
+    from `msg://user/local/operator`, and comments on the script's Torque task when it has
+    one.
+  - It says who was told, and who was not (an owner that is not an address).
+- **Sent rounds** are listed in the panel with each note's state as the team left it.
 
 ## Keeping in step with Caster
 
@@ -106,4 +148,6 @@ text before the first heading, stay as they are.
 `POST /api/story/scripts/{key}/scenes` `{after?, from?, title?}`,
 `PUT /api/story/scripts/{key}/scenes/{id}` `{base_rev, title?, duration_s?, sections?}`
 (409 when the scene moved on), `POST …/scenes/{id}/cut`, `POST …/scenes/{id}/restore`,
-`GET /api/story/log?name=`, `GET /api/story/item?name=&rev=`.
+`GET /api/story/log?name=`, `GET /api/story/item?name=&rev=`,
+`POST /api/story/scripts/{key}/notes` `{scene?, section?, kind, quote?, replace?, text?}`,
+`PUT …/notes/{id}` `{text?, replace?}`, `DELETE …/notes/{id}`, `POST …/send`.

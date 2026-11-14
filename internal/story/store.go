@@ -535,7 +535,8 @@ func (s *Store) SetStage(ctx context.Context, key, stage string) error {
 // SetOrder puts the scenes in the order given. Scenes the team added since the owner looked
 // keep their place at the end; ids no longer listed are dropped from the request.
 func (s *Store) SetOrder(ctx context.Context, key string, order []string) error {
-	return s.changeManifest(ctx, key, func(d *Doc) error {
+	var final []string
+	err := s.changeManifest(ctx, key, func(d *Doc) error {
 		now := d.Strings("scenes")
 		in := map[string]bool{}
 		for _, id := range now {
@@ -554,8 +555,13 @@ func (s *Store) SetOrder(ctx context.Context, key string, order []string) error 
 				next = append(next, id)
 			}
 		}
+		final = next
 		return d.Set("scenes", next)
 	})
+	if err == nil {
+		s.noteStructure(ctx, key, "move", "", "New order: "+strings.Join(final, ", "))
+	}
+	return err
 }
 
 // newSceneID is the next sNN not listed and not already an item (cut scenes keep theirs).
@@ -648,7 +654,7 @@ func (s *Store) AddScene(ctx context.Context, key, after, from, title string) (s
 		return "", err
 	}
 	s.mu.Unlock()
-	return id, s.changeManifest(ctx, key, func(d *Doc) error {
+	err = s.changeManifest(ctx, key, func(d *Doc) error {
 		list := d.Strings("scenes")
 		at := len(list)
 		for i, v := range list {
@@ -659,11 +665,22 @@ func (s *Store) AddScene(ctx context.Context, key, after, from, title string) (s
 		list = append(list[:at], append([]string{id}, list[at:]...)...)
 		return d.Set("scenes", list)
 	})
+	if err == nil {
+		what := "New scene " + id
+		if from != "" {
+			what += ", a copy of " + from
+		}
+		if after != "" {
+			what += ", after " + after
+		}
+		s.noteStructure(ctx, key, "add", id, what)
+	}
+	return id, err
 }
 
 // CutScene takes a scene out of the manifest's list; its item stays in Caster.
 func (s *Store) CutScene(ctx context.Context, key, id string) error {
-	return s.changeManifest(ctx, key, func(d *Doc) error {
+	err := s.changeManifest(ctx, key, func(d *Doc) error {
 		list := d.Strings("scenes")
 		next := list[:0:0]
 		for _, v := range list {
@@ -673,11 +690,15 @@ func (s *Store) CutScene(ctx context.Context, key, id string) error {
 		}
 		return d.Set("scenes", next)
 	})
+	if err == nil {
+		s.noteStructure(ctx, key, "cut", id, "Cut scene "+id)
+	}
+	return err
 }
 
 // RestoreScene puts a cut scene back, at the end.
 func (s *Store) RestoreScene(ctx context.Context, key, id string) error {
-	return s.changeManifest(ctx, key, func(d *Doc) error {
+	err := s.changeManifest(ctx, key, func(d *Doc) error {
 		list := d.Strings("scenes")
 		for _, v := range list {
 			if v == id {
@@ -686,6 +707,10 @@ func (s *Store) RestoreScene(ctx context.Context, key, id string) error {
 		}
 		return d.Set("scenes", append(list, id))
 	})
+	if err == nil {
+		s.noteStructure(ctx, key, "add", id, "Scene "+id+" put back, at the end")
+	}
+	return err
 }
 
 // SceneEdit is the owner's change to a scene, made on the revision BaseRev. Nil fields are

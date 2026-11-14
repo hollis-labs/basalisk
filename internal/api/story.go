@@ -11,8 +11,11 @@ import (
 // Story (internal/story, docs/story.md): video scripts and storyboards, kept in Caster's
 // "story" namespace with a working copy here.
 
-// EnableStory turns the story routes on.
-func (a *API) EnableStory(store *story.Store) { a.story = store }
+// EnableStory turns the story routes on. tell (the Tether gateway) is how a sent round
+// reaches the team; nil means rounds are written but nobody is told.
+func (a *API) EnableStory(store *story.Store, tell story.Notifier) {
+	a.story, a.storyTell = store, tell
+}
 
 func (a *API) storyRoutes() []route {
 	if a.story == nil {
@@ -31,7 +34,77 @@ func (a *API) storyRoutes() []route {
 		{"PUT", "/api/story/scripts/{key}/scenes/{id}", w, a.storyEditScene},
 		{"POST", "/api/story/scripts/{key}/scenes/{id}/cut", w, a.storyCut},
 		{"POST", "/api/story/scripts/{key}/scenes/{id}/restore", w, a.storyRestore},
+		{"POST", "/api/story/scripts/{key}/notes", w, a.storyAddNote},
+		{"PUT", "/api/story/scripts/{key}/notes/{id}", w, a.storyEditNote},
+		{"DELETE", "/api/story/scripts/{key}/notes/{id}", w, a.storyDropNote},
+		{"POST", "/api/story/scripts/{key}/send", w, a.storySend},
 	}
+}
+
+func (a *API) storyAddNote(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var in story.Note
+	if !decodeLimit(w, r, &in, 128<<10) {
+		return
+	}
+	in.Key = r.PathValue("key")
+	n, err := a.story.AddNote(r.Context(), in)
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	reply(w, 201, n)
+}
+
+func (a *API) storyEditNote(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var in struct {
+		Text    *string `json:"text"`
+		Replace *string `json:"replace"`
+	}
+	if !decodeLimit(w, r, &in, 128<<10) {
+		return
+	}
+	if err := a.story.EditNote(r.Context(), r.PathValue("key"), r.PathValue("id"), in.Text, in.Replace); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	reply(w, 200, map[string]any{"ok": true})
+}
+
+func (a *API) storyDropNote(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	if err := a.story.DropNote(r.Context(), r.PathValue("key"), r.PathValue("id")); err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	reply(w, 200, map[string]any{"ok": true})
+}
+
+func (a *API) storySend(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	sent, err := a.story.SendRound(r.Context(), r.PathValue("key"), story.RoundFrom, a.storyTell)
+	if err != nil {
+		if errors.Is(err, story.ErrNoCaster) || errors.Is(err, story.ErrNotFound) {
+			storyFail(w, err)
+			return
+		}
+		fail(w, 400, err.Error())
+		return
+	}
+	reply(w, 200, sent)
 }
 
 // storyFail answers a store error: no gateway, no such script, a conflict, or Caster's.
@@ -85,7 +158,8 @@ func (a *API) storyScript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	drafts, _ := a.story.Drafts(r.Context(), key)
-	out := map[string]any{"script": sc, "drafts": drafts, "sections": story.Sections}
+	rounds, _ := a.story.Rounds(r.Context(), key)
+	out := map[string]any{"script": sc, "drafts": drafts, "rounds": rounds, "sections": story.Sections}
 	if rerr != nil {
 		out["problem"] = rerr.Error()
 	}

@@ -61,6 +61,38 @@ export interface StoryNote {
   created_at: string
 }
 
+export interface RoundNote {
+  id: string
+  scene?: string
+  scene_rev?: number
+  kind: string
+  section?: string
+  quote?: string
+  replace?: string
+  text?: string
+  state: string
+  reply?: string
+}
+
+export interface StoryRound {
+  round: number
+  ref: string
+  sent_at: string
+  revs: Record<string, number>
+  notes: RoundNote[]
+  problem?: string
+}
+
+export interface SentRound {
+  round: number
+  ref: string
+  notes: number
+  mailed: string[]
+  not_mailed: string[]
+  commented?: string
+  problem?: string
+}
+
 export interface StoryRevision {
   rev: number
   at: string
@@ -82,9 +114,13 @@ export const story = {
       `story${refresh ? "?refresh=1" : ""}`,
     ),
   script: (key: string, refresh = false) =>
-    request<{ script: StoryScript; drafts: StoryNote[]; sections: string[]; problem?: string }>(
-      `story/scripts/${enc(key)}${refresh ? "?refresh=1" : ""}`,
-    ),
+    request<{
+      script: StoryScript
+      drafts: StoryNote[]
+      rounds: StoryRound[]
+      sections: string[]
+      problem?: string
+    }>(`story/scripts/${enc(key)}${refresh ? "?refresh=1" : ""}`),
   create: (project: string, script: string, title: string) =>
     request<{ key: string }>("story/scripts", "POST", { project, script, title }),
   stage: (key: string, stage: string) =>
@@ -99,6 +135,13 @@ export const story = {
     request(`story/scripts/${enc(key)}/scenes/${enc(id)}/cut`, "POST"),
   restore: (key: string, id: string) =>
     request(`story/scripts/${enc(key)}/scenes/${enc(id)}/restore`, "POST"),
+  addNote: (key: string, note: Partial<StoryNote>) =>
+    request<StoryNote>(`story/scripts/${enc(key)}/notes`, "POST", note),
+  editNote: (key: string, id: string, change: { text?: string; replace?: string }) =>
+    request(`story/scripts/${enc(key)}/notes/${enc(id)}`, "PUT", change),
+  dropNote: (key: string, id: string) =>
+    request(`story/scripts/${enc(key)}/notes/${enc(id)}`, "DELETE"),
+  send: (key: string) => request<SentRound>(`story/scripts/${enc(key)}/send`, "POST"),
   log: (name: string) => request<{ revisions: StoryRevision[] }>(`story/log?name=${enc(name)}`),
   item: (name: string, rev: number) =>
     request<{ name: string; rev: number; content: string }>(

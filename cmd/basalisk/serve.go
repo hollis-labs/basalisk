@@ -122,14 +122,16 @@ func (b *basalisk) serve(ctx context.Context) error {
 	// gateway, with a working copy beside the database (internal/story).
 	if scratchPath != "" {
 		var caster story.Caster
+		var tell story.Notifier
 		if link.Configured() {
 			caster = story.GatewayCaster{Link: link}
+			tell = story.GatewayNotifier{Link: link}
 		}
 		storyPath := filepath.Join(filepath.Dir(scratchPath), "story.db")
 		if store, err := story.Open(ctx, storyPath, caster); err != nil {
 			slog.Warn("story is off: its store could not be opened", "path", storyPath, "err", err)
 		} else {
-			a.EnableStory(store)
+			a.EnableStory(store, tell)
 			go func() {
 				<-ctx.Done()
 				_ = store.Close()
