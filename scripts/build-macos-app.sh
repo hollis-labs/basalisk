@@ -17,6 +17,16 @@
 # a real identity keeps them. BASALISK_SIGN_IDENTITY names the identity to use. Without it
 # the first "Developer ID Application" identity in the keychain is used, and ad-hoc ("-")
 # when there is none.
+#
+# Passkeys in the Browser (off unless asked for): Apple lets a browser make passkey requests
+# for any site only with the com.apple.developer.web-browser.public-key-credential
+# entitlement, which Apple grants on request and delivers in a provisioning profile.
+# BASALISK_PROVISION_PROFILE names that profile (a Developer ID profile for this bundle id
+# with the entitlement in it). With it the app declares http and https links (one of
+# Apple's conditions for a browser), the profile is embedded, and the app is signed with the
+# entitlements the profile grants and the hardened runtime. Without it nothing changes.
+# A differently signed app can lose its Accessibility and Input Monitoring grants: build it
+# as the dev copy first. docs/browser-passkeys.md has the steps.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,6 +49,44 @@ bundle_id="${BASALISK_BUNDLE_ID:-com.hollislabs.basalisk}"
 app_name="${BASALISK_APP_NAME:-Basalisk}"
 version="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
 app="$root/build/$app_name.app"
+
+profile="${BASALISK_PROVISION_PROFILE:-}"
+passkeys=0
+if [ -n "$profile" ]; then
+	[ -f "$profile" ] || { echo "BASALISK_PROVISION_PROFILE: no file at $profile" >&2; exit 2; }
+	work="$(mktemp -d)"
+	trap 'rm -rf "$work"' EXIT
+	if ! security cms -D -i "$profile" >"$work/profile.plist" 2>/dev/null; then
+		echo "BASALISK_PROVISION_PROFILE: $profile is not a provisioning profile" >&2
+		exit 2
+	fi
+	pl() { /usr/libexec/PlistBuddy -c "Print :$1" "$work/profile.plist" 2>/dev/null || true; }
+	team="$(pl 'TeamIdentifier:0')"
+	appid="$(pl 'Entitlements:com.apple.application-identifier')"
+	granted="$(pl 'Entitlements:com.apple.developer.web-browser.public-key-credential')"
+	expires="$(pl 'ExpirationDate')"
+	if [ "$granted" != "true" ]; then
+		echo "BASALISK_PROVISION_PROFILE: the profile does not grant com.apple.developer.web-browser.public-key-credential" >&2
+		exit 2
+	fi
+	if [ "$appid" != "$team.$bundle_id" ]; then
+		echo "BASALISK_PROVISION_PROFILE: the profile is for $appid, not $team.$bundle_id" >&2
+		exit 2
+	fi
+	cat >"$work/app.entitlements" <<ENT
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.application-identifier</key><string>${appid}</string>
+	<key>com.apple.developer.team-identifier</key><string>${team}</string>
+	<key>com.apple.developer.web-browser.public-key-credential</key><true/>
+</dict>
+</plist>
+ENT
+	passkeys=1
+	echo "passkeys: profile for $appid (expires $expires)"
+fi
 
 if [ "$ui" = 1 ]; then
 	(cd frontend && npm ci && npm run build)
@@ -80,13 +128,33 @@ cat >"$app/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+if [ "$passkeys" = 1 ]; then
+	# A browser opens http and https links (Apple's first condition for the entitlement).
+	/usr/libexec/PlistBuddy \
+		-c "Add :CFBundleURLTypes array" \
+		-c "Add :CFBundleURLTypes:0 dict" \
+		-c "Add :CFBundleURLTypes:0:CFBundleURLName string Web site URL" \
+		-c "Add :CFBundleURLTypes:0:CFBundleTypeRole string Viewer" \
+		-c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" \
+		-c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string http" \
+		-c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:1 string https" \
+		"$app/Contents/Info.plist"
+	cp "$profile" "$app/Contents/embedded.provisionprofile"
+fi
+
 identity="${BASALISK_SIGN_IDENTITY:-}"
 if [ -z "$identity" ]; then
 	identity="$(security find-identity -v -p codesigning 2>/dev/null |
 		sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
 fi
 [ -n "$identity" ] || identity="-"
-codesign --force --sign "$identity" --identifier "$bundle_id" "$app"
+if [ "$passkeys" = 1 ]; then
+	[ "$identity" != "-" ] || { echo "passkeys need a Developer ID identity, not ad-hoc signing" >&2; exit 2; }
+	codesign --force --sign "$identity" --identifier "$bundle_id" --options runtime \
+		--entitlements "$work/app.entitlements" "$app"
+else
+	codesign --force --sign "$identity" --identifier "$bundle_id" "$app"
+fi
 codesign --verify --strict "$app"
 if [ "$identity" = "-" ]; then
 	echo "signed ad-hoc: permission grants will not survive a rebuild (set BASALISK_SIGN_IDENTITY)"
