@@ -221,14 +221,16 @@ func (b *basalisk) serve(ctx context.Context) error {
 	// database (internal/work).
 	if scratchPath != "" {
 		var caster work.Caster
+		var tell *work.GatewayNotifier
 		if link.Configured() {
 			caster = work.GatewayCaster{Link: link}
+			tell = &work.GatewayNotifier{Link: link}
 		}
 		workPath := filepath.Join(filepath.Dir(scratchPath), "work.db")
 		if store, err := work.Open(ctx, workPath, caster); err != nil {
 			slog.Warn("work is off: its store could not be opened", "path", workPath, "err", err)
 		} else {
-			a.EnableWork(store)
+			a.EnableWork(store, tell)
 			workStore = store
 			go func() {
 				<-ctx.Done()

@@ -94,6 +94,9 @@ export interface WorkCard {
   task?: string
   tags: string[]
   cut?: boolean
+  /** Signed off; stale_sign: and its text changed since. */
+  signed?: boolean
+  stale_sign?: boolean
   excerpt?: string
   words: number
   rev: number
@@ -119,6 +122,41 @@ export interface WorkDetail extends WorkCard {
   order: string[]
   lead?: string
   notes: WorkNote[]
+  /** Sent rounds, newest first. */
+  rounds: WorkRound[]
+  sign_off?: WorkSignOff
+  changed_since_round: boolean
+  /** The workspace's owners: who rounds and sign-offs are mailed to. */
+  owners: string[]
+}
+
+export interface WorkRoundNote {
+  id: string
+  kind: string
+  section?: string
+  quote?: string
+  replace?: string
+  text?: string
+  state: string
+  reply?: string
+}
+
+export interface WorkRound {
+  round: number
+  ref: string
+  sent_at: string
+  item_rev: number
+  notes: WorkRoundNote[]
+  open: number
+  problem?: string
+}
+
+export interface WorkSignOff {
+  at: string
+  rev: number
+  digest: string
+  pinned?: string
+  round?: number
 }
 
 export interface Workspace {
@@ -220,6 +258,31 @@ export const work = {
   cut: (ws: string, id: string) => request(`work/${enc(ws)}/items/${enc(id)}/cut`, "POST"),
   restore: (ws: string, id: string) => request(`work/${enc(ws)}/items/${enc(id)}/restore`, "POST"),
   dropNote: (ws: string, id: string) => request(`work/${enc(ws)}/notes/${enc(id)}`, "DELETE"),
+  /** A note in the item's draft round (the owner sends it). */
+  addNote: (
+    ws: string,
+    id: string,
+    note: { kind: string; section?: string; quote?: string; replace?: string; text?: string },
+  ) => request<WorkNote>(`work/${enc(ws)}/items/${enc(id)}/notes`, "POST", note),
+  editNote: (ws: string, id: string, change: { text?: string; replace?: string }) =>
+    request(`work/${enc(ws)}/notes/${enc(id)}`, "PUT", change),
+  /** Send the draft round: only ever from the owner's click. */
+  sendRound: (ws: string, id: string) =>
+    request<{
+      round: number
+      ref: string
+      notes: number
+      mailed: string[]
+      not_mailed: string[]
+      commented?: string
+    }>(`work/${enc(ws)}/items/${enc(id)}/round`, "POST"),
+  /** Sign the item off: only ever from the owner's click. */
+  signOff: (ws: string, id: string, anyway = false) =>
+    request<
+      WorkSignOff & { stage?: string; mailed: string[]; not_mailed: string[]; problem?: string }
+    >(`work/${enc(ws)}/items/${enc(id)}/signoff`, "POST", { anyway }),
+  unsign: (ws: string, id: string) => request(`work/${enc(ws)}/items/${enc(id)}/signoff`, "DELETE"),
+  setOwners: (ws: string, owners: string[]) => request(`work/${enc(ws)}/owners`, "PUT", { owners }),
   saveView: (ws: string, id: string, set: Record<string, unknown>) =>
     request<{ id: string; rev: number }>(`work/${enc(ws)}/views/${enc(id)}`, "PUT", set),
   newView: (ws: string, set: Record<string, unknown>) =>

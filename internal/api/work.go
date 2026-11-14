@@ -11,8 +11,11 @@ import (
 // Work (internal/work, docs/work.md): the engine under Content, Planner and Writer. Typed
 // items, links and saved views kept in Caster (work/v1), with a working copy here.
 
-// EnableWork turns the work routes on.
-func (a *API) EnableWork(store *work.Store) { a.work = store }
+// EnableWork turns the work routes on. tell (the Tether gateway) mails a sent round or a
+// sign-off to the workspace's owners and pins approved revisions; it may be nil.
+func (a *API) EnableWork(store *work.Store, tell *work.GatewayNotifier) {
+	a.work, a.workTell = store, tell
+}
 
 func (a *API) workRoutes() []route {
 	if a.work == nil {
@@ -35,6 +38,12 @@ func (a *API) workRoutes() []route {
 		{"POST", "/api/work/{ws}/items/{id}/cut", w, a.workCut},
 		{"POST", "/api/work/{ws}/items/{id}/restore", w, a.workRestore},
 		{"DELETE", "/api/work/{ws}/notes/{id}", w, a.workDropNote},
+		{"POST", "/api/work/{ws}/items/{id}/notes", w, a.workAddNote},
+		{"PUT", "/api/work/{ws}/notes/{id}", w, a.workEditNote},
+		{"POST", "/api/work/{ws}/items/{id}/round", w, a.workSendRound},
+		{"POST", "/api/work/{ws}/items/{id}/signoff", w, a.workSignOff},
+		{"DELETE", "/api/work/{ws}/items/{id}/signoff", w, a.workUnsign},
+		{"PUT", "/api/work/{ws}/owners", w, a.workOwners},
 		{"POST", "/api/work/{ws}/views", w, a.workView},
 		{"PUT", "/api/work/{ws}/views/{id}", w, a.workView},
 		{"PUT", "/api/work/{ws}/views/{id}/layout", w, a.workLayout},
@@ -407,4 +416,128 @@ func (a *API) workAt(w http.ResponseWriter, r *http.Request) {
 		out["stage"] = d.Str("stage")
 	}
 	reply(w, 200, out)
+}
+
+// ---- Rounds and sign-off ----
+
+func (a *API) workAddNote(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	var in work.Note
+	if !decodeLimit(w, r, &in, 128<<10) {
+		return
+	}
+	n, err := a.work.AddNote(r.Context(), r.PathValue("ws"), r.PathValue("id"), in)
+	if err != nil {
+		if errors.Is(err, work.ErrNotFound) {
+			workFail(w, err)
+			return
+		}
+		fail(w, 400, err.Error())
+		return
+	}
+	reply(w, 200, n)
+}
+
+func (a *API) workEditNote(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	var in struct {
+		Text    *string `json:"text"`
+		Replace *string `json:"replace"`
+	}
+	if !decodeLimit(w, r, &in, 128<<10) {
+		return
+	}
+	if err := a.work.EditNote(r.Context(), r.PathValue("ws"), r.PathValue("id"), in.Text, in.Replace); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	reply(w, 200, map[string]any{"ok": true})
+}
+
+// workSendRound sends the item's draft round. The agent has no tool for this: it is the
+// owner's click.
+func (a *API) workSendRound(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	var tell work.Notifier
+	if a.workTell != nil {
+		tell = a.workTell
+	}
+	sent, err := a.work.SendRound(r.Context(), r.PathValue("ws"), r.PathValue("id"), tell)
+	if err != nil {
+		if errors.Is(err, work.ErrNoCaster) || errors.Is(err, work.ErrNotFound) {
+			workFail(w, err)
+			return
+		}
+		fail(w, 400, err.Error())
+		return
+	}
+	reply(w, 200, sent)
+}
+
+// workSignOff signs the item off ({"anyway": true} when the last round has open notes).
+func (a *API) workSignOff(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	var in struct {
+		Anyway bool `json:"anyway"`
+	}
+	if r.ContentLength != 0 && !decodeLimit(w, r, &in, 1<<10) {
+		return
+	}
+	var tell work.Notifier
+	var pin work.Pinner
+	if a.workTell != nil {
+		tell, pin = a.workTell, a.workTell
+	}
+	signed, err := a.work.SignOff(r.Context(), r.PathValue("ws"), r.PathValue("id"), in.Anyway, pin, tell)
+	if err != nil {
+		var open *work.ErrOpenNotes
+		if errors.As(err, &open) {
+			reply(w, 409, map[string]any{"message": err.Error(), "open": open.Open, "round": open.Round})
+			return
+		}
+		workFail(w, err)
+		return
+	}
+	reply(w, 200, signed)
+}
+
+func (a *API) workUnsign(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	if err := a.work.Unsign(r.Context(), r.PathValue("ws"), r.PathValue("id")); err != nil {
+		workFail(w, err)
+		return
+	}
+	reply(w, 200, map[string]any{"ok": true})
+}
+
+// workOwners sets who a workspace's rounds and sign-offs are mailed to.
+func (a *API) workOwners(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	var in struct {
+		Owners []string `json:"owners"`
+	}
+	if !decodeLimit(w, r, &in, 16<<10) {
+		return
+	}
+	if err := a.work.SetOwners(r.Context(), r.PathValue("ws"), in.Owners); err != nil {
+		if errors.Is(err, work.ErrNoCaster) || errors.Is(err, work.ErrNotFound) {
+			workFail(w, err)
+			return
+		}
+		fail(w, 400, err.Error())
+		return
+	}
+	reply(w, 200, map[string]any{"ok": true})
 }

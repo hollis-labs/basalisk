@@ -9,7 +9,8 @@ the task is CW-20261114-0076. It generalizes Story (`docs/story.md`), which stay
 
 Built so far: step 1 (the engine, Board, Detail, the Content app), step 2 (Calendar, the
 publication log, material by reference) and step 3 (Outline, the Writer app, links both
-ways), step 4 (Canvas), step 5 (Flow) and step 6 (Planner). Rounds and agents follow.
+ways), step 4 (Canvas), step 5 (Flow), step 6 (Planner) and step 7 (rounds, sign-off, agent
+tools).
 
 ## Where it is kept
 
@@ -96,7 +97,32 @@ Workspace slugs are lowercase letters, digits and `-`. Item and view ids are 8 c
   `group_by` (board: `stage` or an enum field), `date_field` (calendar), `root` (outline),
   `rel` (flow), `layout` (canvas and flow).
 
-- **Round** `caster://w-<workspace>/r.<item-id>.<n>`: as in `story/v1` (step 7).
+- **Round** `caster://w-<workspace>/r.<item-id>.<n>`: one sent round of feedback on an item
+  (step 7), as in `story/v1`:
+
+  ```
+  ---
+  work: v1
+  item: z22gidco
+  round: 1
+  sent_at: "2026-11-14T23:27:53Z"
+  from: msg://user/local/operator
+  item_rev: 2               # the item's revision when sent
+  digest: 447d2f249e166599  # of its title and text then
+  notes:
+    - {id: n4zncswpr, kind: comment, text: Say who it is for., state: open}
+    - {id: nnwo6lhir, kind: suggestion, section: Summary, quote: walk round, replace: tour of, state: open}
+  ---
+  (the round written out for reading)
+  ```
+
+  The team answers in the same item: each note's `state` (`open`, `done`, `declined`) and
+  `reply`, and a new revision of the item for what they changed.
+
+- **Sign-off**: an item that was signed off carries
+  `signed: {at, rev, digest, pinned, round}`: the revision approved, a digest of its title
+  and text (a later change to the text makes the sign-off stale; a stage or field change
+  does not), the `cas://` pin of that revision and the last round sent before it.
 
 Keys the app does not know are kept as they are when it writes an item again, in the front
 matter and inside `fields`; sections with other headings and text before the first heading
@@ -262,6 +288,28 @@ stay as they are.
   and its status from `torque_task_get`. Nothing else of Torque's is changed.
   `POST /api/work/{ws}/items/{id}/torque` `{task, created}`, `GET` the status.
 
+## Step 7: rounds, sign-off, agents
+
+- **Review** in the detail: who rounds go to (the workspace's `owners`, Tether addresses;
+  Change sets them), the draft round, Send round, the rounds sent with the team's answers,
+  and Sign off.
+- **Draft notes**: a comment (on the whole item or a section) or a suggestion (select the
+  passage in a section, then Suggest: the selection becomes the quote). A suggestion's quote
+  must be in that section as it is now. Drafts are kept in Basalisk only until sent.
+- **Send round** (asks first, naming who is mailed) writes `r.<item>.<n>` (the next free
+  number, never over one that is there), mails each owner from `msg://user/local/operator`
+  on thread `work`, and comments on the item's Torque task if it has one.
+- **Sign off** (asks first) records `signed` on the item, moves an item at `review` to the
+  next stage, pins the approved revision in CAS (`caster_snap`) and tells the owners. While
+  the last round has open notes, or cannot be read, it asks again ("Sign off anyway").
+  Take off removes the sign-off. Boards mark signed cards (amber when stale).
+- **Agent tools** (`frontend/src/work/agent.ts`): `work_list` (workspaces; a workspace's
+  items), `work_get` (an item's text, draft notes, last round, sign-off) and `work_note`
+  (a draft comment or suggestion). The agent has no way to send a round, sign off or
+  publish: those are only the owner's clicks.
+- The detail reads itself again every 30 s while open (not while editing), so the team's
+  answers to a round show without reopening it.
+
 ## Keeping in step with Caster
 
 - **Read-back.** The workspace list reads `work` when it opens and every 25 s; an open
@@ -289,5 +337,9 @@ material?, published?, links?}` (409 when it moved on; `material`, `published` a
 replace the lists), `PUT …/items/{id}/place` `{parent, before, view}`, `PUT …/items/{id}/move` `{key, value}` (`stage`, or an enum or date field; an empty
 value takes a date out),
 `POST …/items/{id}/cut`, `POST …/items/{id}/restore`, `DELETE /api/work/{ws}/notes/{id}`,
+`POST …/items/{id}/notes` `{kind, section?, quote?, replace?, text?}` (a draft note),
+`PUT /api/work/{ws}/notes/{id}` `{text?, replace?}`, `POST …/items/{id}/round` (send),
+`POST …/items/{id}/signoff` `{anyway?}` (409 with `open` while notes are open),
+`DELETE …/items/{id}/signoff`, `PUT /api/work/{ws}/owners` `{owners}`,
 `POST /api/work/{ws}/views` and `PUT …/views/{id}` (the keys sent are set, null takes one
 out), `PUT …/views/{id}/layout` (a canvas patch), `GET /api/work/{ws}/log?name=`, `GET /api/work/{ws}/at?name=&rev=`.

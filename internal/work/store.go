@@ -308,6 +308,8 @@ type Card struct {
 	Task      string         `json:"task,omitempty"`
 	Tags      []string       `json:"tags"`
 	Cut       bool           `json:"cut,omitempty"`
+	Signed    bool           `json:"signed,omitempty"`     // signed off
+	StaleSign bool           `json:"stale_sign,omitempty"` // signed off, and its text changed since
 	Excerpt   string         `json:"excerpt,omitempty"`
 	Words     int            `json:"words"`
 	Rev       int            `json:"rev"`
@@ -323,6 +325,10 @@ type Detail struct {
 	Order    []string          `json:"order"` // the sections shown: the kind's, then any other heading
 	Lead     string            `json:"lead,omitempty"`
 	Notes    []Note            `json:"notes"`
+	Rounds   []RoundView       `json:"rounds"`              // sent, newest first
+	SignOff  *SignedOff        `json:"sign_off,omitempty"`  // the item's sign-off, if any
+	Changed  bool              `json:"changed_since_round"` // revised since the last round was sent
+	Owners   []string          `json:"owners"`              // the workspace's: who rounds are mailed to
 }
 
 func cardOf(id string, r row, kinds map[string]Kind) (Card, *Doc) {
@@ -359,6 +365,9 @@ func cardOf(id string, r row, kinds map[string]Kind) (Card, *Doc) {
 	}
 	if c.Published == nil {
 		c.Published = []Published{}
+	}
+	if so, stale := signedOf(d); so != nil {
+		c.Signed, c.StaleSign = true, stale
 	}
 	if c.Stage == "" {
 		if k, ok := kinds[c.Kind]; ok && len(k.Stages) > 0 {
@@ -559,6 +568,22 @@ func (s *Store) Detail(ctx context.Context, ws, id string) (Detail, bool, error)
 		}
 	}
 	out.Notes, _ = s.Notes(ctx, ws, id)
+	out.Rounds, _ = s.rounds(ctx, ns, id)
+	if out.Rounds == nil {
+		out.Rounds = []RoundView{}
+	}
+	if len(out.Rounds) > 0 {
+		if last := out.Rounds[0]; last.Digest != "" && d != nil {
+			out.Changed = last.Digest != textDigest(d)
+		} else {
+			out.Changed = out.Rev > last.ItemRev
+		}
+	}
+	out.SignOff, _ = signedOf(d)
+	out.Owners = []string{}
+	if w, ok := s.workspace(ctx, ws); ok {
+		out.Owners = w.Owners
+	}
 	return out, true, nil
 }
 

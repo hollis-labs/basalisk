@@ -4,7 +4,7 @@
  * shown kinds' stages (or the field's options); a value no column names goes to "Other",
  * never lost. The kind filter and grouping are kept in the view item.
  */
-import { Plus } from "lucide-react"
+import { BadgeCheck, Plus } from "lucide-react"
 import { type DragEvent, useMemo, useState } from "react"
 import { type WorkCard, type WorkSpace, type WorkView, work } from "../api/work"
 import { KindChips } from "./chips"
@@ -207,6 +207,14 @@ export function Board({
                   >
                     <span className="work-card-title">
                       <Icon size={12} className="work-kindicon" /> {c.title}
+                      {c.signed && (
+                        <BadgeCheck
+                          size={12}
+                          className="work-card-signed"
+                          data-stale={c.stale_sign || undefined}
+                          aria-label={c.stale_sign ? "Signed off; changed since" : "Signed off"}
+                        />
+                      )}
                     </span>
                     {c.problem ? (
                       <span className="work-problem-inline">{c.problem}</span>

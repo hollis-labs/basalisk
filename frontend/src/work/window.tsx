@@ -13,6 +13,7 @@ import { Detail } from "./detail"
 import { Flow } from "./flow"
 import { Outline } from "./outline"
 import { ago, message, slug } from "./util"
+import "./agent"
 import "./work.css"
 
 export function WorkWindow({ app, appTitle }: { app: string; appTitle: string }) {

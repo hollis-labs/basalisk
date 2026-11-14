@@ -63,6 +63,8 @@ type API struct {
 	storyKeep story.Archiver
 	// work is the Work engine under Content, Planner and Writer (work.go); nil unless EnableWork was called.
 	work *work.Store
+	// workTell mails rounds and sign-offs and pins approved revisions (the gateway); nil without one.
+	workTell *work.GatewayNotifier
 	// inbox is the owner's messages and notifications (inbox.go); nil unless EnableInbox was called.
 	inbox *inbox.Inbox
 	// feeds is the Reader's feed store (reader.go); nil unless EnableReader was called.

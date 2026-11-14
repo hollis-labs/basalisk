@@ -1,6 +1,6 @@
 /**
  * An item's detail, beside the view: title, stage and fields, the body's sections edited in
- * place, tags, links, material and the publication log, the owner's unsent notes, and the
+ * place, tags, links, material and the publication log, the review (notes, rounds, sign-off), and the
  * item's revisions with a word diff against any of them.
  */
 import { Scissors, X } from "lucide-react"
@@ -21,6 +21,7 @@ import {
 import { CiteText } from "../cite/ui"
 import { useDesk } from "../desktop/context"
 import { ymd } from "./calendar"
+import { Review } from "./review"
 import { ago, diffWords, kindIcon, label, message } from "./util"
 
 export function Detail({
@@ -67,6 +68,16 @@ export function Detail({
   useEffect(() => {
     if (!edit) void load()
   }, [load, revOnBoard])
+  // The team answers a round in its own item, which does not move this one's revision: look
+  // again now and then while the detail is open and nothing is being edited.
+  const editRef = useRef(edit)
+  editRef.current = edit
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (!editRef.current && document.visibilityState === "visible") void load()
+    }, 30_000)
+    return () => window.clearInterval(t)
+  }, [load])
 
   if (!d)
     return (
@@ -210,8 +221,11 @@ export function Detail({
             // biome-ignore lint/a11y/noStaticElementInteractions: click to edit in place
             <div
               className="work-sec-text"
+              data-section={sec}
               data-empty={!d.sections[sec]}
               onClick={() => {
+                // Selecting a passage (to suggest a change to it) is not a click to edit.
+                if (window.getSelection()?.toString()) return
                 editing(true)
                 setEdit({ section: sec, text: d.sections[sec] ?? "" })
               }}
@@ -275,35 +289,7 @@ export function Detail({
         </section>
       )}
 
-      {d.notes.length > 0 && (
-        <section className="work-sec">
-          <h4>Your notes, not sent</h4>
-          {d.notes.map((n) => (
-            <div key={n.id} className="work-note" data-kind={n.kind}>
-              <div className="work-note-head">
-                <b>{n.kind === "suggestion" ? "Suggestion" : "Comment"}</b>
-                {n.section && <span>{n.section}</span>}
-                <span>on revision {n.item_rev}</span>
-                <span className="work-spacer" />
-                <button
-                  type="button"
-                  className="work-icon"
-                  title="Take it out"
-                  onClick={async () => {
-                    await work.dropNote(ws, n.id)
-                    await load()
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-              {n.quote && <div className="work-quote">− {n.quote}</div>}
-              {n.kind === "suggestion" && <div className="work-note-replace">+ {n.replace}</div>}
-              {n.text && <div className="work-rowtext">{n.text}</div>}
-            </div>
-          ))}
-        </section>
-      )}
+      <Review ws={ws} d={d} reload={load} changed={changed} />
 
       <section className="work-sec">
         <h4>
