@@ -7,8 +7,9 @@ Torque) and **Writer** (books, TTRPG settings and campaigns). The design is in T
 the task is CW-20261114-0076. It generalizes Story (`docs/story.md`), which stays on
 `story/v1` for now.
 
-Built so far: step 1 (the engine, Board, Detail, the Content app). Calendar, Outline and
-Writer, Canvas, Flow, Planner, and rounds and agents follow.
+Built so far: step 1 (the engine, Board, Detail, the Content app) and step 2 (Calendar, the
+publication log, material by reference). Outline and Writer, Canvas, Flow, Planner, and
+rounds and agents follow.
 
 ## Where it is kept
 
@@ -106,7 +107,8 @@ stay as they are.
 - **Content**: `idea`, `article`, `video`, `post`, `game`, `series` (holds articles, videos,
   posts and games), `channel` (a reference kind: where things go out). Stages
   `idea → outline → draft → review → scheduled → published`. Fields `publish_on` (date),
-  `channel` (ref), `format`, `length`. A new Content workspace gets one Board view.
+  `channel` (ref), `format`, `length`. A new Content workspace gets a Board and a Calendar
+  view; the header's **+** adds either to any workspace.
 
 ## The app (step 1)
 
@@ -121,10 +123,36 @@ stay as they are.
   column's value and opens it.
 - **Detail** (click a card; beside the view): title, stage, the kind's fields edited by type,
   the sections edited in place (click; ⌘↩ or clicking away keeps it, Esc does not), tags;
-  links, material and the publication log as they are (edited from step 2); the owner's notes
+  links as they are; material and the publication log (step 2); the owner's notes
   not yet sent; **Revisions**, with a word diff of each changed section from any revision to
   the current one. **Cut** takes the item out of the views; the header's "n cut" lists cut
   items to restore.
+
+## Step 2: Calendar, the publication log, material
+
+- **Calendar**: items placed by the view's `date_field` (the first date field of the kinds
+  shown when it names none; `publish_on` in Content), by month or by week (the window's own
+  choice, not saved). Dragging an item to another day sets that date: one new revision of
+  the item, nothing else changed. Items with no date wait in the **No date** list beside the
+  grid; dropping one there takes the date out. A day's **+** makes an item on that day. The
+  kind chips and the date field are kept in the view item, as on the board. Published items
+  are struck through.
+- **The publication log** (`published`): when, where, an address and a note. Publishing is
+  not done here; this records it. When an item reaches the stage `published` (a board drag,
+  the stage menu) and its log is empty, the log gets its first entry: when is `publish_on`
+  if that is set and not in the future, else today; where is the title of the item's
+  `channel`. A log that has entries is never touched by a move. The detail edits entries
+  (click one), adds them (**+ Log a publication**) and takes them out. `at` is `YYYY-MM-DD`
+  or an RFC 3339 time; `url` is http(s).
+- **Material**: references, never copies, shown as Cite chips where Cite knows the kind
+  (`tach:fragment/<id>`, Tesseract and Torque refs, links; other text as it is). Paste any
+  reference, or **From Fragments…** to search the Fragments Engine library and attach a
+  fragment as `tach:fragment/<id>` with its title as the caption. The picker uses the
+  Reader's route (`/api/reader/items`, FE's reader with the owner's integration), which is
+  the read path the app has; `internal/feread` (the `dataread` provider) is not wired into
+  the app yet. Taking material off does not touch the thing itself.
+- Setting one field keeps the item's layout: a `fields` map written on one line stays on one
+  line, and a quoted value stays quoted, so a calendar drag shows as one changed value.
 
 ## Keeping in step with Caster
 
@@ -148,8 +176,10 @@ stay as they are.
 `GET /api/work/{ws}` (the workspace: index, kinds, items, views),
 `POST /api/work/{ws}/items` `{kind, title?, stage?, parent?, fields?}`,
 `GET /api/work/{ws}/items/{id}` (the detail),
-`PUT /api/work/{ws}/items/{id}` `{base_rev, title?, fields?, sections?, tags?}` (409 when it
-moved on), `PUT …/items/{id}/move` `{key, value}` (`stage`, or an enum or date field),
+`PUT /api/work/{ws}/items/{id}` `{base_rev, title?, stage?, fields?, sections?, tags?,
+material?, published?}` (409 when it moved on; `material` and `published` replace the
+lists), `PUT …/items/{id}/move` `{key, value}` (`stage`, or an enum or date field; an empty
+value takes a date out),
 `POST …/items/{id}/cut`, `POST …/items/{id}/restore`, `DELETE /api/work/{ws}/notes/{id}`,
 `POST /api/work/{ws}/views` and `PUT …/views/{id}` (the keys sent are set, null takes one
 out), `GET /api/work/{ws}/log?name=`, `GET /api/work/{ws}/at?name=&rev=`.

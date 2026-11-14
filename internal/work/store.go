@@ -785,6 +785,11 @@ func (s *Store) Move(ctx context.Context, ws, id, key, value string) (int, error
 			if !k.HasStage(value) {
 				return fmt.Errorf("a %s has no stage %q", k.Label, value)
 			}
+			if value == StagePublished && d.Str("stage") != value {
+				if err := s.firstPublication(ctx, ns, d); err != nil {
+					return err
+				}
+			}
 			return d.Set("stage", value)
 		}
 		f, ok := k.Field(key)
@@ -808,6 +813,42 @@ func (s *Store) Move(ctx context.Context, ws, id, key, value string) (int, error
 		}
 		return d.SetField(key, value)
 	})
+}
+
+// StagePublished is the stage that means it went out; reaching it starts the publication log.
+const StagePublished = "published"
+
+// firstPublication gives an item that reaches "published" with an empty log its first entry:
+// when (publish_on if it is set and not in the future, else today) and where (the channel's
+// title, when the item names one). The owner corrects it in the detail; a log that has
+// entries is never touched.
+func (s *Store) firstPublication(ctx context.Context, ns string, d *Doc) error {
+	var log []Published
+	_ = d.Decode("published", &log)
+	if len(log) > 0 {
+		return nil
+	}
+	fields := map[string]any{}
+	_ = d.Decode("fields", &fields)
+	today := time.Now().Format("2006-01-02")
+	at := today
+	if v, ok := fields["publish_on"].(string); ok && v <= today {
+		if _, err := time.Parse("2006-01-02", v); err == nil {
+			at = v
+		}
+	}
+	where := ""
+	if ch, ok := fields["channel"].(string); ok && ValidID(ch) {
+		// The channel's title from its own front matter (Caster's title for the name may be
+		// empty or quoted, as the writer put it).
+		if r, ok := s.copyOf(ctx, ns, ItemName(ch)); ok {
+			c, _ := cardOf(ch, r, nil)
+			where = c.Title
+		} else {
+			where = ch
+		}
+	}
+	return d.Set("published", []Published{{At: at, Where: where}})
 }
 
 // Cut takes an item out of the views (cut: true) and out of its parent's children; it stays
@@ -889,6 +930,65 @@ type Edit struct {
 	Fields   map[string]any    `json:"fields"`
 	Sections map[string]string `json:"sections"`
 	Tags     *[]string         `json:"tags"`
+	// Stage, Material and Published replace the item's value when given.
+	Stage     *string      `json:"stage"`
+	Material  *[]Material  `json:"material"`
+	Published *[]Published `json:"published"`
+}
+
+// Limits on what an edit may carry, so one item stays a readable size.
+const (
+	maxEntries = 200
+	maxRefLen  = 2048
+	maxNoteLen = 2000
+)
+
+// check says what is wrong with the material and the publication log of an edit, if anything.
+func (e Edit) check() error {
+	if e.Material != nil {
+		if len(*e.Material) > maxEntries {
+			return fmt.Errorf("an item holds at most %d pieces of material", maxEntries)
+		}
+		for i, m := range *e.Material {
+			ref := strings.TrimSpace(m.Ref)
+			if ref == "" || len(ref) > maxRefLen || strings.ContainsAny(ref, "\n\r") {
+				return fmt.Errorf("material %d: a reference is one line of at most %d characters", i+1, maxRefLen)
+			}
+			if len(m.Caption) > maxNoteLen {
+				return fmt.Errorf("material %d: the caption is too long", i+1)
+			}
+		}
+	}
+	if e.Published != nil {
+		if len(*e.Published) > maxEntries {
+			return fmt.Errorf("the publication log holds at most %d entries", maxEntries)
+		}
+		for i, p := range *e.Published {
+			if !validWhen(strings.TrimSpace(p.At)) {
+				return fmt.Errorf("publication %d: when is a date (YYYY-MM-DD) or a time (RFC 3339)", i+1)
+			}
+			// Where may be empty: the entry the Published stage starts has none when the item
+			// names no channel. The app's form asks for it.
+			if len(p.Where) > maxRefLen {
+				return fmt.Errorf("publication %d: where is too long", i+1)
+			}
+			if u := strings.TrimSpace(p.URL); u != "" && (len(u) > maxRefLen || !(strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://"))) {
+				return fmt.Errorf("publication %d: the address is an http(s) URL", i+1)
+			}
+			if len(p.Note) > maxNoteLen {
+				return fmt.Errorf("publication %d: the note is too long", i+1)
+			}
+		}
+	}
+	return nil
+}
+
+func validWhen(s string) bool {
+	if _, err := time.Parse("2006-01-02", s); err == nil {
+		return true
+	}
+	_, err := time.Parse(time.RFC3339, s)
+	return err == nil
 }
 
 // Conflict: the item moved on in Caster after the owner began the edit. Nothing was
@@ -914,6 +1014,9 @@ func (s *Store) EditItem(ctx context.Context, ws, id string, e Edit) (int, error
 			return 0, fmt.Errorf("%q is not a section heading", sec)
 		}
 	}
+	if err := e.check(); err != nil {
+		return 0, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ns, err := s.space(ctx, ws)
@@ -938,6 +1041,9 @@ func (s *Store) EditItem(ctx context.Context, ws, id string, e Edit) (int, error
 		if _, ok := k.Field(key); !ok && k.Kind != "" {
 			return 0, fmt.Errorf("a %s has no field %q", k.Label, key)
 		}
+	}
+	if e.Stage != nil && k.Kind != "" && !k.HasStage(*e.Stage) {
+		return 0, fmt.Errorf("a %s has no stage %q", k.Label, *e.Stage)
 	}
 	if it.Rev != e.BaseRev {
 		// Keep the owner's words as suggestions against the newer text; never overwrite it.
@@ -969,6 +1075,23 @@ func (s *Store) EditItem(ctx context.Context, ws, id string, e Edit) (int, error
 		if e.Tags != nil {
 			other = append(other, "tags: "+strings.Join(*e.Tags, ", "))
 		}
+		if e.Stage != nil {
+			other = append(other, "stage: "+*e.Stage)
+		}
+		if e.Material != nil {
+			refs := make([]string, 0, len(*e.Material))
+			for _, m := range *e.Material {
+				refs = append(refs, m.Ref)
+			}
+			other = append(other, "material: "+strings.Join(refs, ", "))
+		}
+		if e.Published != nil {
+			ps := make([]string, 0, len(*e.Published))
+			for _, p := range *e.Published {
+				ps = append(ps, strings.TrimSpace(p.At+" "+p.Where+" "+p.URL))
+			}
+			other = append(other, "published: "+strings.Join(ps, "; "))
+		}
 		if len(other) > 0 {
 			sort.Strings(other)
 			if err := s.addNote(ctx, Note{WS: ws, Item: id, ItemRev: it.Rev, Kind: "comment",
@@ -998,6 +1121,24 @@ func (s *Store) EditItem(ctx context.Context, ws, id string, e Edit) (int, error
 			}
 		}
 		_ = d.Set("tags", tags)
+	}
+	if e.Stage != nil && *e.Stage != "" {
+		_ = d.Set("stage", *e.Stage)
+	}
+	if e.Material != nil {
+		list := []Material{}
+		for _, m := range *e.Material {
+			list = append(list, Material{Ref: strings.TrimSpace(m.Ref), Caption: strings.TrimSpace(m.Caption)})
+		}
+		_ = d.Set("material", list)
+	}
+	if e.Published != nil {
+		list := []Published{}
+		for _, p := range *e.Published {
+			list = append(list, Published{At: strings.TrimSpace(p.At), Where: strings.TrimSpace(p.Where),
+				URL: strings.TrimSpace(p.URL), Note: strings.TrimSpace(p.Note)})
+		}
+		_ = d.Set("published", list)
 	}
 	if len(e.Sections) > 0 {
 		b := ParseBody(d.Body)

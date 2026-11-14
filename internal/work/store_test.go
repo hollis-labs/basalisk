@@ -122,8 +122,8 @@ func TestNewWorkspaceLayout(t *testing.T) {
 			views++
 		}
 	}
-	if views != 1 {
-		t.Errorf("views = %d, want 1", views)
+	if views != 2 {
+		t.Errorf("views = %d, want 2 (board, calendar)", views)
 	}
 	if _, err := s.NewWorkspace(ctx, "channel", "Again", "content", ""); err == nil {
 		t.Error("a second workspace of the same name was made")
@@ -133,7 +133,8 @@ func TestNewWorkspaceLayout(t *testing.T) {
 		t.Fatalf("workspaces = %+v", list)
 	}
 	sp, ok, _ := s.Open(ctx, "channel")
-	if !ok || len(sp.Kinds) != 7 || len(sp.Views) != 1 || sp.Views[0].GroupBy != "stage" {
+	if !ok || len(sp.Kinds) != 7 || len(sp.Views) != 2 || sp.Views[0].GroupBy != "stage" ||
+		sp.Views[1].View != "calendar" || sp.Views[1].DateFld != "publish_on" {
 		t.Fatalf("space = %+v", sp)
 	}
 }
@@ -292,5 +293,114 @@ func TestOpenThreeHundred(t *testing.T) {
 	t.Logf("opened 300 items in %v", took)
 	if took > 2*time.Second {
 		t.Fatalf("took %v", took)
+	}
+}
+
+func TestCalendarMoveAndPublicationLog(t *testing.T) {
+	ctx := context.Background()
+	s, f := open(t)
+	mkspace(t, s)
+	ch, err := s.MakeItem(ctx, "channel", NewItem{Kind: "channel", Title: "YouTube"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.MakeItem(ctx, "channel", NewItem{Kind: "video", Title: "Launch", Fields: map[string]any{"channel": ch}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A calendar drag: the date field, nothing else.
+	before := f.latest("w-channel", ItemName(id))
+	if _, err := s.Move(ctx, "channel", id, "publish_on", "2026-11-02"); err != nil {
+		t.Fatal(err)
+	}
+	after := f.latest("w-channel", ItemName(id))
+	if !strings.Contains(after, "  publish_on: \"2026-11-02\"\n") || strings.Replace(after, "  publish_on: \"2026-11-02\"\n", "", 1) != before {
+		t.Errorf("calendar move changed more than the date:\n%s\n---\n%s", before, after)
+	}
+	// Dropped on "no date": the field goes.
+	if _, err := s.Move(ctx, "channel", id, "publish_on", ""); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(f.latest("w-channel", ItemName(id)), "publish_on") {
+		t.Error("the date was not taken out")
+	}
+	if _, err := s.Move(ctx, "channel", id, "publish_on", "2026-11-02"); err != nil {
+		t.Fatal(err)
+	}
+	// Reaching "published" starts the log: when (the past publish_on) and where (the channel).
+	if _, err := s.Move(ctx, "channel", id, "stage", "published"); err != nil {
+		t.Fatal(err)
+	}
+	d, _, _ := s.Detail(ctx, "channel", id)
+	if d.Stage != "published" || len(d.Published) != 1 || d.Published[0].At != "2026-11-02" || d.Published[0].Where != "YouTube" {
+		t.Fatalf("published = %+v (stage %s)", d.Published, d.Stage)
+	}
+	// The owner corrects it and adds a second place; moving away and back adds nothing.
+	log := []Published{{At: "2026-11-02", Where: "YouTube", URL: "https://example.com/v/1"}, {At: "2026-11-03T09:00:00Z", Where: "Blog", Note: "cross-post"}}
+	mat := []Material{{Ref: "tach:fragment/" + strings.Repeat("ab", 32), Caption: "Research"}, {Ref: "caster://story/demo.teaser"}}
+	if _, err := s.EditItem(ctx, "channel", id, Edit{BaseRev: d.Rev, Published: &log, Material: &mat}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = s.Move(ctx, "channel", id, "stage", "review")
+	_, _ = s.Move(ctx, "channel", id, "stage", "published")
+	d, _, _ = s.Detail(ctx, "channel", id)
+	if len(d.Published) != 2 || d.Published[1].Where != "Blog" || len(d.Material) != 2 || d.Material[0].Caption != "Research" {
+		t.Fatalf("published %+v material %+v", d.Published, d.Material)
+	}
+	// Bad entries are refused, and nothing is written.
+	puts := f.puts
+	for _, bad := range []Edit{
+		{BaseRev: d.Rev, Published: &[]Published{{At: "last week", Where: "YouTube"}}},
+		{BaseRev: d.Rev, Published: &[]Published{{At: "2026-11-02", Where: "x", URL: "javascript:alert(1)"}}},
+		{BaseRev: d.Rev, Material: &[]Material{{Ref: "two\nlines"}}},
+		{BaseRev: d.Rev, Stage: ptr("nonsense")},
+	} {
+		if _, err := s.EditItem(ctx, "channel", id, bad); err == nil {
+			t.Errorf("taken: %+v", bad)
+		}
+	}
+	if f.puts != puts {
+		t.Error("a refused edit was written")
+	}
+	// A stale log edit becomes a comment, not a write.
+	stale := []Published{}
+	_, err = s.EditItem(ctx, "channel", id, Edit{BaseRev: 1, Published: &stale})
+	var c *Conflict
+	if !errors.As(err, &c) {
+		t.Fatalf("stale edit: %v", err)
+	}
+	if d2, _, _ := s.Detail(ctx, "channel", id); len(d2.Published) != 2 {
+		t.Error("a stale edit emptied the log")
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func TestSetFieldKeepsOneLineMap(t *testing.T) {
+	d, err := ParseDoc("---\nwork: v1\nfields: {\"publish_on\": \"2026-11-24\", \"format\": \"post\"}\n---\nBody\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetField("publish_on", "2026-11-26"); err != nil {
+		t.Fatal(err)
+	}
+	want := "fields: {\"publish_on\": \"2026-11-26\", \"format\": \"post\"}\n"
+	if !strings.Contains(d.String(), want) {
+		t.Fatalf("got:\n%s", d.String())
+	}
+	if err := d.SetField("format", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetField("publish_on", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(d.String(), "fields: {}\n") {
+		t.Fatalf("emptied:\n%s", d.String())
+	}
+	if err := d.SetField("length", "9 min"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(d.String(), "fields:\n    length: 9 min\n") && !strings.Contains(d.String(), "fields:\n  length: 9 min\n") {
+		t.Fatalf("opened:\n%s", d.String())
 	}
 }

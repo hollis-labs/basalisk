@@ -138,6 +138,9 @@ export interface WorkEdit {
   fields?: Record<string, unknown>
   sections?: Record<string, string>
   tags?: string[]
+  stage?: string
+  material?: WorkMaterial[]
+  published?: WorkPublished[]
 }
 
 const enc = encodeURIComponent

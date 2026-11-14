@@ -7,6 +7,7 @@ import { ArrowLeft, Plus } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { type WorkPreset, type WorkSpace, type Workspace, work } from "../api/work"
 import { Board } from "./board"
+import { Calendar } from "./calendar"
 import { Detail } from "./detail"
 import { ago, message, slug } from "./util"
 import "./work.css"
@@ -195,6 +196,13 @@ function NewWorkspace({ presets, done }: { presets: WorkPreset[]; done: (ws?: st
 
 // ---- A workspace opened ----
 
+/** The views a workspace can be given from its header (the rest come in later steps). */
+const NEW_VIEWS = [
+  { view: "board", title: "Board", group_by: "stage" },
+  // No date field: the calendar places items by the first date field the kinds have.
+  { view: "calendar", title: "Calendar" },
+]
+
 function SpaceView({ ws, back }: { ws: string; back: () => void }) {
   const [sp, setSp] = useState<WorkSpace | null>(null)
   const [problem, setProblem] = useState("")
@@ -202,6 +210,7 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
   const [picked, setPicked] = useState<string | null>(null)
   const [viewId, setViewId] = useState<string | null>(null)
   const [showCut, setShowCut] = useState(false)
+  const [addingView, setAddingView] = useState(false)
   const editing = useRef(false)
 
   const load = useCallback(
@@ -262,6 +271,37 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
               {v.title || v.view}
             </button>
           ))}
+          <button
+            type="button"
+            className="work-icon"
+            title="Add a view"
+            onClick={() => setAddingView((a) => !a)}
+          >
+            <Plus size={13} />
+          </button>
+          {addingView && (
+            <div className="work-makemenu work-viewmenu">
+              {NEW_VIEWS.map((nv) => (
+                <button
+                  type="button"
+                  key={nv.view}
+                  onClick={async () => {
+                    setAddingView(false)
+                    try {
+                      const kindsShown = sp.views[0]?.kinds ?? []
+                      const r = await work.newView(ws, { ...nv, kinds: kindsShown })
+                      setViewId(r.id)
+                    } catch (e) {
+                      setError(message(e))
+                    }
+                    void load()
+                  }}
+                >
+                  {nv.title}
+                </button>
+              ))}
+            </div>
+          )}
         </nav>
         <span className="work-spacer" />
         {cut.length > 0 && (
@@ -309,6 +349,16 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
           )}
           {view?.view === "board" || !view ? (
             <Board
+              ws={ws}
+              space={sp}
+              view={view}
+              picked={picked}
+              pick={setPicked}
+              changed={() => void load()}
+              setError={setError}
+            />
+          ) : view.view === "calendar" ? (
+            <Calendar
               ws={ws}
               space={sp}
               view={view}

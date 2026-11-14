@@ -3,16 +3,22 @@
  * place, tags, links, material and the publication log, the owner's unsent notes, and the
  * item's revisions with a word diff against any of them.
  */
-import { Scissors } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { Scissors, X } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { hostOf, type ReaderItem, reader } from "../api/reader"
 import {
   type WorkCard,
   type WorkDetail,
+  type WorkEdit,
   type WorkField,
   type WorkKind,
+  type WorkMaterial,
+  type WorkPublished,
   type WorkRevision,
   work,
 } from "../api/work"
+import { CiteText } from "../cite/ui"
+import { ymd } from "./calendar"
 import { ago, diffWords, kindIcon, label, message } from "./util"
 
 export function Detail({
@@ -71,12 +77,7 @@ export function Detail({
 
   const k = kinds.get(d.kind)
   const Icon = kindIcon(k?.icon)
-  const save = async (change: {
-    title?: string
-    fields?: Record<string, unknown>
-    sections?: Record<string, string>
-    tags?: string[]
-  }) => {
+  const save = async (change: Omit<WorkEdit, "base_rev">) => {
     setStatus("Saving…")
     try {
       const r = await work.edit(ws, id, { base_rev: d.rev, ...change })
@@ -90,6 +91,7 @@ export function Detail({
     changed()
   }
   const titleOf = (ref: string) => items.find((x) => x.id === ref)?.title ?? ref
+  const channelOf = (v: unknown) => (typeof v === "string" && v ? titleOf(v) : "")
 
   return (
     <aside className="work-detail">
@@ -240,27 +242,18 @@ export function Detail({
           ))}
         </section>
       )}
-      {d.material.length > 0 && (
-        <section className="work-sec">
-          <h4>Material</h4>
-          {d.material.map((m) => (
-            <div key={m.ref} className="work-rowtext" title={m.ref}>
-              {m.caption || m.ref}
-            </div>
-          ))}
-        </section>
-      )}
-      {d.published.length > 0 && (
-        <section className="work-sec">
-          <h4>Published</h4>
-          {d.published.map((p) => (
-            <div key={`${p.at}:${p.where}`} className="work-rowtext">
-              {p.at} · {p.where}
-              {p.url ? ` · ${p.url}` : ""}
-            </div>
-          ))}
-        </section>
-      )}
+      <section className="work-sec">
+        <h4>Material</h4>
+        <MaterialList material={d.material} set={(material) => void save({ material })} />
+      </section>
+      <section className="work-sec">
+        <h4>Published</h4>
+        <PublicationLog
+          log={d.published}
+          where={channelOf(d.fields.channel)}
+          set={(published) => void save({ published })}
+        />
+      </section>
 
       {d.notes.length > 0 && (
         <section className="work-sec">
@@ -498,5 +491,292 @@ function Revisions({ ws, d }: { ws: string; d: WorkDetail }) {
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Material: references to things kept elsewhere, never copies. Each shows as its Cite chip
+ * (a fragment, a Caster item, a Tesseract item, a link). Add one by pasting its reference or
+ * by picking a fragment from the Fragments Engine library.
+ */
+function MaterialList({
+  material,
+  set,
+}: {
+  material: WorkMaterial[]
+  set: (m: WorkMaterial[]) => void
+}) {
+  const [ref, setRef] = useState("")
+  const [picking, setPicking] = useState(false)
+  const add = (m: WorkMaterial) => {
+    const r = m.ref.trim()
+    if (!r || material.some((x) => x.ref === r)) return
+    set([...material, { ref: r, caption: m.caption?.trim() || undefined }])
+  }
+  return (
+    <div className="work-material">
+      {material.length === 0 && <div className="work-rowtext work-dim">Nothing attached.</div>}
+      {material.map((m, i) => (
+        <div key={m.ref} className="work-matrow">
+          <span className="work-matref">
+            <CiteText text={m.ref} />
+          </span>
+          <Caption
+            value={m.caption ?? ""}
+            set={(caption) =>
+              set(material.map((x, j) => (j === i ? { ...x, caption: caption || undefined } : x)))
+            }
+          />
+          <button
+            type="button"
+            className="work-icon"
+            title="Take it off (the thing itself is not touched)"
+            onClick={() => set(material.filter((_, j) => j !== i))}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      ))}
+      <form
+        className="work-matadd"
+        onSubmit={(e) => {
+          e.preventDefault()
+          add({ ref })
+          setRef("")
+        }}
+      >
+        <input
+          value={ref}
+          onChange={(e) => setRef(e.target.value)}
+          placeholder="Paste a reference: tach:fragment/…, caster://…, a link"
+          aria-label="Reference"
+        />
+        <button type="submit" className="desk-button" disabled={!ref.trim()}>
+          Add
+        </button>
+        <button type="button" className="desk-button" onClick={() => setPicking((p) => !p)}>
+          {picking ? "Close" : "From Fragments…"}
+        </button>
+      </form>
+      {picking && (
+        <FragmentPicker
+          taken={new Set(material.map((m) => m.ref))}
+          pick={(it) =>
+            add({ ref: `tach:fragment/${it.fragment_id}`, caption: it.display.title.value })
+          }
+        />
+      )}
+    </div>
+  )
+}
+
+function Caption({ value, set }: { value: string; set: (v: string) => void }) {
+  const [text, setText] = useState(value)
+  useEffect(() => setText(value), [value])
+  return (
+    <input
+      className="work-caption"
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => text.trim() !== value && set(text.trim())}
+      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+      placeholder="caption"
+      aria-label="Caption"
+    />
+  )
+}
+
+/** A search over the Fragments Engine library (the Reader's own route); picking cites it. */
+function FragmentPicker({ taken, pick }: { taken: Set<string>; pick: (it: ReaderItem) => void }) {
+  const [q, setQ] = useState("")
+  const [items, setItems] = useState<ReaderItem[] | null>(null)
+  const [error, setError] = useState("")
+  const seq = useRef(0)
+  useEffect(() => {
+    const n = ++seq.current
+    const t = window.setTimeout(
+      () => {
+        reader
+          .list({ scope: "library", q: q.trim() || undefined })
+          .then((r) => {
+            if (n !== seq.current) return
+            setItems(r.items.slice(0, 30))
+            setError("")
+          })
+          .catch((e) => n === seq.current && setError(message(e)))
+      },
+      q ? 300 : 0,
+    )
+    return () => window.clearTimeout(t)
+  }, [q])
+  return (
+    <div className="work-picker">
+      <input
+        // biome-ignore lint/a11y/noAutofocus: the owner just opened the picker
+        autoFocus
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search your fragments"
+        aria-label="Search fragments"
+      />
+      {error && <p className="work-problem-inline">{error}</p>}
+      {!error && items === null && <p className="work-rowtext work-dim">…</p>}
+      {items?.length === 0 && <p className="work-rowtext work-dim">Nothing found.</p>}
+      {items?.map((it) => {
+        const ref = `tach:fragment/${it.fragment_id}`
+        const host = hostOf(it.source.canonical_url ?? it.source.submitted_url)
+        return (
+          <button
+            type="button"
+            key={it.fragment_id}
+            className="work-pickrow"
+            disabled={taken.has(ref)}
+            onClick={() => pick(it)}
+            title={taken.has(ref) ? "Already attached" : "Attach it by reference"}
+          >
+            <span>{it.display.title.value || it.fragment_id.slice(0, 12)}</span>
+            <span className="work-dim">
+              {it.renderer}
+              {host ? ` · ${host}` : ""}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * The publication log: when and where it went out, with the address. Publishing is not done
+ * here; this records it. Reaching the Published stage starts the log with one entry.
+ */
+function PublicationLog({
+  log,
+  where,
+  set,
+}: {
+  log: WorkPublished[]
+  where: string
+  set: (l: WorkPublished[]) => void
+}) {
+  const [editing, setEditing] = useState<number | null>(null)
+  const blank = (): WorkPublished => ({ at: ymd(new Date()), where, url: "", note: "" })
+  return (
+    <div className="work-publog">
+      {log.length === 0 && editing === null && (
+        <div className="work-rowtext work-dim">Not published yet.</div>
+      )}
+      {log.map((p, i) =>
+        editing === i ? (
+          <PublicationForm
+            // biome-ignore lint/suspicious/noArrayIndexKey: entries may repeat; the log's order is its identity
+            key={`${p.at}:${p.where}:${i}`}
+            start={p}
+            done={(next) => {
+              setEditing(null)
+              if (next) set(log.map((x, j) => (j === i ? next : x)))
+            }}
+          />
+        ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: entries may repeat; the log's order is its identity
+          <div key={`${p.at}:${p.where}:${i}`} className="work-pubrow">
+            <button
+              type="button"
+              className="work-link"
+              onClick={() => setEditing(i)}
+              title="Change this entry"
+            >
+              {p.at.slice(0, 10)} · {p.where}
+            </button>
+            {p.url && <CiteText text={p.url} />}
+            {p.note && <span className="work-dim">{p.note}</span>}
+            <span className="work-spacer" />
+            <button
+              type="button"
+              className="work-icon"
+              title="Take this entry out of the log"
+              onClick={() => set(log.filter((_, j) => j !== i))}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ),
+      )}
+      {editing === -1 ? (
+        <PublicationForm
+          start={blank()}
+          done={(next) => {
+            setEditing(null)
+            if (next) set([...log, next])
+          }}
+        />
+      ) : (
+        editing === null && (
+          <button type="button" className="work-link" onClick={() => setEditing(-1)}>
+            + Log a publication
+          </button>
+        )
+      )}
+    </div>
+  )
+}
+
+function PublicationForm({
+  start,
+  done,
+}: {
+  start: WorkPublished
+  done: (p?: WorkPublished) => void
+}) {
+  const [p, setP] = useState(start)
+  const ok = /^\d{4}-\d{2}-\d{2}/.test(p.at) && p.where.trim() !== ""
+  return (
+    <form
+      className="work-pubform"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (ok)
+          done({
+            at: p.at,
+            where: p.where.trim(),
+            url: p.url?.trim() || undefined,
+            note: p.note?.trim() || undefined,
+          })
+      }}
+      onKeyDown={(e) => e.key === "Escape" && done()}
+    >
+      <input
+        type={/^\d{4}-\d{2}-\d{2}$/.test(p.at) ? "date" : "text"}
+        value={p.at}
+        onChange={(e) => setP({ ...p, at: e.target.value })}
+        aria-label="When"
+      />
+      <input
+        value={p.where}
+        onChange={(e) => setP({ ...p, where: e.target.value })}
+        placeholder="Where (YouTube, the blog…)"
+        aria-label="Where"
+      />
+      <input
+        value={p.url ?? ""}
+        onChange={(e) => setP({ ...p, url: e.target.value })}
+        placeholder="https://…"
+        aria-label="Address"
+      />
+      <input
+        value={p.note ?? ""}
+        onChange={(e) => setP({ ...p, note: e.target.value })}
+        placeholder="Note (optional)"
+        aria-label="Note"
+      />
+      <div className="work-pubbtns">
+        <button type="submit" className="desk-button" data-primary="true" disabled={!ok}>
+          Keep
+        </button>
+        <button type="button" className="desk-button" onClick={() => done()}>
+          Cancel
+        </button>
+      </div>
+    </form>
   )
 }

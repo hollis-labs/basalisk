@@ -27,6 +27,10 @@
 .work-select,
 .work-new input,
 .work-field input,
+.work-matadd input,
+.work-caption,
+.work-picker input,
+.work-pubform input,
 .work-tags {
   background: var(--desk-bg);
   color: var(--desk-fg);
@@ -168,8 +172,17 @@
 
 /* A workspace opened */
 .work-tabs {
+  position: relative;
   display: flex;
+  align-items: center;
   gap: 2px;
+}
+.work-viewmenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 5;
+  min-width: 120px;
 }
 .work-tabs button {
   font-size: 12px;
@@ -453,4 +466,213 @@
   color: var(--color-success, #22a06b);
   text-decoration: none;
   background: color-mix(in srgb, var(--color-success, #22a06b) 14%, transparent);
+}
+
+/* Calendar */
+.work-calbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+.work-calhead {
+  font-size: 13px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.work-cal {
+  display: flex;
+  gap: 10px;
+  padding: 8px 12px 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.work-calgrid {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: auto;
+  grid-auto-rows: minmax(92px, auto);
+  gap: 4px;
+  overflow: auto;
+  align-content: start;
+}
+.work-calgrid[data-mode="week"] {
+  grid-auto-rows: minmax(320px, auto);
+}
+.work-caldow {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--desk-muted);
+  padding: 0 4px;
+  min-height: 0;
+}
+.work-calgrid .work-caldow {
+  grid-row: 1;
+}
+.work-calday {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--desk-bg);
+  min-width: 0;
+}
+.work-calday[data-out="true"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--desk-border);
+  opacity: 0.55;
+}
+.work-calday[data-today="true"] {
+  box-shadow: inset 0 0 0 1px var(--desk-accent);
+}
+.work-calday header {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--desk-muted);
+}
+.work-calday[data-today="true"] header span {
+  color: var(--desk-accent);
+  font-weight: 600;
+}
+.work-caladd {
+  margin-left: auto;
+  opacity: 0;
+}
+.work-calday:hover .work-caladd,
+.work-caladd:focus-visible {
+  opacity: 1;
+}
+.work-calitem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 5px;
+  font-size: 11px;
+  border-radius: 4px;
+  border-left: 3px solid var(--work-color, var(--desk-border));
+  background: var(--desk-surface);
+  text-align: left;
+  cursor: pointer;
+}
+.work-calitem-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.work-calitem:hover {
+  background: var(--desk-hover, rgba(127, 127, 127, 0.14));
+}
+.work-calitem[data-picked="true"] {
+  outline: 2px solid var(--desk-accent);
+  outline-offset: -1px;
+}
+.work-calitem[data-stage="published"] .work-calitem-title {
+  text-decoration: line-through;
+  text-decoration-color: var(--desk-muted);
+  color: var(--desk-fg-soft);
+}
+.work-calside {
+  flex: 0 0 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--desk-bg);
+  overflow: auto;
+}
+.work-calside h3 {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 2px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--desk-muted);
+}
+
+/* Detail: material and the publication log */
+.work-dim {
+  color: var(--desk-muted);
+}
+.work-material,
+.work-publog {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.work-publog > .work-link {
+  align-self: flex-start;
+}
+.work-matrow,
+.work-pubrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.work-matref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+.work-caption {
+  flex: 1 1 80px;
+}
+.work-matadd {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.work-matadd input {
+  flex: 1 1 160px;
+}
+.work-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--desk-border);
+  border-radius: 7px;
+  background: var(--desk-surface);
+  max-height: 260px;
+  overflow: auto;
+}
+.work-pickrow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 4px 6px;
+  font-size: 12px;
+  border-radius: 5px;
+  text-align: left;
+}
+.work-pickrow:hover:not(:disabled) {
+  background: var(--desk-hover, rgba(127, 127, 127, 0.14));
+}
+.work-pickrow:disabled {
+  opacity: 0.5;
+}
+.work-pickrow span:last-child {
+  font-size: 11px;
+}
+.work-pubform {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.work-pubbtns {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 4px;
 }

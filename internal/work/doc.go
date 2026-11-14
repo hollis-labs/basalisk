@@ -196,7 +196,11 @@ func (d *Doc) SetField(key string, v any) error {
 		}
 		m = d.find("fields")
 	}
-	m.Style = 0
+	// An empty {} opens up into a block; a map written on one line (as the team often writes
+	// it) stays on one line, so setting one value changes only that value.
+	if len(m.Content) == 0 {
+		m.Style = 0
+	}
 	for i := 0; i+1 < len(m.Content); i += 2 {
 		if m.Content[i].Value == key {
 			if v == nil {
@@ -209,6 +213,11 @@ func (d *Doc) SetField(key string, v any) error {
 			var n yaml.Node
 			if err := n.Encode(v); err != nil {
 				return err
+			}
+			// Keep the value's quoting when both are plain text (quoting is always safe).
+			if old := m.Content[i+1]; old.Kind == yaml.ScalarNode && n.Kind == yaml.ScalarNode && n.Tag == "!!str" &&
+				old.Style&(yaml.DoubleQuotedStyle|yaml.SingleQuotedStyle) != 0 {
+				n.Style = old.Style & (yaml.DoubleQuotedStyle | yaml.SingleQuotedStyle)
 			}
 			*m.Content[i+1] = n
 			return nil

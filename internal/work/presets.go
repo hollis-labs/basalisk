@@ -47,6 +47,7 @@ func contentPreset() Preset {
 		},
 		Views: []View{
 			{View: "board", Title: "Board", Kinds: []string{"idea", "article", "video", "post", "game", "series"}, GroupBy: "stage"},
+			{View: "calendar", Title: "Calendar", Kinds: []string{"idea", "article", "video", "post", "game", "series"}, DateFld: "publish_on"},
 		},
 	}
 }

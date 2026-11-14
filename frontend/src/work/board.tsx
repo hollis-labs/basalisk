@@ -7,6 +7,7 @@
 import { Plus } from "lucide-react"
 import { type DragEvent, useMemo, useState } from "react"
 import { type WorkCard, type WorkSpace, type WorkView, work } from "../api/work"
+import { KindChips } from "./chips"
 import { ago, kindIcon, label, message } from "./util"
 
 const OTHER = "\u0000other"
@@ -121,31 +122,7 @@ export function Board({
   return (
     <div className="work-boardwrap">
       <div className="work-filter">
-        {kinds.map((k) => {
-          const on = shownKinds.includes(k.kind)
-          const Icon = kindIcon(k.icon)
-          return (
-            <button
-              type="button"
-              key={k.kind}
-              className="work-chip"
-              data-on={on}
-              data-color={k.color}
-              onClick={() =>
-                void saveView({
-                  kinds: on
-                    ? shownKinds.filter((x) => x !== k.kind)
-                    : kinds
-                        .map((x) => x.kind)
-                        .filter((x) => x === k.kind || shownKinds.includes(x)),
-                })
-              }
-              title={on ? `Hide ${k.plural || k.label}` : `Show ${k.plural || k.label}`}
-            >
-              <Icon size={12} /> {k.plural || k.label}
-            </button>
-          )
-        })}
+        <KindChips kinds={kinds} shown={shownKinds} set={(k) => void saveView({ kinds: k })} />
         <span className="work-spacer" />
         {enumFields.length > 0 && (
           <select
