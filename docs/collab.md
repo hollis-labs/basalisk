@@ -98,7 +98,8 @@ it draws plainly.
   surfaces, text and accent, its terminal colours as the tones) and follows it when it changes;
   dark, light (for documents) and neon (for video) are fixed looks, kept with the diagram so an
   export looks the same. `background` (#rrggbb) gives the canvas its own colour; `grid` is
-  lines (a faint blueprint grid on the drawing's plane, the default), dots or none; both are set
+  lines (a faint blueprint grid on the drawing's plane: every 48, stronger every 240; the
+  default), dots or none; both are set
   in the panel when nothing is selected. The colours live in `apps/diagram/theme.ts`, the
   Diagram's theme layer (listed as such in `eslint.config.js`): the drawing is plain SVG with
   its colours written in, and its shadows are shapes, not filters (WebKit draws a filtered
@@ -115,6 +116,25 @@ when a node, an edge or a lane is selected, or with the marks button, and Esc cl
 to move it, drag from the dot on a selected node to another node for an edge, Delete removes
 what is selected; the wheel zooms and dragging the background pans; the floating controls
 zoom and fit (it fits itself on open). ⌘S saves a revision.
+
+**Templates.** A new diagram (the list's + button) starts blank or from a template:
+architecture (clients, services, data, outside), pipeline (numbered stages, a human gate,
+repair and feedback loops), decision flow (start, diamonds, outcomes) and data flow
+(sources, processing, outputs). They carry no places and are laid out when they open
+(`apps/diagram/templates.ts`).
+
+**Undo and redo** (⌘Z, ⇧⌘Z, or the arrows): a burst of changes (a drag, a word typed) is one
+step; the history starts again when a diagram is opened.
+
+**Export** (SVG or PNG at 1, 2 or 3 times): the same drawing as on screen, framed around it,
+with the title, the legend, the background (off: transparent) and the grid as chosen,
+written to a folder of a Files place (Documents/Diagrams by default; never over a file) and
+shown in Files on request. The SVG is standalone (its colours and fonts written in).
+
+**Present**: the diagram alone in a maximised window, fitted, for walking someone through it
+or recording. ← → (or space) step through it: the step numbers in order, each with what came
+before (and the unnumbered nodes they touch), or else the lanes in order; what is not yet in
+view is dimmed. Esc ends it; f fits again.
 
 **Compare** draws any revision against what is on the canvas: added in green, changed in
 amber (any of the fields above), removed in dashed red at its old place, only moved as

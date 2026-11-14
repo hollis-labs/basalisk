@@ -285,11 +285,11 @@ export function Defs({ uid, pal, grid = "lines" }: { uid: string; pal: Palette; 
           <path d="M0 0.5L10 5L0 9.5L2.2 5z" fill={c} />
         </marker>
       ))}
-      {/* The canvas grid, on the drawing's plane: fine lines every 24, a stronger one every 120. */}
-      <pattern id={`${uid}-grid`} width="120" height="120" patternUnits="userSpaceOnUse">
+      {/* The canvas grid, on the drawing's plane: fine lines every 48, a stronger one every 240. */}
+      <pattern id={`${uid}-grid`} width="240" height="240" patternUnits="userSpaceOnUse">
         {grid === "dots"
-          ? [0, 24, 48, 72, 96].flatMap((x) =>
-              [0, 24, 48, 72, 96].map((y) => (
+          ? [0, 48, 96, 144, 192].flatMap((x) =>
+              [0, 48, 96, 144, 192].map((y) => (
                 <circle
                   key={`${x}:${y}`}
                   cx={x + 1.2}
@@ -302,12 +302,12 @@ export function Defs({ uid, pal, grid = "lines" }: { uid: string; pal: Palette; 
           : grid === "lines" && (
               <>
                 <path
-                  d="M24 0V120M48 0V120M72 0V120M96 0V120M0 24H120M0 48H120M0 72H120M0 96H120"
+                  d="M48 0V240M96 0V240M144 0V240M192 0V240M0 48H240M0 96H240M0 144H240M0 192H240"
                   stroke={pal.grid}
                   strokeWidth={1}
                   fill="none"
                 />
-                <path d="M0 0V120M0 0H120" stroke={pal.gridMajor} strokeWidth={1.2} fill="none" />
+                <path d="M0 0V240M0 0H240" stroke={pal.gridMajor} strokeWidth={1.2} fill="none" />
               </>
             )}
       </pattern>
@@ -344,6 +344,8 @@ export interface SceneProps {
   /** A connector being dragged from a node. */
   handleOn?: string
   legend?: boolean
+  /** In a presentation: the nodes in view; the rest are dimmed. */
+  focus?: Set<string>
 }
 
 /** Everything drawn, in plane coordinates. */
@@ -359,7 +361,9 @@ export function Scene({
   active,
   handleOn,
   legend = true,
+  focus,
 }: SceneProps) {
+  const dim = (on: boolean) => (focus && !on ? 0.12 : 1)
   const glow = pal.glow ? `url(#${uid}-glow)` : undefined
   const nodes = [...(gone?.nodes ?? []), ...dia.nodes]
   const edges = [...(gone?.edges ?? []), ...dia.edges]
@@ -434,7 +438,10 @@ export function Scene({
             key={`${change}:${e.id}`}
             data-edge={e.id}
             className="dia-edge"
-            opacity={change === "removed" ? 0.75 : 1}
+            opacity={
+              (change === "removed" ? 0.75 : 1) * dim(!!focus?.has(e.from) && !!focus?.has(e.to))
+            }
+            style={focus ? { transition: "opacity 0.35s" } : undefined}
           >
             <path d={d} fill="none" stroke="transparent" strokeWidth={16} className="dia-hit" />
             <path
@@ -490,6 +497,7 @@ export function Scene({
 
       {nodes.map((n) => (
         <NodeArt
+          dim={dim(!!focus?.has(n.id))}
           key={`${changes?.nodes.get(n.id) === "removed" ? "gone:" : ""}${n.id}`}
           n={n}
           pal={pal}
@@ -558,6 +566,7 @@ export function Scene({
 }
 
 function NodeArt({
+  dim = 1,
   n,
   pal,
   uid,
@@ -567,6 +576,7 @@ function NodeArt({
   active,
   handle,
 }: {
+  dim?: number
   n: DNode
   pal: Palette
   uid: string
@@ -817,7 +827,8 @@ function NodeArt({
       data-node={n.id}
       className="dia-node"
       transform={`translate(${b.x} ${b.y})`}
-      opacity={change === "removed" ? 0.6 : 1}
+      opacity={(change === "removed" ? 0.6 : 1) * dim}
+      style={{ transition: "opacity 0.35s" }}
     >
       {(on || active) && (
         <rect
