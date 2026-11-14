@@ -6,6 +6,8 @@
  */
 
 import { registerAgentTools } from "../../agent/tools"
+import { openLink } from "../../api/browser"
+import { type ResultCard, registerResultCards, desk as theDesk } from "../../cite/cards"
 
 const STOPPED = "The run was stopped; nothing was changed."
 
@@ -532,3 +534,32 @@ registerAgentTools([
     },
   },
 ])
+
+// The page read or opened shows as a card in the agent panel (cite/cards.tsx). Open brings
+// its window forward, or opens the address again when that window is gone.
+const pageCard = (_in: Record<string, unknown>, r: unknown): ResultCard | null => {
+  const o = (r ?? {}) as Record<string, unknown>
+  const url = typeof o.url === "string" ? o.url : ""
+  if (!/^https?:\/\//i.test(url)) return null
+  let host = url
+  try {
+    host = new URL(url).host
+  } catch {
+    // As given.
+  }
+  const win = typeof o.window_id === "string" ? o.window_id : ""
+  const facts: ResultCard["facts"] = [{ label: "At", value: host }]
+  if (typeof o.note === "string" && o.note.startsWith("still loading"))
+    facts.push({ label: "State", value: "still loading" })
+  return {
+    kind: "page",
+    title: (typeof o.title === "string" && o.title.trim()) || url,
+    facts,
+    open: () => {
+      const d = theDesk()
+      if (d && win && d.wmState().wins.some((w) => w.id === win)) d.wm({ type: "focus", id: win })
+      else openLink(url)
+    },
+  }
+}
+registerResultCards({ browser_read: pageCard, browser_navigate: pageCard })

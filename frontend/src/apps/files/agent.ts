@@ -6,6 +6,7 @@
 import { registerAgentTools } from "../../agent/tools"
 import { ApiError, request } from "../../api/account"
 import { type FileEntry, type FileRoot, files } from "../../api/files"
+import { chars, fileCard, registerResultCards } from "../../cite/cards"
 import type { DeskAPI } from "../../desktop/registry"
 import { loadRoots } from "./browser"
 import { credentialReason } from "./credentials"
@@ -306,3 +307,13 @@ registerAgentTools([
     },
   },
 ])
+
+// A file read shows as a card in the agent panel (cite/cards.tsx).
+registerResultCards({
+  files_read: (_in, r) => {
+    const o = r as { root?: unknown; path?: unknown; length?: unknown }
+    return typeof o?.root === "string" && typeof o.path === "string"
+      ? fileCard(o.root, o.path, chars(o.length) ? [{ label: "Size", value: chars(o.length) }] : [])
+      : null
+  },
+})

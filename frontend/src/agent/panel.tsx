@@ -1,6 +1,7 @@
 /** The agent's panel: the running thread, what it is doing, and a box to talk to it. */
 import { ArrowUp, ChevronRight, Plus, Square, X } from "lucide-react"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { ResultCardView } from "../cite/cards"
 import { Markdown } from "../cite/ui"
 import { useDesk } from "../desktop/context"
 import type { DeskSnapshot } from "./api"
@@ -256,6 +257,7 @@ function ToolRow({ item }: { item: Extract<Item, { kind: "tool" }> }) {
           {item.running ? "working" : item.isError ? "failed" : ""}
         </span>
       </button>
+      <ResultCardView item={item} />
       {open && (
         <div className="agent-tool-body">
           {input && input !== "{}" && <pre>{input}</pre>}

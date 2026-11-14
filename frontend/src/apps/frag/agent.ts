@@ -6,6 +6,9 @@
 import { registerAgentTools } from "../../agent/tools"
 import { ApiError } from "../../api/account"
 import { type FragCapture, frag } from "../../api/frag"
+import { registerResultCards, desk as theDesk, toneOf } from "../../cite/cards"
+import { FRAGMENT_KIND } from "../../cite/fragment"
+import { canResolve, openCite } from "../../cite/index"
 import { type Moment, moment } from "./context"
 import { captureIdFor, newDraft } from "./draft"
 
@@ -141,3 +144,32 @@ registerAgentTools([
     },
   },
 ])
+
+// A capture shows as a card in the agent panel (cite/cards.tsx). Once saved it opens as the
+// fragment; before that, Open shows the capture box with its queue.
+registerResultCards({
+  frag_capture: (input, r) => {
+    const o = (r ?? {}) as Record<string, unknown>
+    if (typeof o.id !== "string" || typeof o.state !== "string") return null
+    const title =
+      (typeof input.title === "string" && input.title.trim()) ||
+      (typeof input.text === "string" ? firstLine(input.text) : "") ||
+      "Capture"
+    const fragment = typeof o.fragment === "string" && /^[0-9a-f]{64}$/.test(o.fragment)
+    return {
+      kind: "frag",
+      title,
+      status: { label: o.state, tone: toneOf(o.state) },
+      facts: [
+        ...(typeof o.reason === "string" ? [{ label: "Why", value: o.reason }] : []),
+        ...(typeof o.note === "string" ? [{ label: "Note", value: "delivery not set up" }] : []),
+        { label: "Capture", value: o.id.slice(0, 8), mono: true },
+      ],
+      open: () => {
+        const ref = { kind: FRAGMENT_KIND, canonical: String(o.fragment) }
+        if (fragment && canResolve(ref.kind)) openCite(ref)
+        else theDesk()?.toggleOverlay("frag", true)
+      },
+    }
+  },
+})

@@ -10,6 +10,7 @@
  * cover the next (running a command).
  */
 import { allApps, allCommands, type DeskAPI } from "../desktop/registry"
+import { describeServerCall } from "../tether/agent"
 import type { DeskSnapshot, RouteHints, SnapshotWindow, ToolSpec } from "./api"
 
 /** What a running call is given besides its input. */
@@ -54,7 +55,10 @@ export const toolSpecs = (): ToolSpec[] =>
 /** The call in a line, when its tool can say (AgentTool.describe). */
 export function describeCall(name: string, input: unknown): string {
   try {
-    return tools.get(name)?.describe?.((input ?? {}) as Record<string, unknown>) ?? ""
+    return (
+      tools.get(name)?.describe?.((input ?? {}) as Record<string, unknown>) ??
+      describeServerCall(name, input)
+    )
   } catch {
     return ""
   }

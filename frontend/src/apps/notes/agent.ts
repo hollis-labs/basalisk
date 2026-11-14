@@ -7,6 +7,7 @@
 import { registerAgentTools, type ToolContext } from "../../agent/tools"
 import { ApiError } from "../../api/account"
 import { files } from "../../api/files"
+import { chars, fileCard, registerResultCards } from "../../cite/cards"
 import type { DeskAPI, FileRef } from "../../desktop/registry"
 import { loadRoots } from "../files/browser"
 import { credentialReason } from "../files/credentials"
@@ -335,3 +336,21 @@ registerAgentTools([
     },
   },
 ])
+
+// The note read or written shows as a card in the agent panel (cite/cards.tsx).
+const noteCard =
+  (what: (o: Record<string, unknown>) => string) => (_in: Record<string, unknown>, r: unknown) => {
+    const o = (r ?? {}) as Record<string, unknown>
+    if (typeof o.root !== "string" || typeof o.path !== "string") return null
+    const facts = [what(o), chars(o.length)]
+      .filter(Boolean)
+      .map((value, i) => ({ label: i ? "Size" : "Done", value }))
+    return fileCard(o.root, o.path, facts, "Note")
+  }
+registerResultCards({
+  notes_read: noteCard((o) => (o.unsaved_edits === true ? "read (unsaved edits open)" : "")),
+  notes_write: noteCard((o) => (o.created === true ? "created" : "replaced")),
+  notes_edit: noteCard((o) =>
+    typeof o.changed_at_line === "number" ? `edited at line ${o.changed_at_line}` : "edited",
+  ),
+})
