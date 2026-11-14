@@ -14,11 +14,12 @@ import (
 // and delivered as the same fe.capture.v1 page manifest fe-clipper sends, so FE treats a page
 // clipped here and one clipped from a browser extension as the same source. With a selection
 // the selection is what is sent, as the document body (the owner's choice); without one the
-// page's body, never edited. The note travels as an annotation. No media yet.
+// page's body, never edited. The note travels as an annotation. Media and provider metadata
+// travel as fe-clipper sends them (frag_media.go).
 
 const (
 	maxClipBody    = 512 * 1024
-	maxClipRequest = maxClipBody + 96*1024
+	maxClipRequest = maxClipBody + maxClipExtBytes + 512*1024
 )
 
 // fragPage is what the extraction observed, as the page reports it.
@@ -37,6 +38,9 @@ type fragPage struct {
 	Selection      string        `json:"selection,omitempty"`
 	Capabilities   []string      `json:"capabilities,omitempty"`
 	Warnings       []clipWarning `json:"warnings,omitempty"`
+	// What fe-clipper's adapters found besides the text (frag_media.go).
+	Media      []clipMedia     `json:"media,omitempty"`
+	Extensions []clipExtension `json:"extensions,omitempty"`
 }
 
 type clipWarning struct {
@@ -69,6 +73,9 @@ func validClip(p *fragPage, note string) string {
 	}
 	if len(p.Markdown) > maxClipBody || len(p.Selection) > 64*1024 || len(note) > 16*1024 || len(p.Title) > 1000 || len(p.Description) > 4000 || len(p.Warnings) > 32 || len(p.Capabilities) > 16 {
 		return "The clipped page is too large (a body of at most 512 KiB)."
+	}
+	if msg := validClipMedia(p); msg != "" {
+		return msg
 	}
 	submitted, ok := clipURL(p.SubmittedURL)
 	if !ok {
@@ -133,7 +140,9 @@ func pageManifest(upstream, principal, capturedAt string, p *fragPage, note stri
 	}
 	source["source_item_key"] = key
 
-	doc := map[string]any{"extensions": map[string]any{"provider.basalisk": provenance}}
+	docExt, extractionExt, extWarnings := placeExtensions(p.Extensions)
+	docExt["provider.basalisk"] = provenance
+	doc := map[string]any{"extensions": docExt}
 	if t := strings.TrimSpace(p.Title); t != "" {
 		doc["title"] = t
 	}
@@ -166,6 +175,10 @@ func pageManifest(upstream, principal, capturedAt string, p *fragPage, note stri
 			capabilities = append(capabilities, c)
 		}
 	}
+	media, mediaWarnings := mapClipMedia(p.Media)
+	if media == nil {
+		media = []any{}
+	}
 	warnings := []any{}
 	for _, w := range p.Warnings {
 		if msg := strings.TrimSpace(w.Message); msg != "" {
@@ -176,6 +189,14 @@ func pageManifest(upstream, principal, capturedAt string, p *fragPage, note stri
 			warnings = append(warnings, map[string]string{"code": code, "message": msg})
 		}
 	}
+	warnings = append(append(warnings, mediaWarnings...), extWarnings...)
+	extraction := map[string]any{
+		"adapter": clipIdentifier(p.Adapter, "generic"), "adapter_version": clipIdentifier(p.AdapterVersion, "unknown"),
+		"observed_capabilities": capabilities, "warnings": warnings,
+	}
+	if len(extractionExt) > 0 {
+		extraction["extensions"] = extractionExt
+	}
 	pageContext := map[string]any{"document_url": p.SubmittedURL, "selection_present": selection != ""}
 	if p.Title != "" {
 		pageContext["document_title"] = p.Title
@@ -185,16 +206,13 @@ func pageManifest(upstream, principal, capturedAt string, p *fragPage, note stri
 	}
 	return map[string]any{
 		"schema_version": "fe.capture.v1", "capture_id": upstream, "captured_at": capturedAt, "principal_id": principal,
-		"client":      map[string]string{"kind": "basalisk", "version": "1.0.0"},
-		"source":      source,
-		"document":    doc,
-		"tags":        tags,
-		"annotations": annotations,
-		"media":       []any{},
-		"extraction": map[string]any{
-			"adapter": clipIdentifier(p.Adapter, "generic"), "adapter_version": clipIdentifier(p.AdapterVersion, "unknown"),
-			"observed_capabilities": capabilities, "warnings": warnings,
-		},
+		"client":       map[string]string{"kind": "basalisk", "version": "1.0.0"},
+		"source":       source,
+		"document":     doc,
+		"tags":         tags,
+		"annotations":  annotations,
+		"media":        media,
+		"extraction":   extraction,
 		"page_context": pageContext,
 	}
 }

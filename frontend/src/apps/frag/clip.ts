@@ -22,6 +22,41 @@ export interface ClipPage {
   selection?: string
   capabilities?: string[]
   warnings?: { code: string; message: string }[]
+  /** fe-clipper's media candidates and provider extensions, as found (internal/api/frag_media.go). */
+  media?: ClipMedia[]
+  extensions?: ClipExtension[]
+}
+
+/** fe-clipper's AdapterMediaCandidate. */
+export interface ClipMedia {
+  candidateId: string
+  providerMediaId?: string
+  kind: string
+  role: string
+  position: number
+  altText?: string
+  caption?: string
+  sourceContext?: string
+  variants: {
+    variantId: string
+    kind: string
+    sourceUrl: string
+    acquisitionPreference?: string
+    mimeType?: string
+    width?: number
+    height?: number
+    durationSeconds?: number
+    byteSize?: number
+    expiresAt?: string
+  }[]
+}
+
+/** fe-clipper's AdapterProviderMetadataExtension. */
+export interface ClipExtension {
+  namespace: string
+  schemaVersion: string
+  placement?: string
+  data: Record<string, unknown>
 }
 
 /** fe-clipper's PageCaptureResult, as much of it as a clip uses. */
@@ -43,6 +78,8 @@ interface Captured {
   }
   capabilities?: { observed?: string[] }
   warnings?: { code?: string; message?: string }[]
+  media?: ClipMedia[]
+  extensions?: ClipExtension[]
 }
 
 let bundle: Promise<string> | null = null
@@ -93,7 +130,29 @@ function toPage(c: Captured): ClipPage {
     warnings: (c.warnings ?? [])
       .filter((w) => w.message)
       .map((w) => ({ code: w.code ?? "", message: w.message ?? "" })),
+    // Passed on as found; the server checks and maps them as fe-clipper does.
+    media: (c.media ?? []).slice(0, 64),
+    extensions: (c.extensions ?? []).slice(0, 16),
   }
+}
+
+/** What goes with the text, in words ("3 images, 1 video"), or "". */
+export function mediaSummary(media: ClipMedia[] | undefined): string {
+  const n = new Map<string, number>()
+  for (const m of media ?? []) n.set(m.kind, (n.get(m.kind) ?? 0) + 1)
+  const word: Record<string, [string, string]> = {
+    image: ["image", "images"],
+    video: ["video", "videos"],
+    audio: ["audio file", "audio files"],
+    document: ["document", "documents"],
+    timed_text: ["transcript", "transcripts"],
+  }
+  return [...n.entries()]
+    .map(([k, c]) => {
+      const [one, many] = word[k] ?? ["file", "files"]
+      return `${c} ${c === 1 ? one : many}`
+    })
+    .join(", ")
 }
 
 // ---- Handing a clip to the capture box ----

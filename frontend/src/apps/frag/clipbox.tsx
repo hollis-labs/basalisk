@@ -3,7 +3,7 @@ import { ApiError } from "../../api/account"
 import { type FragState, frag } from "../../api/frag"
 import { CiteText } from "../../cite/ui"
 import { useDesk } from "../../desktop/context"
-import type { ClipPage } from "./clip"
+import { type ClipPage, mediaSummary } from "./clip"
 import { type Moment, moment } from "./context"
 import { parseTags } from "./draft"
 import { NoteField, PreviewToggle, usePreview } from "./notefield"
@@ -195,6 +195,7 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
         {/* Exactly what is sent: the selection when there is one, else the whole page. */}
         <div className="frag-clip-what" data-selection={!!selection}>
           sending: {selection ? "selection" : "whole page"}
+          {mediaSummary(page.media) && ` + ${mediaSummary(page.media)}`}
         </div>
         {selection ? (
           <blockquote className="frag-clip-selection" title="What will be saved">

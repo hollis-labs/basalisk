@@ -73,9 +73,38 @@ The capture goes to FE as the same `fe.capture.v1` page manifest fe-clipper send
 same item key), so a page clipped here and one clipped from the extension are one source. What
 is sent is the selection when there is one (as the document body, with no separate highlight),
 and the whole page otherwise, never edited; the box says which ("sending: selection" or "sending:
-whole page") and shows it. The note is a `capture_note` annotation. No media yet. The capture id belongs to the page,
+whole page") and shows it. The note is a `capture_note` annotation. The capture id belongs to the page,
 note, selection, title and tags, so clipping the same page with the same note again is the same
 capture.
+
+### Media and provider metadata
+
+What fe-clipper's adapters find besides the text goes too, mapped as fe-clipper's
+`envelope.ts` maps it (`internal/api/frag_media.go`):
+
+- **Media**: images (the page's hero, then the article's images, with alt text, caption and
+  nearest heading), Pinterest pins, Instagram galleries, video posters and subtitles. A video
+  stream (YouTube, Instagram) is a reference, never fetched. The box says what goes along
+  ("sending: whole page + 3 images").
+- **Provider metadata**: `provider.*` extensions, such as a YouTube transcript and chapters
+  or an X or Reddit thread's structure. Each goes under `document.extensions` or
+  `extraction.extensions` by its placement. Keys named like credentials, and such
+  parameters in addresses, are removed first.
+
+FE answers each media variant with an instruction. For `request_upload` the delivery worker
+fetches the file itself:
+
+- no cookies, no referrer and nothing of the owner's;
+- 30 seconds, at most 5 redirects, 64 MiB;
+- **public addresses only**: loopback, private, link-local and tailnet (100.64/10)
+  addresses are refused after DNS, because the addresses come from a web page;
+- the type is decided from the bytes.
+
+It then PUTs the file to FE with its `Digest` and completes the capture with one outcome per
+variant: `uploaded`, `already_available`, `deferred`, `not_available` or `failed`. A file
+that cannot be had is a failed outcome, and FE marks the capture `partial`. The bytes are
+held in memory for the upload and never written down; what is kept at rest is still the
+markdown and the media's addresses.
 
 ## Delivery modes
 

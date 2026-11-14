@@ -5,7 +5,9 @@ package fecapture
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -148,25 +150,114 @@ func safeID(s string) bool {
 func (r Receipt) Valid(captureID string) bool {
 	return r.CaptureID == captureID && safeID(r.FragmentID) && safeID(r.RevisionID) && safeID(r.AttemptID)
 }
+
+// Instruction is FE's decision for one media variant of an accepted manifest
+// (media.schema.json AssetInstruction).
+type Instruction struct {
+	ClientVariantID string `json:"client_variant_id"`
+	AssetVariantID  string `json:"asset_variant_id"`
+	Action          string `json:"action"`
+	UploadHref      string `json:"upload_href"`
+	ExpectedDigest  *struct {
+		Algorithm string `json:"algorithm"`
+		Value     string `json:"value"`
+	} `json:"expected_digest"`
+	Digest *struct {
+		Algorithm string `json:"algorithm"`
+		Value     string `json:"value"`
+	} `json:"digest"`
+	Reason string `json:"reason"`
+}
+
+// Instructions are the receipt's asset instructions, checked: each names one of the
+// manifest's variants once, has a known action, and an upload goes to the one path FE uses
+// for that variant on the same origin.
+func (r Receipt) Instructions(variants map[string]bool) ([]Instruction, error) {
+	out := make([]Instruction, 0, len(r.AssetInstructions))
+	seen := map[string]bool{}
+	for _, raw := range r.AssetInstructions {
+		var in Instruction
+		if json.Unmarshal(raw, &in) != nil || !variants[in.ClientVariantID] || seen[in.ClientVariantID] {
+			return nil, failed("invalid_receipt", false)
+		}
+		seen[in.ClientVariantID] = true
+		switch in.Action {
+		case "request_upload":
+			want := "/v1/captures/" + url.PathEscape(r.CaptureID) + "/assets/" + url.PathEscape(in.ClientVariantID) + "/content"
+			if in.UploadHref != want {
+				return nil, failed("invalid_receipt", false)
+			}
+		case "reuse_blob", "server_acquire", "reference_only", "rejected":
+		default:
+			return nil, failed("invalid_receipt", false)
+		}
+		out = append(out, in)
+	}
+	return out, nil
+}
+
 func (c *Client) Accept(ctx context.Context, origin, bearer, captureID string, manifest []byte) (Receipt, error) {
 	var r Receipt
 	err := c.request(ctx, "POST", origin+"/v1/captures", bearer, manifest, &r, 200, 201)
 	if err != nil {
 		return r, err
 	}
-	if r.SchemaVersion != "fe.capture.result.v1" || !r.Valid(captureID) || len(r.AssetInstructions) != 0 || (r.Completion != "accepting" && r.Completion != "complete") {
+	if r.SchemaVersion != "fe.capture.result.v1" || !r.Valid(captureID) || (r.Completion != "accepting" && r.Completion != "complete") {
 		return r, failed("invalid_receipt", false)
 	}
 	return r, nil
 }
-func (c *Client) Complete(ctx context.Context, origin, bearer string, accepted Receipt) (Receipt, error) {
+
+// Upload sends one variant's bytes to the path FE gave for it (PUT, the RFC 9530 digest of
+// the bytes, 204). The body is the media file as fetched; nothing else is sent with it.
+func (c *Client) Upload(ctx context.Context, origin, bearer, href, mime string, body []byte, sha []byte) error {
+	req, err := http.NewRequestWithContext(ctx, "PUT", origin+href, bytes.NewReader(body))
+	if err != nil {
+		return failed("invalid_configuration", false)
+	}
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	req.Header.Set("Content-Type", mime)
+	req.Header.Set("Digest", "sha-256=:"+base64.StdEncoding.EncodeToString(sha)+":")
+	slow := *c.http
+	slow.Timeout = 2 * time.Minute
+	res, err := slow.Do(req)
+	if err != nil {
+		return failed("connection_unavailable", true)
+	}
+	defer func() { _ = res.Body.Close() }()
+	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 64*1024))
+	switch {
+	case res.StatusCode == 204:
+		return nil
+	case res.StatusCode == 401 || res.StatusCode == 403:
+		return failed("authorization_required", false)
+	case res.StatusCode == 408 || res.StatusCode == 429 || res.StatusCode >= 500:
+		return failed("service_busy", true)
+	default:
+		return failed("asset_rejected", false)
+	}
+}
+
+// Complete closes the capture with one outcome per media variant (none for a capture
+// without media). The idempotency key covers the outcomes, so a retry that reports the same
+// outcomes is the same completion. FE answers "complete", or "partial" when a variant failed.
+func (c *Client) Complete(ctx context.Context, origin, bearer string, accepted Receipt, outcomes []any) (Receipt, error) {
 	var r Receipt
-	body, _ := json.Marshal(map[string]any{"schema_version": "fe.capture.completion.v1", "idempotency_key": "complete-" + accepted.CaptureID, "assets": []any{}, "warnings": []any{}})
+	if outcomes == nil {
+		outcomes = []any{}
+	}
+	key := "complete-" + accepted.CaptureID
+	if len(outcomes) > 0 {
+		raw, _ := json.Marshal(outcomes)
+		sum := sha256.Sum256(raw)
+		key += "-" + hex.EncodeToString(sum[:8])
+	}
+	body, _ := json.Marshal(map[string]any{"schema_version": "fe.capture.completion.v1", "idempotency_key": key, "assets": outcomes, "warnings": []any{}})
 	err := c.request(ctx, "POST", origin+"/v1/captures/"+url.PathEscape(accepted.CaptureID)+"/complete", bearer, body, &r, 200)
 	if err != nil {
 		return r, err
 	}
-	if r.SchemaVersion != "fe.capture.status.v1" || !r.Valid(accepted.CaptureID) || r.FragmentID != accepted.FragmentID || r.RevisionID != accepted.RevisionID || r.AttemptID != accepted.AttemptID || r.Completion != "complete" || len(r.Assets) != 0 {
+	if r.SchemaVersion != "fe.capture.status.v1" || !r.Valid(accepted.CaptureID) || r.FragmentID != accepted.FragmentID || r.RevisionID != accepted.RevisionID || r.AttemptID != accepted.AttemptID || (r.Completion != "complete" && (r.Completion != "partial" || len(outcomes) == 0)) || (len(outcomes) == 0 && len(r.Assets) != 0) {
 		return r, failed("invalid_receipt", false)
 	}
 	return r, nil

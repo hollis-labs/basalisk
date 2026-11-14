@@ -349,7 +349,15 @@ func (w *FragmentWorker) deliver(ctx context.Context, j *deliveryJob) error {
 	if _, err = w.authorized(ctx, *j); err != nil {
 		return err
 	}
-	confirmed, err := client.Complete(ctx, j.origin, bearer, receipt)
+	// Media: FE's instructions for each variant (frag_media.go), then one outcome each.
+	outcomes, err := transferMedia(ctx, client, j.origin, bearer, j.manifest, receipt)
+	if err != nil {
+		return err
+	}
+	if _, err = w.authorized(ctx, *j); err != nil {
+		return err
+	}
+	confirmed, err := client.Complete(ctx, j.origin, bearer, receipt, outcomes)
 	if err != nil {
 		return err
 	}

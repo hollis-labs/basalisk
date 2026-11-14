@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -31,6 +32,10 @@ type capturePeer struct {
 	// invalid collects documents FE's own schema refused (feschema_test.go); the stub answers
 	// them 400 as FE does, and the fixture fails the test.
 	invalid []string
+	// instruct decides FE's instruction for each media variant of an accepted manifest
+	// (frag_media_test.go); nil answers none. uploads are the bytes PUT, by variant.
+	instruct func(id string, variant map[string]any) map[string]any
+	uploads  map[string][]byte
 }
 
 func (p *capturePeer) serve(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +73,21 @@ func (p *capturePeer) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw, _ := io.ReadAll(r.Body)
+	if r.Method == http.MethodPut {
+		// An asset upload: the body must match its RFC 9530 digest.
+		parts := strings.Split(r.URL.Path, "/")
+		sum := sha256.Sum256(raw)
+		if len(parts) != 7 || parts[4] != "assets" || parts[6] != "content" || r.Header.Get("Digest") != "sha-256=:"+base64.StdEncoding.EncodeToString(sum[:])+":" || r.Header.Get("Content-Type") == "" {
+			http.Error(w, "bad upload", http.StatusBadRequest)
+			return
+		}
+		if p.uploads == nil {
+			p.uploads = map[string][]byte{}
+		}
+		p.uploads[parts[5]] = raw
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	id := ""
 	schema := "fe.capture.status.v1"
 	completion := "complete"
@@ -116,7 +136,27 @@ func (p *capturePeer) serve(w http.ResponseWriter, r *http.Request) {
 	if p.invalidReceipt {
 		id = "foreign-capture"
 	}
-	json.NewEncoder(w).Encode(map[string]any{"schema_version": schema, "capture_id": id, "fragment_id": "confirmed-fragment", "fragment_revision_id": "confirmed-revision", "capture_attempt_id": "confirmed-attempt", "completion": completion, "asset_instructions": []any{}, "assets": []any{}})
+	instructions, assets := []any{}, []any{}
+	var doc struct {
+		Media []struct {
+			Variants []map[string]any `json:"variants"`
+		} `json:"media"`
+		Assets []map[string]any `json:"assets"`
+	}
+	_ = json.Unmarshal(raw, &doc)
+	if schema == "fe.capture.result.v1" && p.instruct != nil {
+		for _, m := range doc.Media {
+			for _, v := range m.Variants {
+				instructions = append(instructions, p.instruct(id, v))
+			}
+		}
+	}
+	for _, a := range doc.Assets {
+		if a["outcome"] == "failed" || a["outcome"] == "not_available" {
+			completion = "partial"
+		}
+	}
+	json.NewEncoder(w).Encode(map[string]any{"schema_version": schema, "capture_id": id, "fragment_id": "confirmed-fragment", "fragment_revision_id": "confirmed-revision", "capture_attempt_id": "confirmed-attempt", "completion": completion, "asset_instructions": instructions, "assets": assets})
 }
 
 type deliveryFixture struct {
