@@ -105,6 +105,14 @@ export function AgentSettings() {
                 </span>
               )}
             </dd>
+            {state.rules_problem && (
+              <>
+                <dt>Router rules</dt>
+                <dd className="text-danger">
+                  Not in use: {state.rules_problem} (see “The router” in docs/agent.md)
+                </dd>
+              </>
+            )}
           </dl>
         )}
       </section>
