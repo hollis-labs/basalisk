@@ -18,6 +18,7 @@ import (
 	"github.com/hollis-labs/substrate/modules/httphost"
 
 	"github.com/hollis-labs/basalisk/internal/agent"
+	"github.com/hollis-labs/basalisk/internal/feeds"
 	"github.com/hollis-labs/basalisk/internal/files"
 	"github.com/hollis-labs/basalisk/internal/inbox"
 	"github.com/hollis-labs/basalisk/internal/macshell"
@@ -61,6 +62,9 @@ type API struct {
 	work *work.Store
 	// inbox is the owner's messages and notifications (inbox.go); nil unless EnableInbox was called.
 	inbox *inbox.Inbox
+	// feeds is the Reader's feed store (reader.go); nil unless EnableReader was called.
+	feeds      *feeds.Store
+	feedClient *http.Client
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,
@@ -126,6 +130,7 @@ func (a *API) allRoutes() []route {
 	rts = append(rts, a.storyRoutes()...)   // story.go
 	rts = append(rts, a.workRoutes()...)    // work.go
 	rts = append(rts, a.inboxRoutes()...)   // inbox.go
+	rts = append(rts, a.readerRoutes()...)  // reader.go
 	return append(rts, a.fragRoutes()...)   // frag.go
 }
 

@@ -21,6 +21,7 @@ import (
 
 	"github.com/hollis-labs/basalisk/internal/agent"
 	"github.com/hollis-labs/basalisk/internal/api"
+	"github.com/hollis-labs/basalisk/internal/feeds"
 	"github.com/hollis-labs/basalisk/internal/hostguard"
 	"github.com/hollis-labs/basalisk/internal/inbox"
 	"github.com/hollis-labs/basalisk/internal/macshell"
@@ -118,6 +119,19 @@ func (b *basalisk) serve(ctx context.Context) error {
 			if agentRT != nil {
 				agentRT.AddTools(agent.ScratchTools(store, syncer.Kick, a.ScratchAuto))
 			}
+		}
+	}
+	// The Reader's feeds (RSS and Atom), kept beside the database (internal/feeds).
+	if scratchPath != "" {
+		feedsPath := filepath.Join(filepath.Dir(scratchPath), "feeds.db")
+		if store, err := feeds.Open(ctx, feedsPath); err != nil {
+			slog.Warn("reader feeds are off: their store could not be opened", "path", feedsPath, "err", err)
+		} else {
+			a.EnableReader(ctx, store)
+			go func() {
+				<-ctx.Done()
+				_ = store.Close()
+			}()
 		}
 	}
 	// The inbox: the owner's Tether mail, through the same gateway (internal/inbox).
