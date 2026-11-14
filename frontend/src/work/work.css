@@ -295,6 +295,8 @@
   flex: 0 0 380px;
   max-width: 50%;
   border-left: 1px solid var(--desk-border);
+  /* The side panel's colour (as the chat sidebar), so it reads apart from the board. */
+  background: var(--desk-panel);
   overflow: auto;
   padding: 10px 12px 24px;
   display: flex;
