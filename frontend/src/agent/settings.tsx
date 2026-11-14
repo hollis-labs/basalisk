@@ -198,6 +198,7 @@ interface Automation {
     name: string
     about?: string
     action: string
+    trigger?: string
     enabled: boolean
     cooldown_seconds?: number
     fired_count?: number
@@ -215,9 +216,16 @@ const TARGETS: Record<string, string> = {
 const targetText = (t: string) =>
   t.startsWith("tool:") ? `calls ${t.slice(5).replaceAll("_", " ")}` : (TARGETS[t] ?? t)
 
+const TRIGGERS: Record<string, string> = {
+  predicate: "on a message",
+  event: "on an event",
+  interval: "as time passes",
+}
+
 const ACTIONS: Record<string, string> = {
   inject_reminder: "reminds the agent",
   halt_session: "stops the run",
+  dispatch_to_agent: "starts a task agent",
 }
 
 function when(iso?: string) {
@@ -279,6 +287,7 @@ function Automation() {
                       <strong>{r.enabled ? "On" : "Off"}</strong>
                       {r.about ? ` · ${r.about}` : ""}
                       <span className="text-fg-muted">
+                        {r.trigger ? ` · ${TRIGGERS[r.trigger] ?? r.trigger}` : ""}
                         {` · ${ACTIONS[r.action] ?? r.action}`}
                         {r.fired_count
                           ? ` · fired ${r.fired_count} time${r.fired_count === 1 ? "" : "s"}, last ${when(r.last_fired_at)}`
