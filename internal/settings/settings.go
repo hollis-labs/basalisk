@@ -71,7 +71,7 @@ func Parse(raw any) (Settings, error) {
 		return strings.TrimSpace(t), nil
 	}
 	known := map[string]bool{"tether_mcp": true, "allowed_hosts": true, "fe_integration_id": true, "public_origin": true, "tether_issuer_url": true, "tether_subject": true, "tether_parent_ref": true,
-		"agent_gateway_url": true, "agent_key_file": true, "agent_model": true, "agent_urn": true}
+		"agent_gateway_url": true, "agent_key_file": true, "agent_model": true, "agent_urn": true, "inbox_addresses": true}
 	var unknown []string
 	for k := range block {
 		if !known[k] {

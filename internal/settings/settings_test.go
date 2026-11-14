@@ -54,3 +54,13 @@ func TestBadValuesAreRefusedNamingTheKey(t *testing.T) {
 		}
 	}
 }
+
+func TestInboxAddresses(t *testing.T) {
+	s, err := Parse(map[string]any{"inbox_addresses": []any{"msg://agent/x/a1", "msg://user/local/operator"}})
+	if err != nil || len(s.InboxAddresses) != 2 {
+		t.Fatalf("%v %+v", err, s.InboxAddresses)
+	}
+	if _, err := Parse(map[string]any{"inbox_addresses": []any{"someone"}}); err == nil {
+		t.Fatal("an address that is not msg:// must be refused")
+	}
+}
