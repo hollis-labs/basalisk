@@ -57,7 +57,13 @@ const EscapeChord = "ctrl+alt+cmd+escape"
 const (
 	ToggleKioskChord   = "ctrl+alt+cmd+f"
 	ToggleMenuBarChord = "ctrl+alt+cmd+m"
+	// SummonChord brings Basalisk forward from any app and opens the agent's panel with the
+	// keyboard in it (the same letter as the panel's own shortcut, cmd+j).
+	SummonChord = "ctrl+alt+cmd+j"
 )
+
+// SummonEvent is the DOM event the page is sent when the summon chord is pressed.
+const SummonEvent = "basalisk:summon"
 
 // Status is a snapshot of the shell.
 type Status struct {

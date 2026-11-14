@@ -14,6 +14,7 @@ enum {
 	BSL_EV_FIXED_MINIMIZED, // a window was restored on activation: code is the pid
 	BSL_EV_TAP_DISABLED,    // the system disabled the tap (code 1 timeout, 2 user input); it was re-enabled
 	BSL_EV_WATCHDOG,        // the main thread stopped answering; swallowing is suspended
+	BSL_EV_SUMMON,          // the summon hot key: the app was brought forward for the agent
 };
 
 // bslInit installs the observers, the hot keys and the main-thread heartbeat. window is the

@@ -103,6 +103,12 @@ func (s *Shell) pump() {
 			if err := s.SetMenuBar(visible); err != nil {
 				s.log.add("error", err.Error())
 			}
+		case C.BSL_EV_SUMMON:
+			s.log.add("hotkey", SummonChord+": summoned")
+			// The page opens the agent's panel; a page that is not up yet just misses it.
+			if _, err := s.Eval(`window.dispatchEvent(new CustomEvent("` + SummonEvent + `")); true`); err != nil {
+				s.log.add("error", "summon: "+err.Error())
+			}
 		case C.BSL_EV_SWALLOWED:
 			s.log.add("swallowed", combo{code: ev.code, mods: ev.mods & modMask}.String())
 		case C.BSL_EV_ACTIVE:

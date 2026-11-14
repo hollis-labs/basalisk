@@ -41,6 +41,12 @@ registerApp({
 // page runs the tools they ask for.
 registerStartup(startTasks)
 
+// The global summon chord (⌃⌥⌘J, the Mac shell): Basalisk has been brought forward from
+// another app; open the panel and put the keyboard in it.
+registerStartup((desk) => {
+  window.addEventListener("basalisk:summon", () => void summon(desk))
+})
+
 /** Open the panel and give it the keyboard, noting first what the owner was looking at. */
 async function summon(desk: DeskAPI) {
   await start(desk)

@@ -152,6 +152,14 @@ static OSStatus hotKeyHandler(EventHandlerCallRef next, EventRef event, void *us
 	case 3:
 		bslGoEvent(BSL_EV_TOGGLE_MENUBAR, 0, 0);
 		break;
+	case 4:
+		// Summon: bring the app forward from wherever the owner is, then tell the page.
+		[NSApp activateIgnoringOtherApps:YES];
+		if (gWin) {
+			[gWin makeKeyAndOrderFront:nil];
+		}
+		bslGoEvent(BSL_EV_SUMMON, 0, 0);
+		break;
 	}
 	return noErr;
 }
@@ -160,8 +168,8 @@ static void installHotKeys(void) {
 	EventTypeSpec spec = {kEventClassKeyboard, kEventHotKeyPressed};
 	InstallApplicationEventHandler(&hotKeyHandler, 1, &spec, NULL, NULL);
 	UInt32 mods = cmdKey | optionKey | controlKey;
-	UInt32 keys[3] = {kVK_Escape, kVK_ANSI_F, kVK_ANSI_M};
-	for (UInt32 i = 0; i < 3; i++) {
+	UInt32 keys[4] = {kVK_Escape, kVK_ANSI_F, kVK_ANSI_M, kVK_ANSI_J};
+	for (UInt32 i = 0; i < 4; i++) {
 		EventHotKeyID hk = {.signature = 'bslk', .id = i + 1};
 		EventHotKeyRef ref = NULL;
 		RegisterEventHotKey(keys[i], mods, hk, GetApplicationEventTarget(), 0, &ref);

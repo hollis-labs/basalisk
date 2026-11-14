@@ -186,9 +186,10 @@ Linux adapter would implement the same interface.
 | ⌃⌥⌘ Esc | Leave kiosk and stop key swallowing. Handled before anything else; cannot be swallowed. |
 | ⌃⌥⌘ F | Toggle kiosk. Works from any app (it brings Basalisk forward). |
 | ⌃⌥⌘ M | Show or hide the menu bar while in kiosk. |
+| ⌃⌥⌘ J | Summon the agent from any app: Basalisk comes forward and the agent's panel opens with the keyboard in it. |
 | ⌃ ` | Drop the terminal down over any page, or put it away. |
 
-The first three are Carbon hot keys and need no permission. Force Quit (⌘⌥ Esc) is never
+The first four are Carbon hot keys and need no permission. Force Quit (⌘⌥ Esc) is never
 swallowed and never disabled.
 
 ### Terminal
