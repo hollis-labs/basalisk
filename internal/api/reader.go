@@ -63,6 +63,14 @@ func (a *API) readerRoutes() []route {
 		{"GET", "/api/reader/items/{id}/content", r, a.readerContent},
 		{"POST", "/api/reader/items/{id}/commands", w, a.readerCommand},
 		{"GET", "/api/reader/media/{variant}", r, a.readerMedia},
+		{"GET", "/api/reader/collections", r, a.readerCollections},
+		{"POST", "/api/reader/collections", w, a.readerCollections},
+		{"PUT", "/api/reader/collections/{cid}", w, a.readerCollection},
+		{"DELETE", "/api/reader/collections/{cid}", w, a.readerCollection},
+		{"GET", "/api/reader/collections/{cid}/items", r, a.readerCollectionItems},
+		{"POST", "/api/reader/collections/{cid}/items", w, a.readerCollectionItems},
+		{"DELETE", "/api/reader/collections/{cid}/items/{id}", w, a.readerCollectionItem},
+		{"PUT", "/api/reader/collections/{cid}/order", w, a.readerCollectionOrder},
 	}
 	if a.feeds != nil {
 		rts = append(rts,
@@ -239,6 +247,100 @@ func (a *API) readerCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.feJSON(w, r, "POST", "/v1/reader/items/"+id+"/commands", body)
+}
+
+// ---- Collections (FE docs/reader-collections.md): named, ordered sets of fragments. ----
+
+var collectionID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
+
+// collectionPath is FE's path for a collection, or "" when the id is not one.
+func collectionPath(w http.ResponseWriter, r *http.Request, rest string) string {
+	cid := r.PathValue("cid")
+	if !collectionID.MatchString(cid) {
+		fail(w, 400, "That is not a collection.")
+		return ""
+	}
+	return "/v1/reader/collections/" + cid + rest
+}
+
+// smallBody reads a request's JSON body to pass on.
+func smallBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil || len(body) == 0 || len(body) >= 1<<20 {
+		fail(w, 400, "The request is missing or too large.")
+		return nil, false
+	}
+	return body, true
+}
+
+// revQuery passes the expected revision of a delete on.
+func revQuery(r *http.Request) string {
+	if v := r.URL.Query().Get("expected_revision"); v != "" && len(v) <= 12 {
+		return "?" + url.Values{"expected_revision": {v}}.Encode()
+	}
+	return ""
+}
+
+func (a *API) readerCollections(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		a.feJSON(w, r, "GET", "/v1/reader/collections", nil)
+		return
+	}
+	if body, ok := smallBody(w, r); ok {
+		a.feJSON(w, r, "POST", "/v1/reader/collections", body)
+	}
+}
+
+func (a *API) readerCollection(w http.ResponseWriter, r *http.Request) {
+	path := collectionPath(w, r, "")
+	if path == "" {
+		return
+	}
+	if r.Method == "DELETE" {
+		a.feJSON(w, r, "DELETE", path+revQuery(r), nil)
+		return
+	}
+	if body, ok := smallBody(w, r); ok {
+		a.feJSON(w, r, "PATCH", path, body)
+	}
+}
+
+func (a *API) readerCollectionItems(w http.ResponseWriter, r *http.Request) {
+	path := collectionPath(w, r, "/items")
+	if path == "" {
+		return
+	}
+	if r.Method == "GET" {
+		if c := r.URL.Query().Get("cursor"); c != "" && len(c) <= 8192 {
+			path += "?" + url.Values{"cursor": {c}}.Encode()
+		}
+		a.feJSON(w, r, "GET", path, nil)
+		return
+	}
+	if body, ok := smallBody(w, r); ok {
+		a.feJSON(w, r, "POST", path, body)
+	}
+}
+
+func (a *API) readerCollectionItem(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !feID.MatchString(id) {
+		fail(w, 400, "That is not a fragment.")
+		return
+	}
+	if path := collectionPath(w, r, "/items/"+id); path != "" {
+		a.feJSON(w, r, "DELETE", path+revQuery(r), nil)
+	}
+}
+
+func (a *API) readerCollectionOrder(w http.ResponseWriter, r *http.Request) {
+	path := collectionPath(w, r, "/order")
+	if path == "" {
+		return
+	}
+	if body, ok := smallBody(w, r); ok {
+		a.feJSON(w, r, "PUT", path, body)
+	}
 }
 
 // mediaTypes are the kinds of file a reader item's media may be served as.

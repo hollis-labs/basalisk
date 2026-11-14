@@ -2,8 +2,10 @@ import {
   Archive,
   BookOpen,
   Clock,
+  FolderPlus,
   Inbox,
   Library,
+  ListVideo,
   MonitorPlay,
   Plus,
   RefreshCw,
@@ -18,6 +20,7 @@ import {
   type FeedEntry,
   hostOf,
   leadImage,
+  type ReaderCollection,
   type ReaderFilter,
   type ReaderItem,
   reader,
@@ -30,6 +33,7 @@ import "./reader.css"
 type View =
   | { kind: "library"; id: string; label: string; icon: ReactNode; filter: ReaderFilter }
   | { kind: "feeds"; id: string; label: string; feed?: string; unread?: boolean; starred?: boolean }
+  | { kind: "collection"; id: string; label: string; collection: string }
 
 const ICON = { size: 14, strokeWidth: 1.6, "aria-hidden": true } as const
 
@@ -114,6 +118,9 @@ export function ReaderWindow({ start }: { start: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [adding, setAdding] = useState<string | null>(null)
+  const [collections, setCollections] = useState<ReaderCollection[]>([])
+  const [naming, setNaming] = useState<string | null>(null)
+  const [dragging, setDragging] = useState("")
   const seq = useRef(0)
 
   const fail = useCallback(
@@ -129,6 +136,21 @@ export function ReaderWindow({ start }: { start: string }) {
         .catch(() => setFeeds([])),
     [],
   )
+  // Collections are absent on an FE that does not have them yet: the section is then empty.
+  const loadCollections = useCallback(
+    () =>
+      reader
+        .collections()
+        .then((list) => {
+          setCollections(list)
+          return list
+        })
+        .catch(() => [] as ReaderCollection[]),
+    [],
+  )
+  useEffect(() => {
+    void loadCollections()
+  }, [loadCollections])
   useEffect(() => {
     void loadFeeds()
     const timer = window.setInterval(() => void loadFeeds(), 120_000)
@@ -149,6 +171,19 @@ export function ReaderWindow({ start }: { start: string }) {
           if (mine !== seq.current) return
           setItems((old) => (more ? [...old, ...page.items] : page.items))
           setCursor(page.next_cursor ?? null)
+        } else if (view.kind === "collection") {
+          const page = await reader.collectionItems(
+            view.collection,
+            more ? (from?.cursor ?? "") : "",
+          )
+          if (mine !== seq.current) return
+          setItems((old) => (more ? [...old, ...page.items] : page.items))
+          setCursor(page.next_cursor ?? null)
+          setCollections((list) =>
+            list.map((c) =>
+              c.collection_id === page.collection.collection_id ? page.collection : c,
+            ),
+          )
         } else {
           const r = await reader.entries({
             feed: view.feed,
@@ -201,7 +236,7 @@ export function ReaderWindow({ start }: { start: string }) {
     const e = entries.find((x) => x.id === id)
     if (view.kind === "feeds" && e && !e.read) patchEntry(id, { read: true })
   }
-  const ids = view.kind === "library" ? items.map((i) => i.fragment_id) : entries.map((e) => e.id)
+  const ids = view.kind === "feeds" ? entries.map((e) => e.id) : items.map((i) => i.fragment_id)
   const step = (delta: number) => {
     if (!ids.length) return
     const at = ids.indexOf(open)
@@ -220,6 +255,73 @@ export function ReaderWindow({ start }: { start: string }) {
         .then(patchItem)
         .catch(() => undefined)
     }
+  }
+
+  // A collection change: do it with the collection as it is now, once more if it moved on.
+  const withCollection = async (
+    id: string,
+    change: (c: ReaderCollection) => Promise<ReaderCollection | void>,
+  ) => {
+    const find = (list: ReaderCollection[]) => list.find((c) => c.collection_id === id)
+    // One just made is not in this render's list yet: read the list again.
+    let c = find(collections) ?? find(await loadCollections())
+    if (!c) return
+    try {
+      await change(c)
+    } catch {
+      c = find(await loadCollections())
+      if (!c) return
+      await change(c).catch(fail)
+    }
+    await loadCollections()
+  }
+  const setMembership = async (it: ReaderItem, id: string, member: boolean) => {
+    await withCollection(id, (c) =>
+      member
+        ? reader.addToCollection(c, it.fragment_id)
+        : reader.removeFromCollection(c, it.fragment_id),
+    )
+    if (view.kind === "collection" && view.collection === id && !member) {
+      setItems((list) => list.filter((i) => i.fragment_id !== it.fragment_id))
+      setOpen("")
+    } else {
+      void reader
+        .item(it.fragment_id)
+        .then(patchItem)
+        .catch(() => undefined)
+    }
+  }
+  const newCollection = async (name: string, then?: (c: ReaderCollection) => void) => {
+    if (!name.trim()) return
+    try {
+      const c = await reader.createCollection(name.trim())
+      setNaming(null)
+      const list = await loadCollections()
+      then?.(list.find((x) => x.collection_id === c.collection_id) ?? c)
+    } catch (e) {
+      fail(e)
+    }
+  }
+  const dropCollection = async (c: ReaderCollection) => {
+    const yes = await desk.confirm({
+      title: `Delete the collection “${c.name}”?`,
+      message: "Its items stay in your library; only the collection goes.",
+      confirmLabel: "Delete",
+      danger: true,
+    })
+    if (!yes) return
+    await withCollection(c.collection_id, (x) => reader.deleteCollection(x))
+    setView(LIBRARY[0])
+  }
+  // Drop a card on another: it takes that place in the collection's order.
+  const reorder = async (onto: string) => {
+    const moved = dragging
+    setDragging("")
+    if (view.kind !== "collection" || !moved || moved === onto || cursor) return
+    const order = items.map((i) => i.fragment_id).filter((i) => i !== moved)
+    order.splice(order.indexOf(onto), 0, moved)
+    setItems((list) => order.map((i) => list.find((x) => x.fragment_id === i)).filter((x) => !!x))
+    await withCollection(view.collection, (c) => reader.orderCollection(c, order))
   }
 
   const addFeed = async () => {
@@ -288,6 +390,66 @@ export function ReaderWindow({ start }: { start: string }) {
             <span>{v.label}</span>
           </button>
         ))}
+        <h3>
+          Collections
+          <button
+            type="button"
+            className="reader-mini"
+            title="New collection"
+            aria-label="New collection"
+            onClick={() => setNaming(naming === null ? "" : null)}
+          >
+            <FolderPlus {...ICON} />
+          </button>
+        </h3>
+        {naming !== null && (
+          <form
+            className="reader-add"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void newCollection(naming, (c) =>
+                pick({
+                  kind: "collection",
+                  id: c.collection_id,
+                  label: c.name,
+                  collection: c.collection_id,
+                }),
+              )
+            }}
+          >
+            <input
+              // biome-ignore lint/a11y/noAutofocus: the field was just asked for
+              autoFocus
+              value={naming}
+              placeholder="Name: a playlist, a reading list…"
+              onChange={(e) => setNaming(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && setNaming(null)}
+            />
+          </form>
+        )}
+        {collections.map((c) => (
+          <button
+            key={c.collection_id}
+            type="button"
+            data-on={view.id === c.collection_id}
+            title={c.description || c.name}
+            onClick={() =>
+              pick({
+                kind: "collection",
+                id: c.collection_id,
+                label: c.name,
+                collection: c.collection_id,
+              })
+            }
+          >
+            <ListVideo {...ICON} />
+            <span>{c.name}</span>
+            {c.item_count > 0 && <em>{c.item_count}</em>}
+          </button>
+        ))}
+        {!collections.length && naming === null && (
+          <p className="reader-hint">None yet. + starts one.</p>
+        )}
         <h3>
           Feeds
           <button
@@ -391,6 +553,20 @@ export function ReaderWindow({ start }: { start: string }) {
               ✓
             </button>
           )}
+          {view.kind === "collection" && (
+            <button
+              type="button"
+              className="reader-mini"
+              title="Delete this collection (its items stay in the library)"
+              aria-label="Delete this collection"
+              onClick={() => {
+                const c = collections.find((x) => x.collection_id === view.collection)
+                if (c) void dropCollection(c)
+              }}
+            >
+              <Trash2 {...ICON} />
+            </button>
+          )}
           {view.kind === "feeds" && view.feed && (
             <button
               type="button"
@@ -430,11 +606,18 @@ export function ReaderWindow({ start }: { start: string }) {
           </p>
         )}
         <ul>
-          {view.kind === "library"
+          {view.kind !== "feeds"
             ? items.map((it) => {
                 const img = leadImage(it, true)
                 return (
-                  <li key={it.fragment_id}>
+                  <li
+                    key={it.fragment_id}
+                    draggable={view.kind === "collection" && !cursor}
+                    onDragStart={() => setDragging(it.fragment_id)}
+                    onDragOver={(e) => view.kind === "collection" && dragging && e.preventDefault()}
+                    onDrop={() => void reorder(it.fragment_id)}
+                    data-dragging={dragging === it.fragment_id}
+                  >
                     <button
                       type="button"
                       className="reader-card"
@@ -480,7 +663,7 @@ export function ReaderWindow({ start }: { start: string }) {
                 </li>
               ))}
           {!ids.length && !busy && <li className="reader-none">Nothing here.</li>}
-          {view.kind === "library" && cursor && (
+          {view.kind !== "feeds" && cursor && (
             <li>
               <button
                 type="button"
@@ -507,7 +690,16 @@ export function ReaderWindow({ start }: { start: string }) {
 
       <section className="reader-pane">
         {item ? (
-          <ItemDetail key={item.fragment_id} item={item} run={(c, x) => run(item, c, x)} />
+          <ItemDetail
+            key={item.fragment_id}
+            item={item}
+            run={(c, x) => run(item, c, x)}
+            collections={collections}
+            setMembership={(id, member) => setMembership(item, id, member)}
+            newCollection={(name) =>
+              newCollection(name, (c) => void setMembership(item, c.collection_id, true))
+            }
+          />
         ) : entry ? (
           <EntryDetail key={entry.id} entry={entry} patch={(c) => patchEntry(entry.id, c)} />
         ) : (

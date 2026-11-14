@@ -75,6 +75,18 @@ export interface ReaderItem {
     last_opened_at?: string
   }
   actions: { command: string }[]
+  /** The owner's collections this item is in (absent when in none). */
+  collections?: { collection_id: string; name: string; kind: string }[]
+}
+
+/** A named, ordered set of library items: a playlist, a reading list, research for one piece. */
+export interface ReaderCollection {
+  collection_id: string
+  name: string
+  description: string
+  kind: string
+  item_count: number
+  revision: number
 }
 
 export interface ReaderPage {
@@ -153,6 +165,46 @@ export const reader = {
     })
     return reader.item(it.fragment_id)
   },
+  collections: () =>
+    request<{ collections: ReaderCollection[] }>("reader/collections").then(
+      (r) => r.collections ?? [],
+    ),
+  createCollection: (name: string, kind = "collection") =>
+    request<ReaderCollection>("reader/collections", "POST", { name, kind }),
+  updateCollection: (
+    c: ReaderCollection,
+    patch: { name?: string; description?: string; kind?: string },
+  ) =>
+    request<ReaderCollection>(`reader/collections/${c.collection_id}`, "PUT", {
+      expected_revision: c.revision,
+      ...patch,
+    }),
+  deleteCollection: (c: ReaderCollection) =>
+    request<void>(
+      `reader/collections/${c.collection_id}?expected_revision=${c.revision}`,
+      "DELETE",
+    ),
+  collectionItems: (id: string, cursor = "") =>
+    request<{ collection: ReaderCollection; items: ReaderItem[]; next_cursor?: string }>(
+      `reader/collections/${id}/items${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+    ),
+  /** Add an item at the end. Accepted from any revision at or behind the current one. */
+  addToCollection: (c: ReaderCollection, fragmentId: string) =>
+    request<ReaderCollection>(`reader/collections/${c.collection_id}/items`, "POST", {
+      expected_revision: c.revision,
+      fragment_id: fragmentId,
+    }),
+  removeFromCollection: (c: ReaderCollection, fragmentId: string) =>
+    request<ReaderCollection>(
+      `reader/collections/${c.collection_id}/items/${fragmentId}?expected_revision=${c.revision}`,
+      "DELETE",
+    ),
+  /** Replace the order: every member's id, each once. */
+  orderCollection: (c: ReaderCollection, fragmentIds: string[]) =>
+    request<ReaderCollection>(`reader/collections/${c.collection_id}/order`, "PUT", {
+      expected_revision: c.revision,
+      fragment_ids: fragmentIds,
+    }),
   feeds: () => request<{ feeds: Feed[]; refreshing: boolean }>("reader/feeds"),
   addFeed: (url: string, folder = "") => request<Feed>("reader/feeds", "POST", { url, folder }),
   updateFeed: (id: string, patch: { title?: string; folder?: string }) =>

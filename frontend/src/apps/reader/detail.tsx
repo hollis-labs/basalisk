@@ -3,6 +3,7 @@ import {
   BookOpenCheck,
   Clock,
   ExternalLink,
+  FolderPlus,
   Highlighter,
   Save,
   Star,
@@ -17,6 +18,7 @@ import {
   imageOf,
   leadImage,
   mediaURL,
+  type ReaderCollection,
   type ReaderItem,
   reader,
 } from "../../api/reader"
@@ -120,7 +122,22 @@ function Player({ item, run }: { item: ReaderItem; run: Run }) {
 }
 
 /** One library item: its actions, its tags, the player or the text, its highlights. */
-export function ItemDetail({ item, run }: { item: ReaderItem; run: Run }) {
+export function ItemDetail({
+  item,
+  run,
+  collections,
+  setMembership,
+  newCollection,
+}: {
+  item: ReaderItem
+  run: Run
+  collections: ReaderCollection[]
+  setMembership: (collectionId: string, member: boolean) => Promise<void>
+  newCollection: (name: string) => Promise<void>
+}) {
+  const [adding, setAdding] = useState(false)
+  const [named, setNamed] = useState("")
+  const inIds = new Set((item.collections ?? []).map((c) => c.collection_id))
   const [full, setFull] = useState<string | null>(null)
   const [tag, setTag] = useState("")
   const [pick, setPick] = useState<{ quote: string; x: number; y: number } | null>(null)
@@ -281,6 +298,60 @@ export function ItemDetail({ item, run }: { item: ReaderItem; run: Run }) {
             <Archive {...ICON} />
             <span>{state.archived ? "Archived" : "Archive"}</span>
           </button>
+        </div>
+        <div className="reader-tags reader-colls">
+          {(item.collections ?? []).map((c) => (
+            <span key={c.collection_id} className="reader-tag reader-coll">
+              {c.name}
+              <button
+                type="button"
+                aria-label={`Take out of ${c.name}`}
+                onClick={() => void setMembership(c.collection_id, false)}
+              >
+                <X size={10} strokeWidth={2} aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+          <span className="reader-collmenu">
+            <button type="button" className="reader-colladd" onClick={() => setAdding((a) => !a)}>
+              <FolderPlus size={12} strokeWidth={1.6} aria-hidden="true" /> Add to a collection
+            </button>
+            {adding && (
+              <span className="reader-collpop" role="menu">
+                {collections
+                  .filter((c) => !inIds.has(c.collection_id))
+                  .map((c) => (
+                    <button
+                      key={c.collection_id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setAdding(false)
+                        void setMembership(c.collection_id, true)
+                      }}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    if (!named.trim()) return
+                    setAdding(false)
+                    void newCollection(named)
+                    setNamed("")
+                  }}
+                >
+                  <input
+                    value={named}
+                    placeholder="New collection…"
+                    aria-label="New collection"
+                    onChange={(e) => setNamed(e.target.value)}
+                  />
+                </form>
+              </span>
+            )}
+          </span>
         </div>
         <div className="reader-tags">
           {item.tags.combined.map((t) => (
