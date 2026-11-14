@@ -194,7 +194,11 @@ func (s *Shell) SetKiosk(on, blockSwitching bool) error {
 	if err := s.ready(); err != nil {
 		return err
 	}
-	if C.bslSetKiosk(cbool(on), cbool(on && blockSwitching)) != 0 {
+	switch C.bslSetKiosk(cbool(on), cbool(on && blockSwitching)) {
+	case 0:
+	case -2:
+		return errors.New("the window is in macOS full screen; leave it (the green button, or ⌃⌘F) and turn kiosk on again")
+	default:
 		return errors.New("AppKit refused the presentation options")
 	}
 	s.mu.Lock()

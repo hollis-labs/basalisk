@@ -256,6 +256,13 @@ int bslSetKiosk(int on, int blockSwitching) {
 			rc = -1;
 			return;
 		}
+		// AppKit throws (and the app dies) if the full screen bit of a window in native full
+		// screen is cleared outside its own transition, so the style is left alone then.
+		BOOL nativeFull = (gWin.styleMask & NSWindowStyleMaskFullScreen) != 0;
+		if (on && !gKiosk && nativeFull) {
+			rc = -2;
+			return;
+		}
 		if (on && !gKiosk) {
 			gSavedFrame = gWin.frame;
 			gSavedMask = gWin.styleMask;
@@ -283,9 +290,14 @@ int bslSetKiosk(int on, int blockSwitching) {
 			gMenuVisible = YES;
 			gBlock = NO;
 			applyPresentation();
-			gWin.styleMask = gSavedMask;
-			gWin.hasShadow = gSavedShadow;
-			[gWin setFrame:gSavedFrame display:YES animate:NO];
+			if (nativeFull) {
+				gWin.styleMask = gSavedMask | NSWindowStyleMaskFullScreen;
+				gWin.hasShadow = gSavedShadow;
+			} else {
+				gWin.styleMask = gSavedMask;
+				gWin.hasShadow = gSavedShadow;
+				[gWin setFrame:gSavedFrame display:YES animate:NO];
+			}
 			focusWindow();
 		} else if (gKiosk) {
 			BOOL was = gBlock;
