@@ -153,7 +153,8 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
   }
 
   const selection = page.selection?.trim() ?? ""
-  const sent = selection || page.markdown.trim()
+  // The whole page is the body; the selection goes with it as a highlight (as fe-clipper sends it).
+  const sent = page.markdown.trim()
   const words = sent ? sent.split(/\s+/).length : 0
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the overlay's own keys (Esc, ⌘↩)
@@ -192,20 +193,21 @@ export function ClipBox({ page, close }: { page: ClipPage; close: () => void }) 
         <div className="frag-clip-url">
           <CiteText text={page.submittedUrl} />
         </div>
-        {/* Exactly what is sent: the selection when there is one, else the whole page. */}
+        {/* Exactly what is sent: the whole page, the selection as a highlight, the media. */}
         <div className="frag-clip-what" data-selection={!!selection}>
-          sending: {selection ? "selection" : "whole page"}
+          sending: whole page
+          {selection && " + highlight"}
           {mediaSummary(page.media) && ` + ${mediaSummary(page.media)}`}
         </div>
-        {selection ? (
-          <blockquote className="frag-clip-selection" title="What will be saved">
+        {selection && (
+          <blockquote className="frag-clip-selection" title="Sent as a highlight on the page">
             {selection}
           </blockquote>
-        ) : (
-          <pre className="frag-clip-body" title="What will be saved">
-            {page.markdown.slice(0, 1800) || "(no article body found; the title and note are kept)"}
-          </pre>
         )}
+        <pre className="frag-clip-body" title="What will be saved">
+          {page.markdown.slice(0, selection ? 600 : 1800) ||
+            "(no article body found; the title and note are kept)"}
+        </pre>
         <NoteField
           value={d.note}
           onChange={(v) => edit({ note: v })}

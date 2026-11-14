@@ -71,9 +71,11 @@ not an agent API call, so it is not written to the shell log.
 The capture goes to FE as the same `fe.capture.v1` page manifest fe-clipper sends
 (`source_registration_id` `browser-capture`, the page's submitted and canonical addresses, the
 same item key), so a page clipped here and one clipped from the extension are one source. What
-is sent is the selection when there is one (as the document body, with no separate highlight),
-and the whole page otherwise, never edited; the box says which ("sending: selection" or "sending:
-whole page") and shows it. The note is a `capture_note` annotation. The capture id belongs to the page,
+is sent is the whole page as the body, never edited, and the selection, when there is one, as a
+`highlight` annotation (`{kind: highlight, text, selector: {exact}}`), exactly as fe-clipper
+sends it. The box says so ("sending: whole page + highlight") and shows the selection. Until
+2026-11-13 a selection was sent as the body instead; Chrispian chose to match the extension,
+pending a deeper look he wants later. The note is a `capture_note` annotation. The capture id belongs to the page,
 note, selection, title and tags, so clipping the same page with the same note again is the same
 capture.
 

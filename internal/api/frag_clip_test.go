@@ -22,8 +22,9 @@ func clipIn(id string) map[string]any {
 	return in
 }
 
-// A clipped page goes out as fe-clipper's page manifest: the body untouched, the selection
-// and the note as annotations, the page's own addresses as the source.
+// A clipped page goes out as fe-clipper's page manifest: the body is the whole page, untouched;
+// the selection is a highlight and the note a capture_note; the page's own addresses are the
+// source.
 func TestFragClipManifest(t *testing.T) {
 	f := newDeliveryFixture(t, false)
 	personal, _ := f.s.NewFragmentWorker(DeliveryConfig{}, f.server.Client())
@@ -58,7 +59,10 @@ func TestFragClipManifest(t *testing.T) {
 			Title, Description, Language string
 			Content                      struct{ Format, Body string }
 		}
-		Annotations []struct{ Kind, Text string }
+		Annotations []struct {
+			Kind, Text string
+			Selector   struct{ Exact string }
+		}
 		Media       []any
 		Extraction  struct {
 			Capabilities []string `json:"observed_capabilities"`
@@ -76,11 +80,12 @@ func TestFragClipManifest(t *testing.T) {
 	if s.Registration != "browser-capture" || s.Submitted != "https://example.com/post?utm=1" || s.Canonical != "https://example.com/post" || s.ItemKey != "https://example.com/post" || s.Provider != "web" || s.Canon.Adapter != "generic" {
 		t.Fatalf("source: %+v", s)
 	}
-	// A selection is what is sent: it is the body, and there is no highlight annotation.
-	if m.Document.Title != "A long read" || m.Document.Content.Body != "Body text" || m.Document.Language != "en" {
+	// The whole page is the body; the selection is a highlight, before the note (as fe-clipper).
+	if m.Document.Title != "A long read" || m.Document.Content.Body != "# A long read\n\nBody text." || m.Document.Language != "en" {
 		t.Fatalf("document: %+v", m.Document)
 	}
-	if len(m.Annotations) != 1 || m.Annotations[0].Kind != "capture_note" || m.Annotations[0].Text != "worth a read" {
+	if len(m.Annotations) != 2 || m.Annotations[0].Kind != "highlight" || m.Annotations[0].Text != "Body text" || m.Annotations[0].Selector.Exact != "Body text" ||
+		m.Annotations[1].Kind != "capture_note" || m.Annotations[1].Text != "worth a read" {
 		t.Fatalf("annotations: %+v", m.Annotations)
 	}
 	if strings.Join(m.Extraction.Capabilities, ",") != "title,body" || len(m.Extraction.Warnings) != 1 || m.Extraction.Warnings[0].Code != "capture.adapter_warning" {
