@@ -112,6 +112,9 @@ changed. The tool definitions and the system prompt do not change with the slot,
 provider's cache holds across a switch: a slot changes what is attended to, not what the
 assistant is or can do.
 
+On moving to another slot the block also asks the assistant, once, to write its note for
+the slot it has just left if something there is worth carrying.
+
 The assistant keeps the notes: `context_note` (the whole note, under a page: where things
 stand, what is next, pointers such as task ids and document names), `context_get` (a note,
 and the list of slots with when each was written) and `context_switch` (move when the
@@ -156,4 +159,5 @@ history, what the assistant looked up).
    a check that a note or a plan is current before it is relied on.
 5. Host and command-line work: a list of command kinds the assistant may run outright, and
    a delegation to @chief that follows its create-task shape.
-6. Tuning: a settings page that lists the rules and the standing "Always" answers.
+6. Tuning: the standing "Always" answers listed beside the mail rules (the rules are in the
+   Done for you window, under Mail rules, with Remove).

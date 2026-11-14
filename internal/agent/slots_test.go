@@ -46,6 +46,9 @@ func TestSlots(t *testing.T) {
 	if !strings.Contains(moved, `<context name="engineering">`) || !strings.Contains(moved, "no note for this context yet") || !strings.Contains(moved, "files_read") {
 		t.Fatalf("moving to a terminal moves the slot:\n%s", moved)
 	}
+	if !strings.Contains(moved, "just come from the messaging context") {
+		t.Fatalf("leaving a context asks for its note:\n%s", moved)
+	}
 	if _, err := tools["context_switch"].Run(ctx, map[string]any{"context": "messaging"}); err != nil {
 		t.Fatal(err)
 	}

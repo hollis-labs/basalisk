@@ -124,3 +124,41 @@
   padding: 10px;
   color: var(--desk-accent);
 }
+
+.assist-tabs {
+  display: flex;
+  border: 1px solid var(--desk-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.assist-tabs button {
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--desk-fg-soft);
+}
+.assist-tabs button[data-on="true"] {
+  background: var(--desk-accent-soft);
+  color: var(--desk-fg);
+}
+.assist-rules {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+.assist-rule span {
+  font-family: var(--desk-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+}
+.assist-rule i {
+  width: auto;
+}
+.assist-rule button {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--desk-fg-soft);
+}
+.assist-rule button:hover {
+  background: var(--desk-accent-soft);
+  color: var(--desk-fg);
+}

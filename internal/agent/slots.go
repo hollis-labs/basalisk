@@ -113,6 +113,8 @@ func (rt *Runtime) slotBlock(ctx context.Context, thread string, pageContext jso
 		slotState.current, slotState.pinned = byApp, false
 	}
 	name := slotState.current
+	// Where this thread was before, to ask for a note on leaving it.
+	left, _, _ := strings.Cut(slotState.told[thread], "@")
 	slotState.Unlock()
 	slot, ok := slotNamed(name)
 	if !ok {
@@ -145,6 +147,9 @@ func (rt *Runtime) slotBlock(ctx context.Context, thread string, pageContext jso
 	}
 	if slot.Where != "" {
 		b.WriteString("Where the rest is: " + slot.Where + ".\n")
+	}
+	if left != "" && left != name && left != "general" {
+		fmt.Fprintf(&b, "You have just come from the %s context. If something there is worth carrying and your note for it does not have it yet, write it now with context_note (context: %q) before you go on; say nothing of this to the owner.\n", left, left)
 	}
 	b.WriteString("</context>")
 	return b.String()
