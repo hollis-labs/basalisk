@@ -33,10 +33,40 @@ export interface ResultCard {
   open?: (from: HTMLElement) => void
   /** Overrides the kind's label in the card's corner ("Torque task", "Note"). */
   label?: string
+  /** A passage that changed (notes_edit): shown before and after, a few lines each. */
+  diff?: { before: string; after: string }
 }
 
+/** One row of a list card: it opens the way its single card would. */
+export interface ListRow {
+  title: string
+  status?: { label: string; tone: Tone }
+  /** One short fact beside the title. */
+  fact?: string
+  mono?: boolean
+  ref?: RefIdentity
+  open?: (from: HTMLElement) => void
+}
+
+/** A list result: a heading with the count, the first rows, and how many more there were. */
+export interface ListCard {
+  list: true
+  kind: CardKind
+  heading: string
+  /** How many there are in all (more than rows.length when the result was cut). */
+  total: number
+  rows: ListRow[]
+  /** There are more past `total` that the result did not count (a paged list). */
+  hasMore?: boolean
+}
+
+export type AnyCard = ResultCard | ListCard
+
 /** Turns a successful call (its input, and its result parsed as JSON when it is JSON) into a card, or null. */
-export type CardExtractor = (input: Record<string, unknown>, result: unknown) => ResultCard | null
+export type CardExtractor = (input: Record<string, unknown>, result: unknown) => AnyCard | null
+
+/** Rows a list card shows before "N more". */
+export const LIST_ROWS = 8
 
 const extractors = new Map<string, CardExtractor>()
 
@@ -59,7 +89,7 @@ export function cardFor(
   input: unknown,
   result: string | undefined,
   failed: boolean,
-): ResultCard | null {
+): AnyCard | null {
   const fn = extractors.get(name)
   if (!fn || failed || result === undefined || result === "") return null
   try {
@@ -142,6 +172,36 @@ export function fileCard(
   }
 }
 
+/** A file or folder in a place, as a list row that opens it. */
+export function fileRow(root: string, path: string, folder: boolean, fact?: string): ListRow {
+  const name = path.split("/").pop() || path || root
+  return {
+    title: folder ? `${name}/` : name,
+    ...(fact ? { fact } : {}),
+    open: (from) => void openFileRef({ root, path }, from),
+  }
+}
+
+/** A date as the rows show it: the day, or the time today. */
+export function shortWhen(iso: unknown): string {
+  if (typeof iso !== "string") return ""
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ""
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+    : d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+}
+
+/** A size in bytes, short. */
+export const bytes = (n: unknown) =>
+  typeof n !== "number"
+    ? ""
+    : n < 1024
+      ? `${n} B`
+      : n < 1024 * 1024
+        ? `${Math.round(n / 1024)} KB`
+        : `${(n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`
+
 /** A size in characters, short. */
 export const chars = (n: unknown) =>
   typeof n === "number"
@@ -175,7 +235,127 @@ export function ResultCardView({
 }) {
   if (item.running) return null
   const card = cardFor(item.name, item.input, item.result, !!item.isError)
-  return card ? <CardBox card={card} /> : null
+  if (!card) return null
+  return "list" in card ? <ListBox card={card} /> : <CardBox card={card} />
+}
+
+const plural = (n: number, one: string, many = `${one}s`) =>
+  `${n.toLocaleString()} ${n === 1 ? one : many}`
+
+function ListBox({ card }: { card: ListCard }) {
+  const Icon = ICONS[card.kind]
+  const rows = card.rows.slice(0, LIST_ROWS)
+  const more = Math.max(0, card.total - rows.length)
+  return (
+    <div className="cite-result" data-kind={card.kind} data-list="true">
+      <div className="cite-result-head">
+        <Icon aria-hidden="true" size={12} strokeWidth={1.7} />
+        <span className="cite-result-kind">{card.heading}</span>
+        <span className="cite-result-count">
+          {card.total.toLocaleString()}
+          {card.hasMore ? "+" : ""}
+        </span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="cite-result-empty">None.</div>
+      ) : (
+        <ul className="cite-result-rows">
+          {rows.map((r, i) => {
+            const open =
+              r.open ?? (r.ref && canResolve(r.ref.kind) ? () => r.ref && openCite(r.ref) : null)
+            const body = (
+              <>
+                <span className="cite-result-row-title" data-mono={!!r.mono}>
+                  {r.title}
+                </span>
+                {r.status && (
+                  <span className="cite-status" data-tone={r.status.tone}>
+                    {r.status.label}
+                  </span>
+                )}
+                {r.fact && <span className="cite-result-row-fact">{r.fact}</span>}
+              </>
+            )
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: rows are a fixed snapshot of one result
+              <li key={i}>
+                {open ? (
+                  <button
+                    type="button"
+                    className="cite-result-row"
+                    title={r.title}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      open(e.currentTarget)
+                    }}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <div className="cite-result-row" title={r.title}>
+                    {body}
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {(more > 0 || card.hasMore) && (
+        <div className="cite-result-more">
+          {more > 0 ? `${more.toLocaleString()} more` : ""}
+          {card.hasMore ? `${more > 0 ? ", and " : ""}more past these` : ""}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The passage without the lines both sides share at the start and the end. */
+function changedPart(before: string, after: string) {
+  const a = before.split("\n")
+  const b = after.split("\n")
+  let head = 0
+  while (head < a.length && head < b.length && a[head] === b[head]) head++
+  let tail = 0
+  while (
+    tail < a.length - head &&
+    tail < b.length - head &&
+    a[a.length - 1 - tail] === b[b.length - 1 - tail]
+  )
+    tail++
+  const was = a.slice(head, a.length - tail).join("\n")
+  const now = b.slice(head, b.length - tail).join("\n")
+  // Nothing differs line by line (whitespace at the end, say): show it as given.
+  return was || now ? { before: was, after: now } : { before, after }
+}
+
+/** Lines shown on each side of a changed passage. */
+const DIFF_LINES = 6
+
+function Passage({ text, side }: { text: string; side: "was" | "now" }) {
+  const lines = text.split("\n")
+  const shown = lines.slice(0, DIFF_LINES)
+  const cut = lines.length - shown.length
+  return (
+    <div className="cite-result-passage" data-side={side}>
+      {text === "" ? (
+        <span className="cite-result-passage-empty">
+          {side === "now" ? "(removed)" : "(nothing)"}
+        </span>
+      ) : (
+        shown.map((l, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: lines of one fixed passage
+          <div key={i} className="cite-result-passage-line">
+            <span aria-hidden="true">{side === "was" ? "−" : "+"}</span>
+            {l.length > 200 ? `${l.slice(0, 199)}…` : l || " "}
+          </div>
+        ))
+      )}
+      {cut > 0 && <div className="cite-result-passage-cut">{plural(cut, "more line")}</div>}
+    </div>
+  )
 }
 
 function CardBox({ card }: { card: ResultCard }) {
@@ -235,6 +415,19 @@ function CardBox({ card }: { card: ResultCard }) {
             </div>
           ))}
         </dl>
+      )}
+      {card.diff && (
+        <div className="cite-result-diff" title="What changed">
+          {(() => {
+            const d = changedPart(card.diff.before, card.diff.after)
+            return (
+              <>
+                <Passage text={d.before} side="was" />
+                <Passage text={d.after} side="now" />
+              </>
+            )
+          })()}
+        </div>
       )}
     </div>
   )

@@ -7,7 +7,7 @@
 import { registerAgentTools, type ToolContext } from "../../agent/tools"
 import { ApiError } from "../../api/account"
 import { files } from "../../api/files"
-import { chars, fileCard, registerResultCards } from "../../cite/cards"
+import { chars, fileCard, fileRow, registerResultCards, shortWhen } from "../../cite/cards"
 import type { DeskAPI, FileRef } from "../../desktop/registry"
 import { loadRoots } from "../files/browser"
 import { credentialReason } from "../files/credentials"
@@ -350,7 +350,28 @@ const noteCard =
 registerResultCards({
   notes_read: noteCard((o) => (o.unsaved_edits === true ? "read (unsaved edits open)" : "")),
   notes_write: noteCard((o) => (o.created === true ? "created" : "replaced")),
-  notes_edit: noteCard((o) =>
-    typeof o.changed_at_line === "number" ? `edited at line ${o.changed_at_line}` : "edited",
-  ),
+  notes_edit: (input, r) => {
+    const card = noteCard((o) =>
+      typeof o.changed_at_line === "number" ? `edited at line ${o.changed_at_line}` : "edited",
+    )(input, r)
+    // The passage that changed, from the call itself.
+    return card && typeof input.old_text === "string" && typeof input.new_text === "string"
+      ? { ...card, diff: { before: input.old_text, after: input.new_text } }
+      : card
+  },
+  notes_list: (_in, r) => {
+    const o = (r ?? {}) as { root?: unknown; total?: unknown; notes?: unknown }
+    if (typeof o.root !== "string" || !Array.isArray(o.notes)) return null
+    const root = o.root
+    const rows = (o.notes as Record<string, unknown>[])
+      .filter((n) => typeof n?.path === "string")
+      .map((n) => fileRow(root, n.path as string, false, shortWhen(n.modified)))
+    return {
+      list: true,
+      kind: "file",
+      heading: "Notes",
+      total: typeof o.total === "number" ? o.total : rows.length,
+      rows,
+    }
+  },
 })

@@ -7,6 +7,8 @@
 import {
   type CardExtractor,
   field,
+  type ListCard,
+  type ListRow,
   type ResultCard,
   registerResultCards,
   text,
@@ -150,7 +152,86 @@ const tesseractResult: CardExtractor = (_in, r) => {
   }
 }
 
+/** torque_task_list: data.items (brief or full records, either case) and data.meta. */
+const taskList: CardExtractor = (_in, r) => {
+  const d = dataOf(r)
+  const items = field(d, "items")
+  if (!Array.isArray(items)) return null
+  const rows: ListRow[] = []
+  for (const it of items) {
+    const id = text(it, "id")
+    if (!TASK_ID.test(id)) continue
+    const status = text(it, "status")
+    const priority = field(it, "priority")
+    rows.push({
+      title: text(it, "title") || id,
+      ...(status ? { status: { label: status, tone: toneOf(status) } } : {}),
+      fact: typeof priority === "number" ? `P${priority}` : id,
+      ref: { kind: "torque.task", canonical: id },
+    })
+  }
+  const meta = field(d, "meta")
+  const total = field(meta, "total")
+  const card: ListCard = {
+    list: true,
+    kind: "torque.task",
+    heading: "Torque tasks",
+    total: typeof total === "number" ? total : rows.length,
+    rows,
+    hasMore: typeof total !== "number" && field(meta, "has_more") === true,
+  }
+  return card
+}
+
+/** The kind of note, from where it lives: ".../memory/decisions" is a Decision. */
+const typeOf = (namespace: string) => {
+  const seg = (namespace.split("/").pop() ?? "").replace(/s$/, "")
+  return seg ? seg.charAt(0).toUpperCase() + seg.slice(1) : ""
+}
+
+/** tesseract_recall: results[] of {revision} or {item}, and manifest.results_total. */
+const recallList: CardExtractor = (_in, r) => {
+  const results = field(r, "results")
+  if (!Array.isArray(results)) return null
+  const rows: ListRow[] = []
+  for (const hit of results) {
+    const rec = field(hit, "revision") ?? field(hit, "item")
+    if (!rec || typeof rec !== "object") continue
+    const domain = text(rec, "domain")
+    const namespace = text(rec, "namespace")
+    const key = text(rec, "key") || text(rec, "memory_key")
+    const itemId = text(rec, "item_id")
+    const payload = field(rec, "payload")
+    const summary = firstLine(text(payload, "summary")) || firstLine(text(payload, "body"))
+    const status = text(rec, "status")
+    const ref =
+      namespace && key
+        ? { kind: "tesseract.key", canonical: `${domain ? `${domain}@` : ""}${namespace}#${key}` }
+        : /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(itemId)
+          ? { kind: "tesseract.item", canonical: itemId }
+          : undefined
+    rows.push({
+      title: summary || key || itemId,
+      mono: !summary,
+      ...(status ? { status: { label: status, tone: toneOf(status) } } : {}),
+      fact: typeOf(namespace) || domain,
+      ...(ref ? { ref } : {}),
+    })
+  }
+  const total = field(field(r, "manifest"), "results_total")
+  const card: ListCard = {
+    list: true,
+    kind: "tesseract.item",
+    heading: "Tesseract",
+    total: typeof total === "number" ? Math.max(total, rows.length) : rows.length,
+    rows,
+  }
+  return card
+}
+
 registerResultCards({
+  torque_task_list: taskList,
+  tesseract_recall: recallList,
   torque_task_get: taskResult,
   torque_task_create: taskResult,
   torque_task_update: taskResult,

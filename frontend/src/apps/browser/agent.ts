@@ -562,4 +562,31 @@ const pageCard = (_in: Record<string, unknown>, r: unknown): ResultCard | null =
     },
   }
 }
-registerResultCards({ browser_read: pageCard, browser_navigate: pageCard })
+registerResultCards({
+  browser_read: pageCard,
+  browser_navigate: pageCard,
+  browser_links: (_in, r) => {
+    const o = (r ?? {}) as { total?: unknown; links?: unknown }
+    if (!Array.isArray(o.links)) return null
+    const rows = (o.links as Record<string, unknown>[])
+      .filter((l) => typeof l?.href === "string" && /^https?:\/\//i.test(l.href as string))
+      .map((l) => {
+        const href = l.href as string
+        let host = ""
+        try {
+          host = new URL(href).host
+        } catch {
+          // Shown without.
+        }
+        const label = typeof l.text === "string" ? l.text.replace(/\s+/g, " ").trim() : ""
+        return { title: label || href, fact: host, open: () => openLink(href) }
+      })
+    return {
+      list: true,
+      kind: "page",
+      heading: "Links",
+      total: typeof o.total === "number" ? o.total : rows.length,
+      rows,
+    }
+  },
+})

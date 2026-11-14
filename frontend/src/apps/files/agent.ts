@@ -6,7 +6,7 @@
 import { registerAgentTools } from "../../agent/tools"
 import { ApiError, request } from "../../api/account"
 import { type FileEntry, type FileRoot, files } from "../../api/files"
-import { chars, fileCard, registerResultCards } from "../../cite/cards"
+import { bytes, chars, fileCard, fileRow, registerResultCards, shortWhen } from "../../cite/cards"
 import type { DeskAPI } from "../../desktop/registry"
 import { loadRoots } from "./browser"
 import { credentialReason } from "./credentials"
@@ -316,4 +316,38 @@ registerResultCards({
       ? fileCard(o.root, o.path, chars(o.length) ? [{ label: "Size", value: chars(o.length) }] : [])
       : null
   },
+  files_list: (_in, r) => entryList(r, (o) => `In ${o.root}:${o.path || "/"}`, false),
+  files_search: (_in, r) => entryList(r, (o) => `Found in ${o.root}:${o.path || "/"}`, true),
 })
+
+/** A folder's entries or a search's matches, as a list card. */
+function entryList(
+  r: unknown,
+  heading: (o: { root: string; path: string }) => string,
+  where: boolean,
+) {
+  const o = (r ?? {}) as { root?: unknown; path?: unknown; total?: unknown; entries?: unknown }
+  if (typeof o.root !== "string" || !Array.isArray(o.entries)) return null
+  const root = o.root
+  const path = typeof o.path === "string" ? o.path : ""
+  const rows = (o.entries as Record<string, unknown>[])
+    .filter((e) => typeof e?.path === "string")
+    .map((e) => {
+      const p = e.path as string
+      const folder = e.type === "folder"
+      const dir = p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : ""
+      const fact = where
+        ? dir || "/"
+        : folder
+          ? "folder"
+          : [bytes(e.size), shortWhen(e.modified)].filter(Boolean).join(" · ")
+      return fileRow(root, p, folder, fact)
+    })
+  return {
+    list: true as const,
+    kind: "file" as const,
+    heading: heading({ root, path }),
+    total: typeof o.total === "number" ? o.total : rows.length,
+    rows,
+  }
+}

@@ -6,7 +6,7 @@
 import { registerAgentTools } from "../../agent/tools"
 import { ApiError } from "../../api/account"
 import { type FragCapture, frag } from "../../api/frag"
-import { registerResultCards, desk as theDesk, toneOf } from "../../cite/cards"
+import { registerResultCards, shortWhen, desk as theDesk, toneOf } from "../../cite/cards"
 import { FRAGMENT_KIND } from "../../cite/fragment"
 import { canResolve, openCite } from "../../cite/index"
 import { type Moment, moment } from "./context"
@@ -155,7 +155,6 @@ registerResultCards({
       (typeof input.title === "string" && input.title.trim()) ||
       (typeof input.text === "string" ? firstLine(input.text) : "") ||
       "Capture"
-    const fragment = typeof o.fragment === "string" && /^[0-9a-f]{64}$/.test(o.fragment)
     return {
       kind: "frag",
       title,
@@ -165,11 +164,36 @@ registerResultCards({
         ...(typeof o.note === "string" ? [{ label: "Note", value: "delivery not set up" }] : []),
         { label: "Capture", value: o.id.slice(0, 8), mono: true },
       ],
-      open: () => {
-        const ref = { kind: FRAGMENT_KIND, canonical: String(o.fragment) }
-        if (fragment && canResolve(ref.kind)) openCite(ref)
-        else theDesk()?.toggleOverlay("frag", true)
-      },
+      open: () => openCapture(o.fragment),
+    }
+  },
+  frag_recent: (_in, r) => {
+    const o = (r ?? {}) as { total?: unknown; captures?: unknown }
+    if (!Array.isArray(o.captures)) return null
+    const rows = (o.captures as Record<string, unknown>[])
+      .filter((c) => typeof c?.id === "string")
+      .map((c) => {
+        const state = typeof c.state === "string" ? c.state : ""
+        return {
+          title: (typeof c.title === "string" && c.title) || "(empty)",
+          ...(state ? { status: { label: state, tone: toneOf(state) } } : {}),
+          fact: typeof c.reason === "string" ? c.reason : shortWhen(c.when),
+          open: () => openCapture(c.fragment),
+        }
+      })
+    return {
+      list: true,
+      kind: "frag",
+      heading: "Frag captures",
+      total: typeof o.total === "number" ? o.total : rows.length,
+      rows,
     }
   },
 })
+
+/** A saved capture opens as its fragment; one not yet saved shows the capture box and queue. */
+function openCapture(fragment: unknown) {
+  if (typeof fragment === "string" && /^[0-9a-f]{64}$/.test(fragment) && canResolve(FRAGMENT_KIND))
+    openCite({ kind: FRAGMENT_KIND, canonical: fragment })
+  else theDesk()?.toggleOverlay("frag", true)
+}
