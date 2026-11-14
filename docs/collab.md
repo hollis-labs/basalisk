@@ -94,18 +94,24 @@ it draws plainly.
   chip on the line. `style` says what an edge is: flow, human, feedback, repair, async, data,
   muted; each has its colour and dash, and the **legend** under the drawing explains the
   styles in use (`legend` renames them; `legend: false` hides it). `both` draws two arrows.
-- **Theme**: dark (the default), light (for documents) or neon (for video); kept with the
-  diagram so an export looks the same. The colours live in `apps/diagram/theme.ts`, the
+- **Look** (`theme`): app (the default) draws in the desktop theme's colours (its background,
+  surfaces, text and accent, its terminal colours as the tones) and follows it when it changes;
+  dark, light (for documents) and neon (for video) are fixed looks, kept with the diagram so an
+  export looks the same. `background` (#rrggbb) gives the canvas its own colour; `grid` is
+  lines (a faint blueprint grid on the drawing's plane, the default), dots or none; both are set
+  in the panel when nothing is selected. The colours live in `apps/diagram/theme.ts`, the
   Diagram's theme layer (listed as such in `eslint.config.js`): the drawing is plain SVG with
-  its colours written in.
+  its colours written in, and its shadows are shapes, not filters (WebKit draws a filtered
+  shape blurred when scaled).
 - **Layout.** A diagram whose nodes have no `x` and `y` is laid out when it opens: ranked
   along the flow (loops left out), each lane in its own band of columns, a long lane wrapping
   back like a snake after three columns. **Tidy →** and **Tidy ↓** do the same to any diagram
   (left to right, top to bottom). Ids are stable; the comparison goes by id.
 
-The window: the canvas fills it. The list of diagrams is a drawer (the panel button); the
-inspector and the marks open over the canvas's right side when a node, an edge or a lane is
-selected, or with the marks button, and Esc closes them. Double-click for a node, drag a node
+The window: the canvas fills it, and the controls float over it: the title and the list's
+button top left, the actions top right, zoom and fit bottom left. The list of diagrams is a
+drawer; the inspector and the marks open under the actions, 10 px from them and from the edges,
+when a node, an edge or a lane is selected, or with the marks button, and Esc closes them. Double-click for a node, drag a node
 to move it, drag from the dot on a selected node to another node for an edge, Delete removes
 what is selected; the wheel zooms and dragging the background pans; the floating controls
 zoom and fit (it fits itself on open). ⌘S saves a revision.

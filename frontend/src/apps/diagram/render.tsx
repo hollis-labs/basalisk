@@ -68,6 +68,7 @@ import {
   type Diagram,
   type DNode,
   type EdgeStyle,
+  type Grid,
   type NodeKind,
   STYLE_LABEL,
   STYLES,
@@ -261,7 +262,7 @@ export function legendOf(dia: Diagram): { style: EdgeStyle; label: string }[] {
 export const LEGEND_H = 80
 
 /** Markers and filters a drawing uses; ids are prefixed so two windows do not clash. */
-export function Defs({ uid, pal }: { uid: string; pal: Palette }) {
+export function Defs({ uid, pal, grid = "lines" }: { uid: string; pal: Palette; grid?: Grid }) {
   const colors = new Set([
     ...STYLES.map((s) => edgeLook(s, pal).color),
     pal.select,
@@ -284,8 +285,31 @@ export function Defs({ uid, pal }: { uid: string; pal: Palette }) {
           <path d="M0 0.5L10 5L0 9.5L2.2 5z" fill={c} />
         </marker>
       ))}
-      <pattern id={`${uid}-grid`} width="24" height="24" patternUnits="userSpaceOnUse">
-        <circle cx="1.2" cy="1.2" r="1.2" fill={pal.grid} />
+      {/* The canvas grid, on the drawing's plane: fine lines every 24, a stronger one every 120. */}
+      <pattern id={`${uid}-grid`} width="120" height="120" patternUnits="userSpaceOnUse">
+        {grid === "dots"
+          ? [0, 24, 48, 72, 96].flatMap((x) =>
+              [0, 24, 48, 72, 96].map((y) => (
+                <circle
+                  key={`${x}:${y}`}
+                  cx={x + 1.2}
+                  cy={y + 1.2}
+                  r={1.2}
+                  fill={x === 0 && y === 0 ? pal.gridMajor : pal.grid}
+                />
+              )),
+            )
+          : grid === "lines" && (
+              <>
+                <path
+                  d="M24 0V120M48 0V120M72 0V120M96 0V120M0 24H120M0 48H120M0 72H120M0 96H120"
+                  stroke={pal.grid}
+                  strokeWidth={1}
+                  fill="none"
+                />
+                <path d="M0 0V120M0 0H120" stroke={pal.gridMajor} strokeWidth={1.2} fill="none" />
+              </>
+            )}
       </pattern>
       {/* In user space: a straight line has no height, and a box-relative region would hide it. */}
       <filter
@@ -301,22 +325,6 @@ export function Defs({ uid, pal }: { uid: string; pal: Palette }) {
           <feMergeNode in="b" />
           <feMergeNode in="SourceGraphic" />
         </feMerge>
-      </filter>
-      <filter id={`${uid}-shadow`} x="-20%" y="-20%" width="140%" height="170%">
-        <feDropShadow
-          dx="0"
-          dy="1"
-          stdDeviation="1"
-          floodColor={SHADOW}
-          floodOpacity={pal.shadow * 0.8}
-        />
-        <feDropShadow
-          dx="0"
-          dy="6"
-          stdDeviation="9"
-          floodColor={SHADOW}
-          floodOpacity={pal.shadow}
-        />
       </filter>
     </defs>
   )
@@ -573,7 +581,6 @@ function NodeArt({
   const T = pal.tones[n.tone ?? KIND_TONE[kind]]
   const changed = change !== "same" && change !== "moved" ? CHANGE_COLOR[change] : undefined
   const glow = pal.glow ? `url(#${uid}-glow)` : undefined
-  const shadow = pal.glow ? undefined : `url(#${uid}-shadow)`
   const toned = !!n.tone || pal.glow || !!n.highlight
   const stroke = changed ?? (n.highlight ? T : toned ? mix(T, pal.card, 0.55) : pal.cardStroke)
   const strokeW = changed || n.highlight ? 2.2 : toned ? 1.5 : 1.2
@@ -599,6 +606,13 @@ function NodeArt({
     const lines = wrap(n.label, b.w * 0.6, font, 3)
     body = (
       <>
+        {!pal.glow && (
+          <polygon
+            points={`${b.w / 2},4 ${b.w},${b.h / 2 + 4} ${b.w / 2},${b.h + 4} 0,${b.h / 2 + 4}`}
+            fill={SHADOW}
+            opacity={pal.shadow * 0.45}
+          />
+        )}
         <polygon
           points={`${b.w / 2},0 ${b.w},${b.h / 2} ${b.w / 2},${b.h} 0,${b.h / 2}`}
           fill={mix(T, pal.card, 0.12)}
@@ -606,7 +620,7 @@ function NodeArt({
           strokeWidth={2}
           strokeLinejoin="round"
           strokeDasharray={dash}
-          filter={glow ?? shadow}
+          filter={glow}
         />
         {lines.map((l, i) => (
           <text
@@ -627,6 +641,7 @@ function NodeArt({
   } else if (kind === "start" || kind === "end") {
     body = (
       <>
+        {!pal.glow && <Shadow w={b.w} h={b.h} rx={b.h / 2} pal={pal} />}
         <rect
           width={b.w}
           height={b.h}
@@ -635,7 +650,7 @@ function NodeArt({
           stroke={changed ?? T}
           strokeWidth={1.8}
           strokeDasharray={dash}
-          filter={glow ?? shadow}
+          filter={glow}
         />
         {Icon && (
           <Icon x={20} y={b.h / 2 - 9} width={18} height={18} stroke={T} strokeWidth={2.2} />
@@ -712,6 +727,7 @@ function NodeArt({
             strokeWidth={6}
           />
         )}
+        {!pal.glow && <Shadow w={b.w} h={b.h} rx={isNote ? 6 : 14} pal={pal} />}
         <rect
           width={b.w}
           height={b.h}
@@ -720,7 +736,7 @@ function NodeArt({
           stroke={isNote && !changed ? "none" : stroke}
           strokeWidth={strokeW}
           strokeDasharray={dash}
-          filter={pal.glow && toned ? glow : shadow}
+          filter={pal.glow && toned ? glow : undefined}
         />
         {!isNote && !pal.glow && (
           <path
@@ -845,5 +861,32 @@ function NodeArt({
         />
       )}
     </g>
+  )
+}
+
+/** A card's shadow as plain shapes (a filter would be drawn blurry when scaled in WebKit). */
+function Shadow({ w, h, rx, pal }: { w: number; h: number; rx: number; pal: Palette }) {
+  return (
+    <>
+      <rect
+        x={-3}
+        y={7}
+        width={w + 6}
+        height={h}
+        rx={rx + 3}
+        fill={SHADOW}
+        opacity={pal.shadow * 0.18}
+      />
+      <rect
+        x={-1}
+        y={4}
+        width={w + 2}
+        height={h}
+        rx={rx + 1}
+        fill={SHADOW}
+        opacity={pal.shadow * 0.28}
+      />
+      <rect y={1.5} width={w} height={h} rx={rx} fill={SHADOW} opacity={pal.shadow * 0.45} />
+    </>
   )
 }

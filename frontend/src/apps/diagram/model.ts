@@ -57,8 +57,12 @@ export const STYLE_LABEL: Record<EdgeStyle, string> = {
 export type Side = "top" | "right" | "bottom" | "left"
 export const SIDES: Side[] = ["top", "right", "bottom", "left"]
 
-export type Theme = "dark" | "light" | "neon"
-export const THEMES: Theme[] = ["dark", "light", "neon"]
+/** "app" follows the desktop's theme; the others are fixed looks (for documents, for video). */
+export type Theme = "app" | "dark" | "light" | "neon"
+export const THEMES: Theme[] = ["app", "dark", "light", "neon"]
+/** The canvas's grid: blueprint lines (the default), dots, or none. */
+export type Grid = "lines" | "dots" | "none"
+export const GRIDS: Grid[] = ["lines", "dots", "none"]
 
 export interface DNode {
   id: string
@@ -103,6 +107,9 @@ export interface DGroup {
 export interface Diagram {
   diagram: "v1"
   theme?: Theme
+  /** A background colour for the canvas (#rrggbb), over the theme's. */
+  background?: string
+  grid?: Grid
   /** Renamed legend entries, or false for no legend. */
   legend?: Partial<Record<EdgeStyle, string>> | false
   nodes: DNode[]
@@ -205,7 +212,20 @@ export function parse(text: string): Diagram {
       if (STYLES.includes(k as EdgeStyle) && str(v)) l[k as EdgeStyle] = String(v)
     legend = Object.keys(l).length ? l : undefined
   }
-  return { diagram: "v1", theme: pick(raw.theme, THEMES), legend, nodes, edges, groups }
+  const bg =
+    typeof raw.background === "string" && /^#[0-9a-fA-F]{6}$/.test(raw.background)
+      ? raw.background
+      : undefined
+  return {
+    diagram: "v1",
+    theme: pick(raw.theme, THEMES),
+    background: bg,
+    grid: pick(raw.grid, GRIDS),
+    legend,
+    nodes,
+    edges,
+    groups,
+  }
 }
 
 /** The JSON as it is saved: stable key order and whole-number places, so revisions compare cleanly. */
@@ -249,6 +269,8 @@ export function serialize(d: Diagram): string {
   }))
   const head = [`"diagram": "v1"`]
   if (d.theme) head.push(`"theme": ${JSON.stringify(d.theme)}`)
+  if (d.background) head.push(`"background": ${JSON.stringify(d.background)}`)
+  if (d.grid) head.push(`"grid": ${JSON.stringify(d.grid)}`)
   if (d.legend !== undefined) head.push(`"legend": ${JSON.stringify(d.legend)}`)
   return `{${head.join(", ")},\n "groups": ${row(groups)},\n "nodes": ${row(nodes)},\n "edges": ${row(edges)}}\n`
 }

@@ -44,6 +44,8 @@ import {
   type EdgeStyle,
   empty,
   freshId,
+  GRIDS,
+  type Grid,
   KINDS,
   type NodeKind,
   SIDES,
@@ -56,8 +58,9 @@ import {
   TONES,
   type Tone,
 } from "./model"
-import { Defs, extent, ICON_NAMES, LEGEND_H, laneHeads, legendOf, PALETTES, Scene } from "./render"
+import { Defs, extent, ICON_NAMES, LEGEND_H, laneHeads, legendOf, Scene } from "./render"
 import { routeAll } from "./route"
+import { paletteFor } from "./theme"
 import "../../collab/collab.css"
 import "./diagram.css"
 
@@ -119,8 +122,20 @@ export function DiagramWindow({ winId, args }: WindowProps) {
   const dirty = !!doc && (serialize(dia) !== serialize(fromBody(saved)) || title !== doc.title)
   const dirtyRef = useRef(dirty)
   dirtyRef.current = dirty
-  const theme: Theme = dia.theme ?? "dark"
-  const pal = PALETTES[theme]
+  const theme: Theme = dia.theme ?? "app"
+  // The app look follows the desktop theme: draw again when it changes.
+  const [deskTheme, setDeskTheme] = useState(() =>
+    document.documentElement.getAttribute("data-desk-theme"),
+  )
+  useEffect(() => {
+    const o = new MutationObserver(() =>
+      setDeskTheme(document.documentElement.getAttribute("data-desk-theme")),
+    )
+    o.observe(document.documentElement, { attributes: true, attributeFilter: ["data-desk-theme"] })
+    return () => o.disconnect()
+  }, [])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new desktop theme makes a new app palette
+  const pal = useMemo(() => paletteFor(theme, dia.background), [theme, dia.background, deskTheme])
 
   const warn = useCallback(
     (e: unknown) =>
@@ -599,84 +614,518 @@ export function DiagramWindow({ winId, args }: WindowProps) {
                   r{doc.rev} · {dia.nodes.length} nodes · {dia.edges.length} edges
                 </span>
               </div>
-              <div className="dia-float dia-float-right">
-                <fieldset className="dia-seg" aria-label="Look">
-                  {THEMES.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      data-on={theme === t}
-                      onClick={() => setDia((d) => ({ ...d, theme: t === "dark" ? undefined : t }))}
-                      title={`The ${t} look (kept with the diagram)`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </fieldset>
-                {!comparing && (
-                  <button
-                    type="button"
-                    className="viewer-tool"
-                    title="Add a node (or double-click the canvas)"
-                    onClick={() => {
-                      const box = svg.current?.getBoundingClientRect()
-                      addNode(
-                        ((box?.width ?? 600) / 2 - view.x) / view.k,
-                        ((box?.height ?? 400) / 2 - view.y) / view.k,
-                      )
-                    }}
-                  >
-                    <Plus {...ICON} /> Node
-                  </button>
-                )}
-                {!comparing && (
-                  <fieldset className="dia-seg" aria-label="Tidy">
-                    {(["LR", "TB"] as Direction[]).map((d) => (
+              <div className="dia-right">
+                <div className="dia-float dia-float-right">
+                  <fieldset className="dia-seg" aria-label="Look">
+                    {THEMES.map((t) => (
                       <button
-                        key={d}
+                        key={t}
                         type="button"
-                        title={
-                          d === "LR"
-                            ? "Tidy: lay it out left to right"
-                            : "Tidy: lay it out top to bottom"
+                        data-on={theme === t}
+                        onClick={() =>
+                          setDia((d) => ({ ...d, theme: t === "dark" ? undefined : t }))
                         }
-                        onClick={() => {
-                          setDia((x) => tidy(x, d))
-                          requestAnimationFrame(() => fitRef.current())
-                        }}
+                        title={`The ${t} look (kept with the diagram)`}
                       >
-                        {d === "LR" ? "Tidy →" : "Tidy ↓"}
+                        {t}
                       </button>
                     ))}
                   </fieldset>
+                  {!comparing && (
+                    <button
+                      type="button"
+                      className="viewer-tool"
+                      title="Add a node (or double-click the canvas)"
+                      onClick={() => {
+                        const box = svg.current?.getBoundingClientRect()
+                        addNode(
+                          ((box?.width ?? 600) / 2 - view.x) / view.k,
+                          ((box?.height ?? 400) / 2 - view.y) / view.k,
+                        )
+                      }}
+                    >
+                      <Plus {...ICON} /> Node
+                    </button>
+                  )}
+                  {!comparing && (
+                    <fieldset className="dia-seg" aria-label="Tidy">
+                      {(["LR", "TB"] as Direction[]).map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          title={
+                            d === "LR"
+                              ? "Tidy: lay it out left to right"
+                              : "Tidy: lay it out top to bottom"
+                          }
+                          onClick={() => {
+                            setDia((x) => tidy(x, d))
+                            requestAnimationFrame(() => fitRef.current())
+                          }}
+                        >
+                          {d === "LR" ? "Tidy →" : "Tidy ↓"}
+                        </button>
+                      ))}
+                    </fieldset>
+                  )}
+                  <button
+                    type="button"
+                    className="viewer-tool"
+                    data-on={comparing}
+                    title="Compare with another revision"
+                    onClick={() => setComparing((c) => !c)}
+                  >
+                    <GitCompare {...ICON} /> Compare
+                  </button>
+                  <button
+                    type="button"
+                    className="viewer-tool"
+                    data-on={marksOpen}
+                    title="Marks and notes"
+                    onClick={() => setMarksOpen((o) => !o)}
+                  >
+                    <MessageSquare {...ICON} /> {open.length || ""}
+                  </button>
+                  <button
+                    type="button"
+                    className="collab-primary"
+                    disabled={!dirty}
+                    title="Save a new revision (⌘S)"
+                    onClick={() => void save()}
+                  >
+                    <Save {...ICON} /> Save
+                  </button>
+                </div>
+                {sideShown && (
+                  <div className="collab-side dia-side">
+                    <header className="dia-side-head">
+                      <strong>
+                        {node
+                          ? "Node"
+                          : edge
+                            ? "Edge"
+                            : group
+                              ? "Lane"
+                              : picked
+                                ? "New mark"
+                                : "Marks"}
+                      </strong>
+                      <button
+                        type="button"
+                        className="dia-iconbtn"
+                        aria-label="Close"
+                        title="Close (Esc)"
+                        onClick={() => {
+                          setSel(null)
+                          setPicked(null)
+                          setMarksOpen(false)
+                        }}
+                      >
+                        <X {...ICON} />
+                      </button>
+                    </header>
+                    {node && !comparing && (
+                      <div className="dia-inspect">
+                        <label>
+                          Label
+                          <input
+                            value={node.label}
+                            onChange={(e) => patchNode(node.id, { label: e.target.value })}
+                          />
+                        </label>
+                        <label>
+                          Subtitle
+                          <input
+                            value={node.subtitle ?? ""}
+                            placeholder="a second line"
+                            onChange={(e) =>
+                              patchNode(node.id, { subtitle: e.target.value || undefined })
+                            }
+                          />
+                        </label>
+                        <div className="dia-row">
+                          <label>
+                            Kind
+                            <select
+                              value={node.kind ?? ""}
+                              onChange={(e) =>
+                                patchNode(node.id, {
+                                  kind: (e.target.value || undefined) as NodeKind | undefined,
+                                })
+                              }
+                            >
+                              <option value="">(none)</option>
+                              {KINDS.map((k) => (
+                                <option key={k}>{k}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Icon
+                            <select
+                              value={node.icon ?? ""}
+                              onChange={(e) =>
+                                patchNode(node.id, { icon: e.target.value || undefined })
+                              }
+                            >
+                              <option value="">(by kind)</option>
+                              {ICON_NAMES.map((k) => (
+                                <option key={k}>{k}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <fieldset className="dia-tones" aria-label="Tone">
+                          <button
+                            type="button"
+                            data-on={!node.tone}
+                            onClick={() => patchNode(node.id, { tone: undefined })}
+                            title="By kind"
+                          >
+                            ∅
+                          </button>
+                          {TONES.map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              data-on={node.tone === t}
+                              style={{ background: pal.tones[t] }}
+                              title={t}
+                              aria-label={t}
+                              onClick={() => patchNode(node.id, { tone: t as Tone })}
+                            />
+                          ))}
+                        </fieldset>
+                        <div className="dia-row">
+                          <label>
+                            Step
+                            <input
+                              type="number"
+                              min={0}
+                              value={node.step ?? ""}
+                              onChange={(e) =>
+                                patchNode(node.id, { step: Number(e.target.value) || undefined })
+                              }
+                            />
+                          </label>
+                          <label>
+                            Tag
+                            <input
+                              value={node.tag ?? ""}
+                              placeholder="RETRY"
+                              onChange={(e) =>
+                                patchNode(node.id, { tag: e.target.value || undefined })
+                              }
+                            />
+                          </label>
+                        </div>
+                        <label>
+                          Rows (one a line)
+                          <textarea
+                            rows={2}
+                            value={(node.items ?? []).join("\n")}
+                            onChange={(e) => {
+                              const items = e.target.value
+                                .split("\n")
+                                .filter((x, i, a) => x.trim() || i < a.length - 1)
+                              patchNode(node.id, { items: items.length ? items : undefined })
+                            }}
+                          />
+                        </label>
+                        <label className="dia-check">
+                          <input
+                            type="checkbox"
+                            checked={!!node.highlight}
+                            onChange={(e) =>
+                              patchNode(node.id, { highlight: e.target.checked || undefined })
+                            }
+                          />
+                          Highlight
+                        </label>
+                        <label>
+                          Lane
+                          <input
+                            value={
+                              dia.groups.find((g) => g.id === node.group)?.label ?? node.group ?? ""
+                            }
+                            list={`groups-${winId}`}
+                            placeholder="none"
+                            onChange={(e) => {
+                              const label = e.target.value
+                              const id = label.trim()
+                                ? (dia.groups.find((g) => g.label === label)?.id ??
+                                  freshId(label, (i) => dia.groups.some((g) => g.id === i)))
+                                : undefined
+                              setDia((d) => ({
+                                ...d,
+                                groups:
+                                  id && !d.groups.some((g) => g.id === id)
+                                    ? [...d.groups, { id, label }]
+                                    : d.groups,
+                                nodes: d.nodes.map((n) =>
+                                  n.id === node.id ? { ...n, group: id } : n,
+                                ),
+                              }))
+                            }}
+                          />
+                          <datalist id={`groups-${winId}`}>
+                            {dia.groups.map((g) => (
+                              <option key={g.id} value={g.label} />
+                            ))}
+                          </datalist>
+                        </label>
+                        <label>
+                          Note
+                          <textarea
+                            rows={2}
+                            value={node.note ?? ""}
+                            onChange={(e) =>
+                              patchNode(node.id, { note: e.target.value || undefined })
+                            }
+                          />
+                        </label>
+                        <footer>
+                          <code>{node.id}</code>
+                          <button type="button" onClick={() => setPicked({ node: node.id })}>
+                            <MessageSquarePlus {...ICON} /> Mark
+                          </button>
+                          <button type="button" aria-label="Delete the node" onClick={removeSel}>
+                            <Trash2 {...ICON} />
+                          </button>
+                        </footer>
+                      </div>
+                    )}
+                    {edge && !comparing && (
+                      <div className="dia-inspect">
+                        <label>
+                          Label
+                          <input
+                            value={edge.label ?? ""}
+                            placeholder="what flows, or how"
+                            onChange={(e) =>
+                              patchEdge(edge.id, { label: e.target.value || undefined })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Style
+                          <select
+                            value={edge.style ?? "flow"}
+                            onChange={(e) =>
+                              patchEdge(edge.id, {
+                                style:
+                                  e.target.value === "flow"
+                                    ? undefined
+                                    : (e.target.value as EdgeStyle),
+                              })
+                            }
+                          >
+                            {STYLES.map((s) => (
+                              <option key={s} value={s}>
+                                {s} ({STYLE_LABEL[s]})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="dia-row">
+                          <label>
+                            Leaves by
+                            <select
+                              value={edge.fromSide ?? ""}
+                              onChange={(e) =>
+                                patchEdge(edge.id, {
+                                  fromSide: (e.target.value || undefined) as Side | undefined,
+                                })
+                              }
+                            >
+                              <option value="">auto</option>
+                              {SIDES.map((s) => (
+                                <option key={s}>{s}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Enters by
+                            <select
+                              value={edge.toSide ?? ""}
+                              onChange={(e) =>
+                                patchEdge(edge.id, {
+                                  toSide: (e.target.value || undefined) as Side | undefined,
+                                })
+                              }
+                            >
+                              <option value="">auto</option>
+                              {SIDES.map((s) => (
+                                <option key={s}>{s}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <label className="dia-check">
+                          <input
+                            type="checkbox"
+                            checked={!!edge.both}
+                            onChange={(e) =>
+                              patchEdge(edge.id, { both: e.target.checked || undefined })
+                            }
+                          />
+                          Both ways
+                        </label>
+                        <footer>
+                          <code>
+                            {edge.from} → {edge.to}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              patchEdge(edge.id, {
+                                from: edge.to,
+                                to: edge.from,
+                                fromSide: edge.toSide,
+                                toSide: edge.fromSide,
+                              })
+                            }
+                          >
+                            Reverse
+                          </button>
+                          <button type="button" onClick={() => setPicked({ edge: edge.id })}>
+                            <MessageSquarePlus {...ICON} /> Mark
+                          </button>
+                          <button type="button" aria-label="Delete the edge" onClick={removeSel}>
+                            <Trash2 {...ICON} />
+                          </button>
+                        </footer>
+                      </div>
+                    )}
+                    {group && !comparing && (
+                      <div className="dia-inspect">
+                        <label>
+                          Title
+                          <input
+                            value={group.label}
+                            onChange={(e) => patchGroup(group.id, { label: e.target.value })}
+                          />
+                        </label>
+                        <label>
+                          Subtitle
+                          <input
+                            value={group.subtitle ?? ""}
+                            placeholder="what happens here"
+                            onChange={(e) =>
+                              patchGroup(group.id, { subtitle: e.target.value || undefined })
+                            }
+                          />
+                        </label>
+                        <fieldset className="dia-tones" aria-label="Tone">
+                          <button
+                            type="button"
+                            data-on={!group.tone}
+                            onClick={() => patchGroup(group.id, { tone: undefined })}
+                            title="Plain"
+                          >
+                            ∅
+                          </button>
+                          {TONES.map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              data-on={group.tone === t}
+                              style={{ background: pal.tones[t] }}
+                              title={t}
+                              aria-label={t}
+                              onClick={() => patchGroup(group.id, { tone: t as Tone })}
+                            />
+                          ))}
+                        </fieldset>
+                        <footer>
+                          <code>{group.id}</code>
+                        </footer>
+                      </div>
+                    )}
+                    {!sel && !picked && !comparing && (
+                      <div className="dia-inspect">
+                        <div className="dia-row">
+                          <label>
+                            Grid
+                            <select
+                              value={dia.grid ?? "lines"}
+                              onChange={(e) =>
+                                setDia((d) => ({
+                                  ...d,
+                                  grid:
+                                    e.target.value === "lines"
+                                      ? undefined
+                                      : (e.target.value as Grid),
+                                }))
+                              }
+                            >
+                              {GRIDS.map((g) => (
+                                <option key={g} value={g}>
+                                  {g}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Background
+                            <span className="dia-bg">
+                              <input
+                                type="color"
+                                value={dia.background ?? pal.bg}
+                                onChange={(e) =>
+                                  setDia((d) => ({ ...d, background: e.target.value }))
+                                }
+                                aria-label="Background colour"
+                              />
+                              {dia.background && (
+                                <button
+                                  type="button"
+                                  onClick={() => setDia((d) => ({ ...d, background: undefined }))}
+                                >
+                                  theme
+                                </button>
+                              )}
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                    {!sel && !picked && (
+                      <button type="button" className="dia-note" onClick={() => setPicked({})}>
+                        <MessageSquarePlus {...ICON} /> Note on the whole diagram
+                      </button>
+                    )}
+                    {picked && (
+                      <MarkComposer
+                        what={
+                          picked.node
+                            ? `node ${picked.node}`
+                            : picked.edge
+                              ? `edge ${picked.edge}`
+                              : "the whole diagram"
+                        }
+                        canSuggest={false}
+                        onAdd={(m) => void addMark(m)}
+                        onCancel={() => setPicked(null)}
+                      />
+                    )}
+                    <MarksPanel
+                      marks={marks}
+                      active={active}
+                      detached={(m) =>
+                        (!!m.anchor.node && !dia.nodes.some((n) => n.id === m.anchor.node)) ||
+                        (!!m.anchor.edge && !dia.edges.some((e) => e.id === m.anchor.edge))
+                      }
+                      onPick={(m) => {
+                        setActive(m.id)
+                        if (m.anchor.node) setSel({ type: "node", id: m.anchor.node })
+                        else if (m.anchor.edge) setSel({ type: "edge", id: m.anchor.edge })
+                      }}
+                      onState={setState}
+                      onRemove={removeMark}
+                    />
+                  </div>
                 )}
-                <button
-                  type="button"
-                  className="viewer-tool"
-                  data-on={comparing}
-                  title="Compare with another revision"
-                  onClick={() => setComparing((c) => !c)}
-                >
-                  <GitCompare {...ICON} /> Compare
-                </button>
-                <button
-                  type="button"
-                  className="viewer-tool"
-                  data-on={marksOpen}
-                  title="Marks and notes"
-                  onClick={() => setMarksOpen((o) => !o)}
-                >
-                  <MessageSquare {...ICON} /> {open.length || ""}
-                </button>
-                <button
-                  type="button"
-                  className="collab-primary"
-                  disabled={!dirty}
-                  title="Save a new revision (⌘S)"
-                  onClick={() => void save()}
-                >
-                  <Save {...ICON} /> Save
-                </button>
               </div>
             </div>
             {comparing && (
@@ -741,14 +1190,17 @@ export function DiagramWindow({ winId, args }: WindowProps) {
                 addNode(p.x, p.y)
               }}
             >
-              <Defs uid={uid} pal={pal} />
-              <rect
-                width="100%"
-                height="100%"
-                fill={`url(#${uid}-grid)`}
-                transform={`translate(${view.x % 22} ${view.y % 22})`}
-              />
+              <Defs uid={uid} pal={pal} grid={dia.grid ?? "lines"} />
               <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
+                {(dia.grid ?? "lines") !== "none" && (
+                  <rect
+                    x={-50000}
+                    y={-50000}
+                    width={100000}
+                    height={100000}
+                    fill={`url(#${uid}-grid)`}
+                  />
+                )}
                 <Scene
                   dia={dia}
                   pal={pal}
@@ -827,357 +1279,6 @@ export function DiagramWindow({ winId, args }: WindowProps) {
         <section className="collab-main collab-empty">
           <p>{name ? "Opening…" : "Pick a diagram, or start one."}</p>
         </section>
-      )}
-      {sideShown && (
-        <div className="collab-side dia-side">
-          <header className="dia-side-head">
-            <strong>
-              {node ? "Node" : edge ? "Edge" : group ? "Lane" : picked ? "New mark" : "Marks"}
-            </strong>
-            <button
-              type="button"
-              className="dia-iconbtn"
-              aria-label="Close"
-              title="Close (Esc)"
-              onClick={() => {
-                setSel(null)
-                setPicked(null)
-                setMarksOpen(false)
-              }}
-            >
-              <X {...ICON} />
-            </button>
-          </header>
-          {node && !comparing && (
-            <div className="dia-inspect">
-              <label>
-                Label
-                <input
-                  value={node.label}
-                  onChange={(e) => patchNode(node.id, { label: e.target.value })}
-                />
-              </label>
-              <label>
-                Subtitle
-                <input
-                  value={node.subtitle ?? ""}
-                  placeholder="a second line"
-                  onChange={(e) => patchNode(node.id, { subtitle: e.target.value || undefined })}
-                />
-              </label>
-              <div className="dia-row">
-                <label>
-                  Kind
-                  <select
-                    value={node.kind ?? ""}
-                    onChange={(e) =>
-                      patchNode(node.id, {
-                        kind: (e.target.value || undefined) as NodeKind | undefined,
-                      })
-                    }
-                  >
-                    <option value="">(none)</option>
-                    {KINDS.map((k) => (
-                      <option key={k}>{k}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Icon
-                  <select
-                    value={node.icon ?? ""}
-                    onChange={(e) => patchNode(node.id, { icon: e.target.value || undefined })}
-                  >
-                    <option value="">(by kind)</option>
-                    {ICON_NAMES.map((k) => (
-                      <option key={k}>{k}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <fieldset className="dia-tones" aria-label="Tone">
-                <button
-                  type="button"
-                  data-on={!node.tone}
-                  onClick={() => patchNode(node.id, { tone: undefined })}
-                  title="By kind"
-                >
-                  ∅
-                </button>
-                {TONES.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    data-on={node.tone === t}
-                    style={{ background: pal.tones[t] }}
-                    title={t}
-                    aria-label={t}
-                    onClick={() => patchNode(node.id, { tone: t as Tone })}
-                  />
-                ))}
-              </fieldset>
-              <div className="dia-row">
-                <label>
-                  Step
-                  <input
-                    type="number"
-                    min={0}
-                    value={node.step ?? ""}
-                    onChange={(e) =>
-                      patchNode(node.id, { step: Number(e.target.value) || undefined })
-                    }
-                  />
-                </label>
-                <label>
-                  Tag
-                  <input
-                    value={node.tag ?? ""}
-                    placeholder="RETRY"
-                    onChange={(e) => patchNode(node.id, { tag: e.target.value || undefined })}
-                  />
-                </label>
-              </div>
-              <label>
-                Rows (one a line)
-                <textarea
-                  rows={2}
-                  value={(node.items ?? []).join("\n")}
-                  onChange={(e) => {
-                    const items = e.target.value
-                      .split("\n")
-                      .filter((x, i, a) => x.trim() || i < a.length - 1)
-                    patchNode(node.id, { items: items.length ? items : undefined })
-                  }}
-                />
-              </label>
-              <label className="dia-check">
-                <input
-                  type="checkbox"
-                  checked={!!node.highlight}
-                  onChange={(e) => patchNode(node.id, { highlight: e.target.checked || undefined })}
-                />
-                Highlight
-              </label>
-              <label>
-                Lane
-                <input
-                  value={dia.groups.find((g) => g.id === node.group)?.label ?? node.group ?? ""}
-                  list={`groups-${winId}`}
-                  placeholder="none"
-                  onChange={(e) => {
-                    const label = e.target.value
-                    const id = label.trim()
-                      ? (dia.groups.find((g) => g.label === label)?.id ??
-                        freshId(label, (i) => dia.groups.some((g) => g.id === i)))
-                      : undefined
-                    setDia((d) => ({
-                      ...d,
-                      groups:
-                        id && !d.groups.some((g) => g.id === id)
-                          ? [...d.groups, { id, label }]
-                          : d.groups,
-                      nodes: d.nodes.map((n) => (n.id === node.id ? { ...n, group: id } : n)),
-                    }))
-                  }}
-                />
-                <datalist id={`groups-${winId}`}>
-                  {dia.groups.map((g) => (
-                    <option key={g.id} value={g.label} />
-                  ))}
-                </datalist>
-              </label>
-              <label>
-                Note
-                <textarea
-                  rows={2}
-                  value={node.note ?? ""}
-                  onChange={(e) => patchNode(node.id, { note: e.target.value || undefined })}
-                />
-              </label>
-              <footer>
-                <code>{node.id}</code>
-                <button type="button" onClick={() => setPicked({ node: node.id })}>
-                  <MessageSquarePlus {...ICON} /> Mark
-                </button>
-                <button type="button" aria-label="Delete the node" onClick={removeSel}>
-                  <Trash2 {...ICON} />
-                </button>
-              </footer>
-            </div>
-          )}
-          {edge && !comparing && (
-            <div className="dia-inspect">
-              <label>
-                Label
-                <input
-                  value={edge.label ?? ""}
-                  placeholder="what flows, or how"
-                  onChange={(e) => patchEdge(edge.id, { label: e.target.value || undefined })}
-                />
-              </label>
-              <label>
-                Style
-                <select
-                  value={edge.style ?? "flow"}
-                  onChange={(e) =>
-                    patchEdge(edge.id, {
-                      style: e.target.value === "flow" ? undefined : (e.target.value as EdgeStyle),
-                    })
-                  }
-                >
-                  {STYLES.map((s) => (
-                    <option key={s} value={s}>
-                      {s} ({STYLE_LABEL[s]})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="dia-row">
-                <label>
-                  Leaves by
-                  <select
-                    value={edge.fromSide ?? ""}
-                    onChange={(e) =>
-                      patchEdge(edge.id, {
-                        fromSide: (e.target.value || undefined) as Side | undefined,
-                      })
-                    }
-                  >
-                    <option value="">auto</option>
-                    {SIDES.map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Enters by
-                  <select
-                    value={edge.toSide ?? ""}
-                    onChange={(e) =>
-                      patchEdge(edge.id, {
-                        toSide: (e.target.value || undefined) as Side | undefined,
-                      })
-                    }
-                  >
-                    <option value="">auto</option>
-                    {SIDES.map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <label className="dia-check">
-                <input
-                  type="checkbox"
-                  checked={!!edge.both}
-                  onChange={(e) => patchEdge(edge.id, { both: e.target.checked || undefined })}
-                />
-                Both ways
-              </label>
-              <footer>
-                <code>
-                  {edge.from} → {edge.to}
-                </code>
-                <button
-                  type="button"
-                  onClick={() =>
-                    patchEdge(edge.id, {
-                      from: edge.to,
-                      to: edge.from,
-                      fromSide: edge.toSide,
-                      toSide: edge.fromSide,
-                    })
-                  }
-                >
-                  Reverse
-                </button>
-                <button type="button" onClick={() => setPicked({ edge: edge.id })}>
-                  <MessageSquarePlus {...ICON} /> Mark
-                </button>
-                <button type="button" aria-label="Delete the edge" onClick={removeSel}>
-                  <Trash2 {...ICON} />
-                </button>
-              </footer>
-            </div>
-          )}
-          {group && !comparing && (
-            <div className="dia-inspect">
-              <label>
-                Title
-                <input
-                  value={group.label}
-                  onChange={(e) => patchGroup(group.id, { label: e.target.value })}
-                />
-              </label>
-              <label>
-                Subtitle
-                <input
-                  value={group.subtitle ?? ""}
-                  placeholder="what happens here"
-                  onChange={(e) => patchGroup(group.id, { subtitle: e.target.value || undefined })}
-                />
-              </label>
-              <fieldset className="dia-tones" aria-label="Tone">
-                <button
-                  type="button"
-                  data-on={!group.tone}
-                  onClick={() => patchGroup(group.id, { tone: undefined })}
-                  title="Plain"
-                >
-                  ∅
-                </button>
-                {TONES.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    data-on={group.tone === t}
-                    style={{ background: pal.tones[t] }}
-                    title={t}
-                    aria-label={t}
-                    onClick={() => patchGroup(group.id, { tone: t as Tone })}
-                  />
-                ))}
-              </fieldset>
-              <footer>
-                <code>{group.id}</code>
-              </footer>
-            </div>
-          )}
-          {!sel && !picked && (
-            <button type="button" className="dia-note" onClick={() => setPicked({})}>
-              <MessageSquarePlus {...ICON} /> Note on the whole diagram
-            </button>
-          )}
-          {picked && (
-            <MarkComposer
-              what={
-                picked.node
-                  ? `node ${picked.node}`
-                  : picked.edge
-                    ? `edge ${picked.edge}`
-                    : "the whole diagram"
-              }
-              canSuggest={false}
-              onAdd={(m) => void addMark(m)}
-              onCancel={() => setPicked(null)}
-            />
-          )}
-          <MarksPanel
-            marks={marks}
-            active={active}
-            detached={(m) =>
-              (!!m.anchor.node && !dia.nodes.some((n) => n.id === m.anchor.node)) ||
-              (!!m.anchor.edge && !dia.edges.some((e) => e.id === m.anchor.edge))
-            }
-            onPick={(m) => {
-              setActive(m.id)
-              if (m.anchor.node) setSel({ type: "node", id: m.anchor.node })
-              else if (m.anchor.edge) setSel({ type: "edge", id: m.anchor.edge })
-            }}
-            onState={setState}
-            onRemove={removeMark}
-          />
-        </div>
       )}
     </div>
   )
