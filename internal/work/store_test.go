@@ -10,7 +10,11 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
+
+func yamlUnmarshal(s string, v any) error { return yaml.Unmarshal([]byte(s), v) }
 
 // fakeCaster is Caster in memory: every put a revision, per namespace.
 type fakeCaster struct {
@@ -502,5 +506,93 @@ func TestEditLinks(t *testing.T) {
 		if _, err := s.EditItem(ctx, "novel", ch, Edit{BaseRev: d.Rev, Links: &bad}); err == nil {
 			t.Errorf("taken: %+v", bad)
 		}
+	}
+}
+
+func TestCanvasLayout(t *testing.T) {
+	ctx := context.Background()
+	s, f := open(t)
+	if _, err := s.NewWorkspace(ctx, "novel", "The novel", "writer", ""); err != nil {
+		t.Fatal(err)
+	}
+	sp, _, _ := s.Open(ctx, "novel")
+	var canvas, outline string
+	for _, v := range sp.Views {
+		switch v.View {
+		case "canvas":
+			canvas = v.ID
+		case "outline":
+			outline = v.ID
+		}
+	}
+	if canvas == "" {
+		t.Fatal("the writer preset has no canvas")
+	}
+	// The outline's own layout key is kept by a canvas patch on another view, and by one on itself.
+	a, b := "aaaaaaaa", "bbbbbbbb"
+	if _, err := s.PatchLayout(ctx, "novel", canvas, LayoutPatch{Cards: map[string]*Pos{a: {X: 10.4, Y: 20}, b: {X: 300, Y: 20}}}); err != nil {
+		t.Fatal(err)
+	}
+	st := &Stack{ID: "stack001", Title: "Act one", X: 600, Y: 40, Items: []string{a}, Bind: &Bind{Key: "stage", Value: "draft"}}
+	if _, err := s.PatchLayout(ctx, "novel", canvas, LayoutPatch{Stacks: map[string]*Stack{"stack001": st},
+		Notes: map[string]*CanvasNote{"note0001": {ID: "note0001", X: 5, Y: 400, Text: "Is the storm too early?"}}}); err != nil {
+		t.Fatal(err)
+	}
+	v := f.latest("w-novel", ViewName(canvas))
+	var lay struct {
+		Layout struct {
+			Cards  map[string]Pos `yaml:"cards"`
+			Stacks []Stack        `yaml:"stacks"`
+			Notes  []CanvasNote   `yaml:"notes"`
+		} `yaml:"layout"`
+	}
+	if err := yamlUnmarshal(v, &lay); err != nil {
+		t.Fatal(err)
+	}
+	if _, onCanvas := lay.Layout.Cards[a]; onCanvas || lay.Layout.Cards[b].X != 300 {
+		t.Fatalf("a card in a stack stays on the canvas: %+v", lay.Layout.Cards)
+	}
+	if len(lay.Layout.Stacks) != 1 || lay.Layout.Stacks[0].Items[0] != a || lay.Layout.Stacks[0].Bind.Value != "draft" || len(lay.Layout.Notes) != 1 {
+		t.Fatalf("layout:\n%s", v)
+	}
+	// Back to the canvas: it leaves the stack.
+	if _, err := s.PatchLayout(ctx, "novel", canvas, LayoutPatch{Cards: map[string]*Pos{a: {X: 50, Y: 50}}}); err != nil {
+		t.Fatal(err)
+	}
+	lay.Layout.Cards, lay.Layout.Stacks, lay.Layout.Notes = nil, nil, nil
+	_ = yamlUnmarshal(f.latest("w-novel", ViewName(canvas)), &lay)
+	if len(lay.Layout.Stacks[0].Items) != 0 || lay.Layout.Cards[a].X != 50 {
+		t.Fatalf("after: %+v", lay.Layout)
+	}
+	// Taking things out, and refusing what is not a layout.
+	if _, err := s.PatchLayout(ctx, "novel", canvas, LayoutPatch{Stacks: map[string]*Stack{"stack001": nil}, Notes: map[string]*CanvasNote{"note0001": nil}, Cards: map[string]*Pos{b: nil}}); err != nil {
+		t.Fatal(err)
+	}
+	lay.Layout.Cards, lay.Layout.Stacks, lay.Layout.Notes = nil, nil, nil
+	_ = yamlUnmarshal(f.latest("w-novel", ViewName(canvas)), &lay)
+	if len(lay.Layout.Stacks) != 0 || len(lay.Layout.Notes) != 0 || len(lay.Layout.Cards) != 1 {
+		t.Fatalf("after taking out: %+v", lay.Layout)
+	}
+	for _, bad := range []LayoutPatch{
+		{},
+		{Cards: map[string]*Pos{"x": {}}},
+		{Cards: map[string]*Pos{a: {X: 2e7}}},
+		{Stacks: map[string]*Stack{"stack002": {ID: "stack002", Bind: &Bind{Key: "kind", Value: "x"}}}},
+		{Stacks: map[string]*Stack{"stack002": {ID: "other123"}}},
+	} {
+		if _, err := s.PatchLayout(ctx, "novel", canvas, bad); err == nil {
+			t.Errorf("taken: %+v", bad)
+		}
+	}
+	// The outline's order survives a patch to the outline view's layout too.
+	ch, _ := s.MakeItem(ctx, "novel", NewItem{Kind: "chapter", Title: "One"})
+	if err := s.Place(ctx, "novel", ch, "", "", outline); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PatchLayout(ctx, "novel", outline, LayoutPatch{Cards: map[string]*Pos{b: {X: 1, Y: 1}}}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.latest("w-novel", ViewName(outline)), "order:") {
+		t.Errorf("order lost:\n%s", f.latest("w-novel", ViewName(outline)))
 	}
 }

@@ -35,6 +35,7 @@ func (a *API) workRoutes() []route {
 		{"DELETE", "/api/work/{ws}/notes/{id}", w, a.workDropNote},
 		{"POST", "/api/work/{ws}/views", w, a.workView},
 		{"PUT", "/api/work/{ws}/views/{id}", w, a.workView},
+		{"PUT", "/api/work/{ws}/views/{id}/layout", w, a.workLayout},
 	}
 }
 
@@ -280,6 +281,28 @@ func (a *API) workView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, 200, map[string]any{"id": id, "rev": rev})
+}
+
+// workLayout changes a canvas's arrangement by id (cards, stacks, notes), applied to the
+// view as it is now.
+func (a *API) workLayout(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	var in work.LayoutPatch
+	if !decodeLimit(w, r, &in, 1<<20) {
+		return
+	}
+	rev, err := a.work.PatchLayout(r.Context(), r.PathValue("ws"), r.PathValue("id"), in)
+	if err != nil {
+		if errors.Is(err, work.ErrNoCaster) || errors.Is(err, work.ErrNotFound) {
+			workFail(w, err)
+			return
+		}
+		fail(w, 400, err.Error())
+		return
+	}
+	reply(w, 200, map[string]any{"rev": rev})
 }
 
 // workLog is an item's revisions (name: i.<id>, v.<id> or kind.<kind>).

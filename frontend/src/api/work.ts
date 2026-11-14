@@ -38,6 +38,31 @@ export interface WorkView {
   problem?: string
 }
 
+/** A canvas's arrangement (internal/work/layout.go). */
+export interface WorkPos {
+  x: number
+  y: number
+}
+export interface WorkStack {
+  id: string
+  title: string
+  x: number
+  y: number
+  items: string[]
+  bind?: { key: "stage" | "parent"; value: string }
+}
+export interface WorkCanvasNote {
+  id: string
+  x: number
+  y: number
+  text: string
+}
+export interface WorkLayoutPatch {
+  cards?: Record<string, WorkPos | null>
+  stacks?: Record<string, WorkStack | null>
+  notes?: Record<string, WorkCanvasNote | null>
+}
+
 export interface WorkLink {
   rel: string
   to: string
@@ -184,6 +209,8 @@ export const work = {
     request<{ id: string; rev: number }>(`work/${enc(ws)}/views/${enc(id)}`, "PUT", set),
   newView: (ws: string, set: Record<string, unknown>) =>
     request<{ id: string; rev: number }>(`work/${enc(ws)}/views`, "POST", set),
+  layout: (ws: string, view: string, patch: WorkLayoutPatch) =>
+    request<{ rev: number }>(`work/${enc(ws)}/views/${enc(view)}/layout`, "PUT", patch),
   log: (ws: string, name: string) =>
     request<{ revisions: WorkRevision[] }>(`work/${enc(ws)}/log?name=${enc(name)}`),
   at: (ws: string, name: string, rev: number) =>

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { type WorkPreset, type WorkSpace, type Workspace, work } from "../api/work"
 import { Board } from "./board"
 import { Calendar } from "./calendar"
+import { Canvas } from "./canvas"
 import { Detail } from "./detail"
 import { Outline } from "./outline"
 import { ago, message, slug } from "./util"
@@ -203,11 +204,15 @@ const NEW_VIEWS = [
   // No date field: the calendar places items by the first date field the kinds have.
   { view: "calendar", title: "Calendar" },
   { view: "outline", title: "Outline" },
+  { view: "canvas", title: "Canvas" },
 ]
 
 function SpaceView({ ws, back }: { ws: string; back: () => void }) {
   const [sp, setSp] = useState<WorkSpace | null>(null)
   const [problem, setProblem] = useState("")
+  // What went wrong reading the workspace, and what went wrong doing something in it: a
+  // read-back must not wipe the second.
+  const [loadError, setLoadError] = useState("")
   const [error, setError] = useState("")
   const [picked, setPicked] = useState<string | null>(null)
   const [viewId, setViewId] = useState<string | null>(null)
@@ -221,9 +226,9 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
         const r = await work.open(ws, refresh)
         setSp(r.space)
         setProblem(r.problem ?? "")
-        setError("")
+        setLoadError("")
       } catch (e) {
-        setError(message(e))
+        setLoadError(message(e))
       }
     },
     [ws],
@@ -251,7 +256,7 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
           <button type="button" className="work-icon" onClick={back} title="All workspaces">
             <ArrowLeft size={15} />
           </button>
-          <span className="work-title">{error || "…"}</span>
+          <span className="work-title">{loadError || "…"}</span>
         </header>
       </div>
     )
@@ -321,9 +326,19 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
           </button>
         )}
       </header>
-      {(error || problem) && (
+      {(error || loadError || problem) && (
         <p className="work-problem" role="status">
-          {error || `Showing the copy kept here: ${problem}`}
+          {error || loadError || `Showing the copy kept here: ${problem}`}
+          {error && (
+            <button
+              type="button"
+              className="work-icon"
+              title="Dismiss"
+              onClick={() => setError("")}
+            >
+              ×
+            </button>
+          )}
         </p>
       )}
       <div className="work-split">
@@ -355,6 +370,16 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
           )}
           {view?.view === "board" || !view ? (
             <Board
+              ws={ws}
+              space={sp}
+              view={view}
+              picked={picked}
+              pick={setPicked}
+              changed={() => void load()}
+              setError={setError}
+            />
+          ) : view.view === "canvas" ? (
+            <Canvas
               ws={ws}
               space={sp}
               view={view}

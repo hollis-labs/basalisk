@@ -235,8 +235,14 @@
   flex: 1 1 auto;
   min-height: 0;
 }
-.work-filter .desk-button {
+.work .desk-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   white-space: nowrap;
+}
+.work-filter .desk-button {
+  padding: 3px 9px;
 }
 .work-filter {
   display: flex;
@@ -826,4 +832,168 @@
 .work-linkhead {
   font-size: 11px;
   margin-top: 4px;
+}
+
+/* Canvas */
+.work-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+}
+.work-zoom .work-link {
+  min-width: 40px;
+  text-align: center;
+}
+.work-canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background-color: var(--desk-bg);
+  background-image: radial-gradient(circle, var(--desk-border) 1px, transparent 1px);
+  background-size: 22px 22px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.work-canvas[data-panning="true"] {
+  cursor: grabbing;
+}
+.work-plane {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+.work-ccard {
+  width: 190px;
+  box-sizing: border-box;
+  cursor: grab;
+  user-select: none;
+}
+.work-onplane {
+  position: absolute;
+}
+.work-ccard[data-dragging="true"],
+.work-stack[data-dragging="true"],
+.work-cnote[data-dragging="true"] {
+  pointer-events: none;
+  opacity: 0.85;
+  z-index: 3;
+}
+.work-ghost {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.9;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.work-stack {
+  position: absolute;
+  width: 214px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 9px;
+  border: 1px solid var(--desk-border);
+  background: var(--desk-panel);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  cursor: default;
+}
+.work-stack[data-over="true"] {
+  border-style: dashed;
+  border-color: var(--desk-accent);
+}
+.work-stack > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: grab;
+  font-size: 12px;
+  font-weight: 600;
+}
+.work-stack > header input {
+  font: inherit;
+  min-width: 0;
+  flex: 1 1 auto;
+  background: var(--desk-bg);
+  color: var(--desk-fg);
+  border: 1px solid var(--desk-border);
+  border-radius: 5px;
+  padding: 1px 4px;
+}
+.work-stack-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.work-stack-bind {
+  font-size: 11px;
+}
+.work-stack-items {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 40px;
+}
+.work-stack-items .work-ccard {
+  width: auto;
+}
+.work-stack-empty {
+  font-size: 11px;
+  text-align: center;
+  margin: 10px 0;
+}
+.work-cnote {
+  position: absolute;
+  width: 190px;
+  border-radius: 6px;
+  background: #f5d76e;
+  color: #3a2f0b;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+}
+.work-cnote-bar {
+  display: flex;
+  height: 18px;
+  padding: 0 2px;
+  cursor: grab;
+  border-radius: 6px 6px 0 0;
+  background: rgba(0, 0, 0, 0.07);
+}
+.work-cnote-bar .work-icon {
+  color: #3a2f0b;
+}
+.work-cnote-text {
+  padding: 6px 8px 8px;
+  white-space: pre-wrap;
+  min-height: 34px;
+  cursor: text;
+}
+.work-cnote-text[data-empty="true"] {
+  opacity: 0.55;
+  font-style: italic;
+}
+.work-cnote-edit {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 6px 8px 8px;
+  resize: vertical;
+  outline: none;
+}
+.work-tray[data-over="true"] {
+  box-shadow: inset 0 0 0 1px var(--desk-accent);
+}
+.work-tray .work-calitem {
+  cursor: grab;
+  user-select: none;
 }

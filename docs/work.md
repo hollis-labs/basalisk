@@ -9,7 +9,7 @@ the task is CW-20261114-0076. It generalizes Story (`docs/story.md`), which stay
 
 Built so far: step 1 (the engine, Board, Detail, the Content app), step 2 (Calendar, the
 publication log, material by reference) and step 3 (Outline, the Writer app, links both
-ways). Canvas, Flow, Planner, and rounds and agents follow.
+ways) and step 4 (Canvas). Flow, Planner, and rounds and agents follow.
 
 ## Where it is kept
 
@@ -118,8 +118,8 @@ stay as they are.
   kept in a field. Character sections: Role, Description, Voice, Arc, Notes. Other fields:
   a location's `region`, an item's `owner`, a faction's `members` (refs) and `base`, an
   encounter's `location`, a session's `played_on`. A new Writer workspace gets an Outline
-  (the manuscript and sessions; it opens on it), a Board (parts, chapters, scenes by stage)
-  and a Codex (a board of the codex kinds, a column each).
+  (the manuscript and sessions; it opens on it), a Board (parts, chapters, scenes by stage),
+  a Codex (a board of the codex kinds, a column each) and a Canvas.
 - A `ref` or `refs` field's `options` name the kinds it may point at (`pov: [character]`);
   empty means any kind. This is an addition to the contract's use of `options`, which
   otherwise lists an enum's values.
@@ -191,6 +191,31 @@ stay as they are.
 - The Published section shows for kinds with a `published` stage, or when the log has
   entries.
 
+## Step 4: Canvas
+
+- Cards placed freely, **stacks** (titled piles of cards) and free **notes**, on a plane
+  that pans (drag the background, or scroll) and zooms (⌘ or Ctrl with scroll, or the
+  − / % / + buttons; the % goes back to 100%). Pan and zoom are the window's own, not saved.
+- The tray beside the canvas lists the shown kinds' items not on it. Drag a card from the
+  tray onto the canvas or into a stack, between stacks, from a stack onto the canvas, or back
+  to the tray to take it off. A click on a card opens it. A card is on the canvas or in one
+  stack, never both.
+- A stack: **Stack** makes one (type its title; double-click to rename); drag it by its
+  header; × takes it off (its cards go back to the tray). Its menu binds it: **Just a pile**
+  (arrangement only), **Sets stage: …** or **Puts in: …** (an item that holds others).
+  Dropping a card into a bound stack also moves the item to that stage (Move) or under that
+  parent (Place); when the kind has no such stage or cannot go there, the card stays in the
+  stack and the window says the item was not changed.
+- A note: **Note** makes one; double-click to write; ⌘↩ or clicking away keeps it, Esc does
+  not; drag it by its top bar; × takes it off.
+- The arrangement is the view item's `layout`: `cards: {<id>: {x, y}}`,
+  `stacks: [{id, title, x, y, items, bind: {key: stage|parent, value}}]`,
+  `notes: [{id, x, y, text}]`. Every change is a patch by id
+  (`PUT /api/work/{ws}/views/{id}/layout` `{cards?, stacks?, notes?}`, null takes one out)
+  applied to the view as it is now, so a change made in another window is not written over;
+  other layout keys (an outline's `order`) are kept. Coordinates are whole plane units.
+- Any workspace can have a canvas (the header's **+**); a new Writer workspace has one.
+
 ## Keeping in step with Caster
 
 - **Read-back.** The workspace list reads `work` when it opens and every 25 s; an open
@@ -219,4 +244,4 @@ replace the lists), `PUT …/items/{id}/place` `{parent, before, view}`, `PUT �
 value takes a date out),
 `POST …/items/{id}/cut`, `POST …/items/{id}/restore`, `DELETE /api/work/{ws}/notes/{id}`,
 `POST /api/work/{ws}/views` and `PUT …/views/{id}` (the keys sent are set, null takes one
-out), `GET /api/work/{ws}/log?name=`, `GET /api/work/{ws}/at?name=&rev=`.
+out), `PUT …/views/{id}/layout` (a canvas patch), `GET /api/work/{ws}/log?name=`, `GET /api/work/{ws}/at?name=&rev=`.
