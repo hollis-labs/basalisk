@@ -19,7 +19,7 @@ import (
 //
 // The environment can stand in for the config, for a development run:
 // BASALISK_AGENT_GATEWAY, BASALISK_AGENT_KEY_FILE, BASALISK_AGENT_MODEL,
-// BASALISK_AGENT_RULES_FILE.
+// BASALISK_AGENT_RULES_FILE, BASALISK_AGENT_REFLEXES_FILE.
 func enableAgent(ctx context.Context, a *api.API, cfg agent.Config, dbPath string) *agent.Runtime {
 	if v := os.Getenv("BASALISK_AGENT_GATEWAY"); v != "" {
 		cfg.GatewayURL = v
@@ -53,6 +53,12 @@ func enableAgent(ctx context.Context, a *api.API, cfg agent.Config, dbPath strin
 		rules = filepath.Join(home, ".config", "basalisk", "agent-rules.json")
 	}
 	rt.SetRouter(agent.NewRouter(rules))
+	// The reflexes: the ones that ship, and the owner's own from this file if it exists.
+	reflexFile := os.Getenv("BASALISK_AGENT_REFLEXES_FILE")
+	if reflexFile == "" && home != "" {
+		reflexFile = filepath.Join(home, ".config", "basalisk", "agent-reflexes.json")
+	}
+	rt.SetReflexes(agent.NewReflexes(reflexFile, store))
 	a.EnableAgent(rt)
 	slog.Info("agent enabled", "ready", cfg.Ready(), "model", cfg.Model)
 	return rt

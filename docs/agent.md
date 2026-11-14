@@ -6,8 +6,9 @@ tools. There is one agent for the whole desktop, not one per app: apps give it t
 describe their windows, and it does the rest.
 
 This page describes the runtime, the stream, the panel and the desktop's own tools, the
-apps' tools, Torque and Tesseract through the Tether gateway, and the router in front of
-the model. Reflexes, cards and per-task agents come after and plug into what is here.
+apps' tools, Torque and Tesseract through the Tether gateway, the router in front of the
+model, and reflexes. Triggers that start a turn on their own and per-task agents come
+after and plug into what is here.
 
 ## Shape
 
@@ -162,6 +163,67 @@ replying), and `_help` (the rule's line in `/help`). For example, a rule that op
   ]
 }
 ```
+
+## Reflexes
+
+A reflex is a standing rule that looks at the conversation each time a message arrives,
+before the model is called (`internal/agent/reflex.go`, on the shared engine
+`libs/agent/core/reflexes`). It has a trigger and an action. Two actions are carried out:
+
+| `action_kind` | `action` | What happens |
+|---|---|---|
+| `inject_reminder` | `{"body": "..."}` | The model is told the body, in a `<reminder>` block after your message. Your message is stored and shown as you typed it. |
+| `halt_session` | `{"message": "..."}` | The message is answered with this text and no model is called. |
+
+Reflexes are not evaluated for a message the router took. The panel shows a quiet line
+for each one that fired ("Reflex: long-thread"), and a message keeps the names of the
+reflexes that fired on it (`meta.reflexes`). When each last fired is kept in `agent.db`,
+which is what its cooldown is measured from.
+
+One ships (`internal/agent/reflexes.json`): **long-thread**. When the last request to the
+model was over about 120,000 tokens, the model is asked to finish what was asked and then
+mention `/new` once. It keeps quiet for an hour after firing. There is no compaction yet,
+so this is the guard against a thread that outgrows the model.
+
+**Your own reflexes** go in `~/.config/basalisk/agent-reflexes.json` (or the file
+`BASALISK_AGENT_REFLEXES_FILE` names), read again when it changes. One with the name of a
+shipped reflex replaces it, so `{"name": "long-thread", "disabled": true, ...}` turns that
+one off. A file with a mistake in it (a pattern that does not compile, an unknown trigger
+node, an action without its text) is left out whole, and `GET /api/agent` says why in
+`reflexes_problem`.
+
+```json
+{
+  "reflexes": [
+    {
+      "name": "deploys",
+      "trigger": { "kind": "user_regex_window", "window": 1, "pattern": "(?i)\\bdeploy\\b" },
+      "action_kind": "inject_reminder",
+      "action": { "body": "Deploys go through Cerberus. Do not run a build command by hand." },
+      "cooldown_seconds": 600
+    }
+  ]
+}
+```
+
+A trigger is a predicate tree, as the shared engine defines it. The nodes that have
+something to look at here:
+
+| Node | Fires when |
+|---|---|
+| `user_regex_window` (`window`, `pattern`) | one of your last `window` messages matches; `window: 1` is the message just sent |
+| `regex_match_window`, `text_regex_window` (`scope`: user, assistant, all) | the same over the agent's replies, or both |
+| `entity_mention_window` (`entity`: task_id, path, url) | a recent message names one |
+| `tool_name_window`, `tool_calls_window` | recent replies did (or did not) call the named tools; every one of the last `window` messages made that many calls |
+| `prefix_pressure` (`ratio`, `context_window`) | the last request was at least `ratio` × `context_window` tokens |
+| `attr` (`key`, `value`, `op` = or !=) | `focused.app` is the app in front; `selection` is "yes" or "no" |
+| `AND`, `OR` (`clauses`) | all, or any, of the clauses |
+
+Message windows are over the last 60 messages, newest first, and count your words as you
+typed them (not the `<desktop>` block). Token counts per message are not kept, so the
+`input_tokens_window`, `cache_read_window` and `output_growth_window` nodes see zeros.
+The engine's other action kinds (dispatch to an agent, schedule, send a message) and its
+event and interval triggers are not wired: nothing here starts a turn by itself yet.
 
 ## Permission
 

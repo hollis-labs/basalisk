@@ -12,6 +12,8 @@ export interface AgentState {
   model: string
   /** Why the owner's router rules file is not in use, when it is not. */
   rules_problem?: string
+  /** The same for the owner's reflexes file. */
+  reflexes_problem?: string
 }
 
 /** What the desktop has by name, for the server's router: "open notes", "tile windows". */

@@ -111,6 +111,21 @@ type Runtime struct {
 	session map[string]map[string]bool // owner -> tools allowed until the app restarts
 	sources []ToolSource               // where the server's own tools come from (AddTools)
 	router  *Router                    // rules tried before the model (SetRouter); nil: none
+	reflex  *ReflexSet                 // standing rules over the conversation (SetReflexes); nil: none
+}
+
+// SetReflexes gives the agent its reflexes. Call before serving.
+func (rt *Runtime) SetReflexes(rs *ReflexSet) {
+	rt.mu.Lock()
+	rt.reflex = rs
+	rt.mu.Unlock()
+}
+
+// Reflexes is the reflex set in use, or nil.
+func (rt *Runtime) Reflexes() *ReflexSet {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return rt.reflex
 }
 
 // SetRouter puts rules in front of the model. Call before serving.
@@ -222,8 +237,10 @@ type run struct {
 	server            map[string]ServerTool // the tools among them that the server runs
 	defs              []llmtypes.ToolDefinition
 	cancel            context.CancelCauseFunc
-	route             *Route // what the router decided for this message; nil: the model answers
-	declined          bool   // the last tool call was refused by the owner (or nobody answered)
+	route             *Route   // what the router decided for this message; nil: the model answers
+	declined          bool     // the last tool call was refused by the owner (or nobody answered)
+	fired             []string // the reflexes that fired on this message
+	prefix            int      // how large the last model request was, with its answer
 
 	mu        sync.Mutex
 	waiting   map[string]*pending    // tool call id -> the call the page is running
@@ -302,9 +319,7 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 		release()
 		return "", err
 	}
-	if r.route != nil {
-		rt.store.setRoute(ctx, r.id, r.route.Rule)
-	}
+
 	for _, m := range prior {
 		r.history = append(r.history, llmtypes.ChatMessage{Role: m.Role, ContentBlocks: m.Blocks})
 	}
@@ -318,7 +333,22 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 		blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: where})
 	}
 	blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: text})
-	meta, _ := json.Marshal(map[string]any{"text": text, "context": in.Context})
+	// The reflexes, for a message the router did not take: a reminder goes to the model
+	// with the message; a halt answers it here.
+	if r.route == nil {
+		for _, f := range rt.Reflexes().Evaluate(ctx, reflexState(thread, text, in.Context, prior, rt.store.lastPrefix(ctx, thread))) {
+			r.fired = append(r.fired, f.Name)
+			if f.Halt != "" {
+				r.route = &Route{Rule: "reflex:" + f.Name, Say: f.Halt}
+				break
+			}
+			blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: "<reminder>\n" + f.Reminder + "\n</reminder>"})
+		}
+	}
+	if r.route != nil {
+		rt.store.setRoute(ctx, r.id, r.route.Rule)
+	}
+	meta, _ := json.Marshal(map[string]any{"text": text, "context": in.Context, "reflexes": r.fired})
 	if _, err := rt.store.Append(ctx, thread, r.id, "user", blocks, meta); err != nil {
 		rt.store.finishRun(ctx, r.id, "error", err.Error(), 0, 0)
 		release()
@@ -487,6 +517,11 @@ func (r *run) execute(ctx context.Context) {
 	rt := r.rt
 	r.emit(chatstream.Event{Verb: chatstream.VerbRunStart, Provider: "gateway", Model: rt.cfg.Model})
 
+	for _, name := range r.fired {
+		value, _ := json.Marshal(map[string]string{"name": name})
+		r.emit(chatstream.Event{Verb: chatstream.VerbActivity, Kind: "basalisk.reflex", Value: value})
+	}
+
 	finish := chatstream.FinishStop
 	var failure error
 	steps, tries := 0, 0
@@ -545,6 +580,7 @@ func (r *run) execute(ctx context.Context) {
 			if res.Usage != nil {
 				r.in += res.Usage.InputTokens + res.Usage.CacheReadTokens + res.Usage.CacheCreationTokens
 				r.out += res.Usage.OutputTokens
+				r.prefix = res.Usage.InputTokens + res.Usage.CacheReadTokens + res.Usage.CacheCreationTokens + res.Usage.OutputTokens
 				r.emit(chatstream.Event{Verb: chatstream.VerbUsage, Usage: r.usage(chatstream.UsageCumulative)})
 			}
 			if err != nil && ctx.Err() != nil {
@@ -675,6 +711,9 @@ func (r *run) direct(ctx context.Context) bool {
 func (r *run) end(ctx context.Context, finish chatstream.FinishReason, failure error) {
 	rt := r.rt
 	bg := context.WithoutCancel(ctx)
+	if r.prefix > 0 {
+		rt.store.setPrefix(bg, r.id, r.prefix)
+	}
 	switch {
 	case errors.Is(context.Cause(ctx), errCancelled):
 		rt.store.finishRun(bg, r.id, "cancelled", "", r.in, r.out)

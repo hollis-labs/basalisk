@@ -326,6 +326,18 @@ async function follow(run: string) {
         if (ev.kind === "basalisk.approval" && session.approval?.id === ev.value?.approval_id)
           set({ approval: null })
         else if (ev.kind === "basalisk.route") routed = true
+        else if (ev.kind === "basalisk.reflex" && typeof ev.value?.name === "string")
+          set({
+            items: [
+              ...session.items,
+              {
+                kind: "notice",
+                id: key(`reflex:${ev.value.name}`),
+                tone: "quiet",
+                text: `Reflex: ${ev.value.name}`,
+              },
+            ],
+          })
         break
       case "run.error":
         set({

@@ -66,6 +66,14 @@ var migrations = []string{
 	);`,
 	// The router's rule that took a run's message ('' when the model answered it).
 	`ALTER TABLE runs ADD COLUMN route TEXT NOT NULL DEFAULT ''`,
+	// How large the last model request of a run was (what the next one starts from), and
+	// when each reflex last fired.
+	`ALTER TABLE runs ADD COLUMN prefix_tokens INTEGER NOT NULL DEFAULT 0;
+	CREATE TABLE reflexes (
+		name TEXT PRIMARY KEY,
+		fired_count INTEGER NOT NULL DEFAULT 0,
+		last_fired_at TEXT NOT NULL DEFAULT ''
+	);`,
 }
 
 // OpenStore opens (and creates or upgrades) the file at path.
@@ -197,6 +205,28 @@ func (s *Store) startRun(ctx context.Context, id, thread, owner, model string) e
 
 func (s *Store) setRoute(ctx context.Context, id, rule string) {
 	_, _ = s.db.ExecContext(ctx, `UPDATE runs SET route=? WHERE id=?`, rule, id)
+}
+
+func (s *Store) setPrefix(ctx context.Context, id string, tokens int) {
+	_, _ = s.db.ExecContext(ctx, `UPDATE runs SET prefix_tokens=? WHERE id=?`, tokens, id)
+}
+
+// lastPrefix is how large the thread's last model request was (0 when unknown).
+func (s *Store) lastPrefix(ctx context.Context, thread string) int {
+	var n int
+	_ = s.db.QueryRowContext(ctx, `SELECT prefix_tokens FROM runs WHERE thread_id=? AND prefix_tokens>0 ORDER BY started_at DESC LIMIT 1`, thread).Scan(&n)
+	return n
+}
+
+func (s *Store) reflexFired(ctx context.Context, name string) (count int64, last string) {
+	_ = s.db.QueryRowContext(ctx, `SELECT fired_count, last_fired_at FROM reflexes WHERE name=?`, name).Scan(&count, &last)
+	return count, last
+}
+
+func (s *Store) bumpReflex(ctx context.Context, name string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO reflexes(name, fired_count, last_fired_at) VALUES(?,1,?)
+		ON CONFLICT(name) DO UPDATE SET fired_count=fired_count+1, last_fired_at=excluded.last_fired_at`, name, at.UTC().Format(time.RFC3339))
+	return err
 }
 
 func (s *Store) finishRun(ctx context.Context, id, status, reason string, in, out int) {

@@ -46,7 +46,7 @@ func (a *API) agentState(w http.ResponseWriter, _ *http.Request) {
 	}
 	cfg := a.agent.Config()
 	// ready: a model can be called. available without ready: the panel says what to set.
-	reply(w, 200, map[string]any{"available": true, "ready": cfg.Ready(), "model": cfg.Model, "rules_problem": a.agent.Router().Problem()})
+	reply(w, 200, map[string]any{"available": true, "ready": cfg.Ready(), "model": cfg.Model, "rules_problem": a.agent.Router().Problem(), "reflexes_problem": a.agent.Reflexes().Problem()})
 }
 
 func (a *API) agentThread(w http.ResponseWriter, r *http.Request) {
