@@ -65,28 +65,59 @@ the width and height) and times, and can look at the pixels (below).
 
 ## Diagram
 
-Architecture and flow drawings. The body is JSON the agent can read and write:
+Architecture and flow drawings, made to be read: for understanding a complex system, and to
+show it to others (explainer docs, videos). The body is JSON the agent can read and write:
 
 ```json
-{"diagram": "v1",
- "groups": [{"id": "server", "label": "Server"}],
- "nodes": [{"id": "api", "label": "API", "kind": "service", "group": "server", "note": "…", "x": 286, "y": 60}],
- "edges": [{"id": "app-api", "from": "app", "to": "api", "label": "HTTP"}]}
+{"diagram": "v1", "theme": "light",
+ "legend": {"flow": "automated progression", "human": "human decision"},
+ "groups": [{"id": "exec", "label": "Agentic execution", "subtitle": "Ticket selection and repair", "tone": "blue"}],
+ "nodes": [{"id": "dispatch", "label": "Dispatcher agent", "subtitle": "selects eligible tickets",
+            "kind": "agent", "group": "exec", "step": 1, "tone": "blue", "tag": "pipeline run",
+            "items": ["Fix batch 1", "Fix batch 2"], "highlight": true, "note": "…", "x": 286, "y": 60}],
+ "edges": [{"id": "e1", "from": "backlog", "to": "dispatch", "label": "eligible", "style": "flow"}]}
 ```
 
-`kind` is one of service, store, queue, client, external, actor, note. A node written
-without `x` and `y` is placed in rows under what is already placed, so the agent need not
-lay anything out. Ids are stable; the comparison goes by id.
+Only `id` and `label` are needed; everything else is presentation, and a diagram with none of
+it draws plainly.
 
-On the canvas: double-click for a node, drag a node to move it, drag from the dot on a
-selected node to another node for an edge, Delete removes what is selected, the wheel zooms
-and dragging the background pans. The inspector edits the label, kind, group and note, and
-marks the node or edge. ⌘S saves a revision.
+- **Nodes.** `kind`: service, store, queue, client, external, actor, agent, step (cards with a
+  default icon and tone), decision (a diamond), start and end (pills), note (a sticky note).
+  `subtitle` is a second, monospace line; `icon` a lucide name (the inspector lists them);
+  `tone` (blue, amber, red, green, violet, teal, pink, slate) colours the card; `step` draws a
+  numbered badge; `tag` a small pill in the corner; `items` inner rows; `highlight` marks the
+  node the diagram is about; `w` a wider card (120 to 600).
+- **Lanes** (`groups`): titled panels around their nodes, with a `subtitle` and a `tone`.
+  Dragging a lane moves its nodes.
+- **Edges** are routed at right angles between ports on the facing sides (`fromSide`,
+  `toSide` choose them), avoiding other nodes where a simple route does, with the label as a
+  chip on the line. `style` says what an edge is: flow, human, feedback, repair, async, data,
+  muted; each has its colour and dash, and the **legend** under the drawing explains the
+  styles in use (`legend` renames them; `legend: false` hides it). `both` draws two arrows.
+- **Theme**: dark (the default), light (for documents) or neon (for video); kept with the
+  diagram so an export looks the same. The colours live in `apps/diagram/theme.ts`, the
+  Diagram's theme layer (listed as such in `eslint.config.js`): the drawing is plain SVG with
+  its colours written in.
+- **Layout.** A diagram whose nodes have no `x` and `y` is laid out when it opens: ranked
+  along the flow (loops left out), each lane in its own band of columns, a long lane wrapping
+  back like a snake after three columns. **Tidy →** and **Tidy ↓** do the same to any diagram
+  (left to right, top to bottom). Ids are stable; the comparison goes by id.
+
+The window: the canvas fills it. The list of diagrams is a drawer (the panel button); the
+inspector and the marks open over the canvas's right side when a node, an edge or a lane is
+selected, or with the marks button, and Esc closes them. Double-click for a node, drag a node
+to move it, drag from the dot on a selected node to another node for an edge, Delete removes
+what is selected; the wheel zooms and dragging the background pans; the floating controls
+zoom and fit (it fits itself on open). ⌘S saves a revision.
 
 **Compare** draws any revision against what is on the canvas: added in green, changed in
-amber (label, kind, group or note), removed in dashed red at its old place, only moved as
+amber (any of the fields above), removed in dashed red at its old place, only moved as
 dotted. Diagrams are not functional; they are a picture of how things fit, kept current by
 saving a revision when the thing changes.
+
+The agent's `collab_write` carries a short guide to writing one well: lanes for stages or
+places, a few words per label, steps along the main path, one highlight, tone for meaning,
+two- or three-word edge labels, and no positions so the layout is done for it.
 
 ## Looking: the agent sees what is pointed at
 

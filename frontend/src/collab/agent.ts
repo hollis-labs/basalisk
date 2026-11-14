@@ -29,6 +29,14 @@ const object = (properties: Record<string, unknown>, required: string[] = []) =>
   additionalProperties: false,
 })
 const str = (description: string) => ({ type: "string", description })
+/** How to write a good diagram (docs/collab.md, Diagram); given with collab_write. */
+const DIAGRAM_GUIDE =
+  "Writing a diagram: {diagram: v1, theme?: dark|light|neon, legend?: {style: label}, groups: [{id, label, subtitle?, tone?}], nodes: [{id, label, kind?, group?, subtitle?, icon?, tone?, step?, tag?, items?: [..], highlight?, note?, x?, y?}], edges: [{id, from, to, label?, style?, both?}]}. " +
+  "kind: service, store, queue, client, external, actor, agent, step, decision (a diamond), start, end (pills), note. tone: blue, amber, red, green, violet, teal, pink, slate. " +
+  "style says what an edge is and the legend explains it: flow (the main path), human (a person decides), feedback (a result going back), repair (a retry or fix loop), async (background or scheduled), data (reads and writes), muted (secondary). " +
+  "Make it read at a glance: lanes (groups) for the stages or places things live, each with a short subtitle; a few words per label and a subtitle for the detail; step numbers along the main path; one highlight for what the diagram is about; tone for meaning, not decoration; edge labels in two or three words. " +
+  "Leave x and y out of every node and the layout is done for you (lanes become columns; a long lane wraps); give them only to keep an arrangement the owner made. Keep ids stable across revisions: the comparison goes by id."
+
 const NAME = str(
   'The document\'s name, as collab_list gives it ("draft.launch-plan", "diagram.auth-flow").',
 )
@@ -243,7 +251,8 @@ registerAgentTools([
     name: "collab_write",
     level: "write",
     description:
-      "Write a collab document: a new revision of an existing one (give name and base_revision, the revision you read), or a new one (give kind and title, and lang for a draft). The owner sees the change as a comparison with the revision before, so write the whole new text, changing only what should change. Refused when the document changed since base_revision: read it again. A diagram's text is its JSON, in the shape collab_read showed.",
+      "Write a collab document: a new revision of an existing one (give name and base_revision, the revision you read), or a new one (give kind and title, and lang for a draft). The owner sees the change as a comparison with the revision before, so write the whole new text, changing only what should change. Refused when the document changed since base_revision: read it again. A diagram's text is its JSON, in the shape collab_read showed. " +
+      DIAGRAM_GUIDE,
     input_schema: object(
       {
         name: NAME,
