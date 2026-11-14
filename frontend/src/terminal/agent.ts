@@ -231,7 +231,7 @@ registerAgentTools([
     name: "terminal_prepare",
     level: "act",
     description:
-      "Put a command in front of the owner, ready to run, without running it: a new terminal window opens with the command line typed and the cursor after it; pressing Enter is theirs. Give host (an ssh host name from their config: agent-os, worker-1…) for a command that belongs on another machine: the line typed is then ssh -t <host> '<command>'. Use this for anything on a host, anything that needs sudo or a password, and anything you were not asked to run yourself. Say in your reply what the command does and that it is waiting in the terminal.",
+      "Put a command in front of the owner, ready to run, without running it: a new terminal window opens with the command line typed and the cursor after it; pressing Enter is theirs. Give host (an ssh host name from their ssh config) for a command that belongs on another machine: the line typed is then ssh -t <host> '<command>'. Use this for anything on a host, anything that needs sudo or a password, and anything you were not asked to run yourself. Say in your reply what the command does and that it is waiting in the terminal.",
     input_schema: object(
       {
         command: str("The command line. One line, plain text."),
@@ -249,7 +249,7 @@ registerAgentTools([
       if ([...command].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127))
         throw new Error("command must be one line of plain text (join steps with && or ;).")
       if (host && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(host))
-        throw new Error("host is an ssh host name, like agent-os.")
+        throw new Error("host is an ssh host name from the ssh config.")
       const line = host ? `ssh -t ${host} '${command.replaceAll("'", "'\\''")}'` : command
       await sessions()
       const folder = !host && typeof input.folder === "string" ? input.folder.trim() : ""
