@@ -10,6 +10,14 @@ export interface AgentState {
   /** A model is configured, so a message can be answered. */
   ready: boolean
   model: string
+  /** Why the owner's router rules file is not in use, when it is not. */
+  rules_problem?: string
+}
+
+/** What the desktop has by name, for the server's router: "open notes", "tile windows". */
+export interface RouteHints {
+  apps: { id: string; title: string }[]
+  commands: { id: string; title: string }[]
 }
 
 /** A content block as the model sees it (llmtypes.ContentBlock). */
@@ -97,8 +105,13 @@ export const agentApi = {
   state: () => request<AgentState>("agent"),
   thread: () => request<ThreadState>("agent/thread"),
   newThread: () => request<void>("agent/thread", "DELETE"),
-  turn: (body: { text: string; client_id: string; context: DeskSnapshot; tools: ToolSpec[] }) =>
-    request<{ run_id: string }>("agent/turns", "POST", body),
+  turn: (body: {
+    text: string
+    client_id: string
+    context: DeskSnapshot
+    tools: ToolSpec[]
+    hints: RouteHints
+  }) => request<{ run_id: string }>("agent/turns", "POST", body),
   cancel: (run: string) => request<void>(`agent/runs/${run}/cancel`, "POST", {}),
   toolResult: (run: string, call_id: string, content: string, is_error: boolean) =>
     request<void>(`agent/runs/${run}/tool-results`, "POST", { call_id, content, is_error }),

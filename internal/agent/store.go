@@ -64,6 +64,8 @@ var migrations = []string{
 		created_at TEXT NOT NULL,
 		PRIMARY KEY(owner, tool)
 	);`,
+	// The router's rule that took a run's message ('' when the model answered it).
+	`ALTER TABLE runs ADD COLUMN route TEXT NOT NULL DEFAULT ''`,
 }
 
 // OpenStore opens (and creates or upgrades) the file at path.
@@ -191,6 +193,10 @@ func (s *Store) Messages(ctx context.Context, thread string) ([]Message, error) 
 func (s *Store) startRun(ctx context.Context, id, thread, owner, model string) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO runs(id, thread_id, owner, status, model, started_at) VALUES(?,?,?,'running',?,?)`, id, thread, owner, model, now())
 	return err
+}
+
+func (s *Store) setRoute(ctx context.Context, id, rule string) {
+	_, _ = s.db.ExecContext(ctx, `UPDATE runs SET route=? WHERE id=?`, rule, id)
 }
 
 func (s *Store) finishRun(ctx context.Context, id, status, reason string, in, out int) {

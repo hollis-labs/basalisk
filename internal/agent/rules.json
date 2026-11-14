@@ -1,0 +1,132 @@
+{
+  "version": "basalisk-default-1",
+  "strategy": "first_match",
+  "rules": [
+    {
+      "id": "help",
+      "when": [
+        {
+          "field": "slash",
+          "op": "in",
+          "values": [
+            "help",
+            "?"
+          ]
+        }
+      ],
+      "target": "help",
+      "auto": true
+    },
+    {
+      "id": "open-app",
+      "when": [
+        {
+          "field": "slash",
+          "op": "eq",
+          "value": "open"
+        },
+        {
+          "field": "app",
+          "op": "exists"
+        }
+      ],
+      "target": "tool:desktop_open",
+      "params": {
+        "app": "{app}",
+        "_say": "Opened {app_title}.",
+        "_help": "/open <app>: open an app, or bring its window forward. \"open notes\" does the same."
+      },
+      "auto": true
+    },
+    {
+      "id": "open-app-said",
+      "when": [
+        {
+          "field": "verb",
+          "op": "in",
+          "values": [
+            "open",
+            "launch",
+            "start",
+            "show"
+          ]
+        },
+        {
+          "field": "app",
+          "op": "exists"
+        }
+      ],
+      "target": "tool:desktop_open",
+      "params": {
+        "app": "{app}",
+        "_say": "Opened {app_title}."
+      },
+      "auto": true
+    },
+    {
+      "id": "command",
+      "when": [
+        {
+          "field": "slash",
+          "op": "in",
+          "values": [
+            "do",
+            "cmd"
+          ]
+        },
+        {
+          "field": "command",
+          "op": "exists"
+        }
+      ],
+      "target": "tool:desktop_run_command",
+      "params": {
+        "command": "{command}",
+        "_say": "Done: {command_title}.",
+        "_help": "/do <command>: run a command from the palette, by its title. Typing the title alone does the same."
+      },
+      "auto": true
+    },
+    {
+      "id": "command-said",
+      "when": [
+        {
+          "field": "said",
+          "op": "eq",
+          "value": "yes"
+        },
+        {
+          "field": "command",
+          "op": "exists"
+        }
+      ],
+      "target": "tool:desktop_run_command",
+      "params": {
+        "command": "{command}",
+        "_say": "Done: {command_title}."
+      },
+      "auto": true
+    },
+    {
+      "id": "run",
+      "when": [
+        {
+          "field": "slash",
+          "op": "eq",
+          "value": "run"
+        },
+        {
+          "field": "arg",
+          "op": "exists"
+        }
+      ],
+      "target": "tool:terminal_run",
+      "params": {
+        "command": "{arg}",
+        "_say": "Ran it in the terminal.",
+        "_help": "/run <command line>: run it in a terminal. You are asked first, every time."
+      },
+      "auto": true
+    }
+  ]
+}

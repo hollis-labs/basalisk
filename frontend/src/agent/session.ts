@@ -14,7 +14,7 @@ import {
   type StoredMessage,
   type StreamEvent,
 } from "./api"
-import { runTool, snapshot, toolSpecs } from "./tools"
+import { routeHints, runTool, snapshot, toolSpecs } from "./tools"
 
 export type Item =
   | { kind: "user"; id: string; text: string; context?: DeskSnapshot | null }
@@ -180,6 +180,11 @@ export async function noteContext() {
 
 export async function send(text: string): Promise<boolean> {
   if (!desk || session.run || !text.trim()) return false
+  // The one command that is about the panel itself; the server's router has the rest.
+  if (text.trim().toLowerCase() === "/new") {
+    await newThread()
+    return true
+  }
   // Where they are now; the selection noted when they came to the panel, if the window is
   // the same one (moving the keyboard here can clear a selection on the page).
   const context = await snapshot(desk)
@@ -192,7 +197,13 @@ export async function send(text: string): Promise<boolean> {
     error: "",
   })
   try {
-    const { run_id } = await agentApi.turn({ text, client_id: CLIENT, context, tools: toolSpecs() })
+    const { run_id } = await agentApi.turn({
+      text,
+      client_id: CLIENT,
+      context,
+      tools: toolSpecs(),
+      hints: routeHints(desk),
+    })
     void follow(run_id)
     return true
   } catch (err) {
@@ -236,8 +247,14 @@ async function follow(run: string) {
   // Part ids are the run's own; an item's id carries the run so two runs never collide.
   const key = (part: string) => `${run}:${part}`
   const kinds = new Map<string, string>()
+  // Whether the router took the message, and whether the model was called after all.
+  let routed = false
+  let modelUsed = false
   const onEvent = (ev: StreamEvent) => {
     switch (ev.verb) {
+      case "usage":
+        modelUsed = true
+        break
       case "part.start": {
         if (!ev.part_id) break
         kinds.set(ev.part_id, ev.kind ?? "")
@@ -308,6 +325,7 @@ async function follow(run: string) {
       case "activity":
         if (ev.kind === "basalisk.approval" && session.approval?.id === ev.value?.approval_id)
           set({ approval: null })
+        else if (ev.kind === "basalisk.route") routed = true
         break
       case "run.error":
         set({
@@ -331,6 +349,18 @@ async function follow(run: string) {
         })
         break
       case "run.finish":
+        if (routed && !modelUsed)
+          set({
+            items: [
+              ...session.items,
+              {
+                kind: "notice",
+                id: key("direct"),
+                tone: "quiet",
+                text: "Done directly, without the model.",
+              },
+            ],
+          })
         if (ev.reason === "turn_limit" || ev.reason === "length")
           set({
             items: [

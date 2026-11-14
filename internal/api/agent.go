@@ -46,7 +46,7 @@ func (a *API) agentState(w http.ResponseWriter, _ *http.Request) {
 	}
 	cfg := a.agent.Config()
 	// ready: a model can be called. available without ready: the panel says what to set.
-	reply(w, 200, map[string]any{"available": true, "ready": cfg.Ready(), "model": cfg.Model})
+	reply(w, 200, map[string]any{"available": true, "ready": cfg.Ready(), "model": cfg.Model, "rules_problem": a.agent.Router().Problem()})
 }
 
 func (a *API) agentThread(w http.ResponseWriter, r *http.Request) {
@@ -97,11 +97,12 @@ func (a *API) agentTurn(w http.ResponseWriter, r *http.Request) {
 		ClientID string           `json:"client_id"`
 		Context  json.RawMessage  `json:"context"`
 		Tools    []agent.ToolSpec `json:"tools"`
+		Hints    agent.Hints      `json:"hints"`
 	}
 	if !decodeLimit(w, r, &in, 512<<10) {
 		return
 	}
-	id, err := a.agent.Start(r.Context(), agent.StartInput{Owner: owner, Text: in.Text, ClientID: in.ClientID, Context: in.Context, Tools: in.Tools})
+	id, err := a.agent.Start(r.Context(), agent.StartInput{Owner: owner, Text: in.Text, ClientID: in.ClientID, Context: in.Context, Tools: in.Tools, Hints: in.Hints})
 	switch {
 	case errors.Is(err, agent.ErrNotReady):
 		fail(w, 503, "No model is configured for the agent.")

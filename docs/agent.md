@@ -5,9 +5,9 @@ which window has focus and what you have selected, and it can use the desktop th
 tools. There is one agent for the whole desktop, not one per app: apps give it tools and
 describe their windows, and it does the rest.
 
-This page describes the first slice: the runtime, the stream, the panel and the desktop's
-own tools, the apps' tools, and Torque and Tesseract through the Tether gateway. The
-router, reflexes, cards and per-task agents come after it and plug into what is here.
+This page describes the runtime, the stream, the panel and the desktop's own tools, the
+apps' tools, Torque and Tesseract through the Tether gateway, and the router in front of
+the model. Reflexes, cards and per-task agents come after and plug into what is here.
 
 ## Shape
 
@@ -97,6 +97,71 @@ A tool that is not in that list cannot be called, whatever the gateway offers. T
 read from the gateway in the background when Basalisk starts (starting the gateway can
 take a few seconds), so only a message sent in those first seconds goes out without them.
 Without `tether_mcp` configured there are none.
+
+## The router
+
+A message is put to a set of rules before any model sees it (`internal/agent/router.go`,
+on the shared matcher `libs/core/util/router`). A rule that matches names a tool, and that
+tool is called directly: no model request, no tokens. Everything else goes to the model.
+
+A routed call is an ordinary tool call. It is shown in the panel, it asks permission as
+its level requires, and it is kept in the thread, so the model knows later what was done.
+If the call fails, the run is handed to the model with the failed call in front of it. If
+you decline it, the reply is "Not done." and no model is called. The panel marks a message
+answered this way: "Done directly, without the model." The rule that took a message is
+recorded on its run (`runs.route` in `agent.db`).
+
+The rules that ship (`internal/agent/rules.json`; `/help` in the panel lists them):
+
+| You type | What runs |
+|---|---|
+| `/open <app>`, or "open notes", "launch a terminal", "show the browser" | `desktop_open` |
+| `/do <command title or id>`, or a palette command's title on its own ("Tile windows") | `desktop_run_command` (asks, like any use of it) |
+| `/run <command line>` | `terminal_run` (asks every time) |
+| `/help` | the list |
+| `/new` | a new conversation (handled by the panel itself) |
+
+A rule tests plain fields of the message, all of them strings:
+
+| Field | Is |
+|---|---|
+| `slash`, `arg` | `/open notes` gives `slash` "open" and `arg` "notes" (as typed) |
+| `said` | "yes" when the message is not a slash command |
+| `text` | the message in lower case, on one line, without closing punctuation (messages up to 160 characters) |
+| `verb`, `object`, `words` | its first word, the rest without a leading article, and the word count |
+| `app`, `app_title` | the app that `object` (or `arg`) names, by id or title |
+| `command`, `command_title` | the palette command the message (or `arg`) names, by title or id |
+| `focused.app`, `selection` | the app of the window in front; "yes" when text is selected in it |
+
+The page sends the apps and the available commands with each message, which is how a name
+is matched without the server knowing the desktop. A name that fits two things matches
+neither.
+
+**Your own rules** go in `~/.config/basalisk/agent-rules.json` (or the file
+`BASALISK_AGENT_RULES_FILE` names), in the same format as `rules.json`. They are tried
+before the ones that ship, and the file is read again when it changes; no restart. A file
+that does not parse is left out, the shipped rules go on working, and `GET /api/agent`
+says why in `rules_problem`. A rule's `target` is `tool:<name>`, `say`, `help` or
+`model`; its `params` are the tool's input, with `{field}` filled in from the table above.
+Three params are the router's own: `_say` (the reply when the call worked; without it the
+tool's result is the reply), `_then: "model"` (hand the result to the model instead of
+replying), and `_help` (the rule's line in `/help`). For example, a rule that opens a page:
+
+```json
+{
+  "version": "mine-1",
+  "strategy": "first_match",
+  "rules": [
+    {
+      "id": "torque-board",
+      "when": [{ "field": "slash", "op": "eq", "value": "board" }],
+      "target": "tool:desktop_open",
+      "params": { "app": "browser", "url": "https://example.com/board", "_say": "Opened the board.", "_help": "/board: open the task board." },
+      "auto": true
+    }
+  ]
+}
+```
 
 ## Permission
 

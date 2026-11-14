@@ -10,7 +10,7 @@
  * cover the next (running a command).
  */
 import { allApps, allCommands, type DeskAPI } from "../desktop/registry"
-import type { DeskSnapshot, SnapshotWindow, ToolSpec } from "./api"
+import type { DeskSnapshot, RouteHints, SnapshotWindow, ToolSpec } from "./api"
 
 /** What a running call is given besides its input. */
 export interface ToolContext {
@@ -107,6 +107,16 @@ export async function snapshot(desk: DeskAPI): Promise<DeskSnapshot> {
     // The window could not describe itself: the list still says it is there.
   }
   return { focused, windows }
+}
+
+/** The apps and the commands available now, by id and title: what the router can match. */
+export function routeHints(desk: DeskAPI): RouteHints {
+  return {
+    apps: allApps().map((a) => ({ id: a.id, title: a.title })),
+    commands: allCommands()
+      .filter((c) => !c.id.startsWith("app.open.") && (!c.when || c.when(desk)))
+      .map((c) => ({ id: c.id, title: c.title })),
+  }
 }
 
 const object = (properties: Record<string, unknown>, required: string[] = []) => ({

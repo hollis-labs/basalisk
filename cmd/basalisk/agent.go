@@ -18,7 +18,8 @@ import (
 // the agent off; the rest of the app does not depend on it.
 //
 // The environment can stand in for the config, for a development run:
-// BASALISK_AGENT_GATEWAY, BASALISK_AGENT_KEY_FILE, BASALISK_AGENT_MODEL.
+// BASALISK_AGENT_GATEWAY, BASALISK_AGENT_KEY_FILE, BASALISK_AGENT_MODEL,
+// BASALISK_AGENT_RULES_FILE.
 func enableAgent(ctx context.Context, a *api.API, cfg agent.Config, dbPath string) *agent.Runtime {
 	if v := os.Getenv("BASALISK_AGENT_GATEWAY"); v != "" {
 		cfg.GatewayURL = v
@@ -46,6 +47,12 @@ func enableAgent(ctx context.Context, a *api.API, cfg agent.Config, dbPath strin
 		_ = store.Close()
 	}()
 	rt := agent.New(ctx, cfg, store, agent.NewGateway(cfg))
+	// The router's rules: the ones that ship, and the owner's own from this file if it exists.
+	rules := os.Getenv("BASALISK_AGENT_RULES_FILE")
+	if rules == "" && home != "" {
+		rules = filepath.Join(home, ".config", "basalisk", "agent-rules.json")
+	}
+	rt.SetRouter(agent.NewRouter(rules))
 	a.EnableAgent(rt)
 	slog.Info("agent enabled", "ready", cfg.Ready(), "model", cfg.Model)
 	return rt

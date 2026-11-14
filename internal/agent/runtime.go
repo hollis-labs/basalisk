@@ -85,6 +85,8 @@ type StartInput struct {
 	// windows), as the page describes it. Kept with the message and shown to the model.
 	Context json.RawMessage
 	Tools   []ToolSpec
+	// Hints are what the page has by name (apps, commands), for the router's rules.
+	Hints Hints
 }
 
 // Errors a caller can tell apart.
@@ -108,6 +110,21 @@ type Runtime struct {
 	busy    map[string]string          // thread -> its running run
 	session map[string]map[string]bool // owner -> tools allowed until the app restarts
 	sources []ToolSource               // where the server's own tools come from (AddTools)
+	router  *Router                    // rules tried before the model (SetRouter); nil: none
+}
+
+// SetRouter puts rules in front of the model. Call before serving.
+func (rt *Runtime) SetRouter(r *Router) {
+	rt.mu.Lock()
+	rt.router = r
+	rt.mu.Unlock()
+}
+
+// Router is the router in use, or nil.
+func (rt *Runtime) Router() *Router {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return rt.router
 }
 
 // ServerTool is a tool the server runs itself, with no page involved: a record looked up
@@ -205,6 +222,8 @@ type run struct {
 	server            map[string]ServerTool // the tools among them that the server runs
 	defs              []llmtypes.ToolDefinition
 	cancel            context.CancelCauseFunc
+	route             *Route // what the router decided for this message; nil: the model answers
+	declined          bool   // the last tool call was refused by the owner (or nobody answered)
 
 	mu        sync.Mutex
 	waiting   map[string]*pending    // tool call id -> the call the page is running
@@ -252,6 +271,10 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	}
 	r := &run{rt: rt, id: newID("run"), owner: in.Owner, thread: thread, client: in.ClientID, tools: tools, defs: defs, server: server,
 		waiting: map[string]*pending{}, approvals: map[string]chan string{}}
+	// The rules first. A rule that names a tool this message did not come with is no route.
+	if route := rt.Router().Route(ctx, text, in.Context, in.Hints); route != nil && (route.Tool == "" || tools[route.Tool].Name != "") {
+		r.route = route
+	}
 
 	rt.mu.Lock()
 	if rt.busy[thread] != "" {
@@ -278,6 +301,9 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	if err != nil {
 		release()
 		return "", err
+	}
+	if r.route != nil {
+		rt.store.setRoute(ctx, r.id, r.route.Rule)
 	}
 	for _, m := range prior {
 		r.history = append(r.history, llmtypes.ChatMessage{Role: m.Role, ContentBlocks: m.Blocks})
@@ -465,7 +491,14 @@ func (r *run) execute(ctx context.Context) {
 	var failure error
 	steps, tries := 0, 0
 
-	_, loopErr := runloop.Execute(ctx, runloop.Ports[step, []llmtypes.ToolUseBlock]{
+	// A message the router took is answered here, with no model, unless the route hands
+	// over to the model or its call failed.
+	var loopErr error
+	if r.route != nil && r.direct(ctx) {
+		r.end(ctx, finish, nil)
+		return
+	}
+	_, loopErr = runloop.Execute(ctx, runloop.Ports[step, []llmtypes.ToolUseBlock]{
 		// Request: one model invocation, streamed to the page as it arrives.
 		Request: func(ctx context.Context) (step, runloop.Directive) {
 			if ctx.Err() != nil {
@@ -589,6 +622,58 @@ func (r *run) execute(ctx context.Context) {
 		Finalize: func(context.Context) runloop.Directive { return runloop.Finish },
 	})
 
+	if failure == nil {
+		failure = loopErr
+	}
+	r.end(ctx, finish, failure)
+}
+
+// direct carries out the router's decision: the tool call the rule names, shown and kept
+// like any other, then the rule's reply. It reports whether the message is answered; false
+// hands the run to the model, which sees what was called and how it went.
+func (r *run) direct(ctx context.Context) bool {
+	route := r.route
+	value, _ := json.Marshal(map[string]string{"rule": route.Rule, "tool": route.Tool})
+	r.emit(chatstream.Event{Verb: chatstream.VerbActivity, Kind: "basalisk.route", Value: value})
+	r.msgN++
+	msgID := fmt.Sprintf("m%d", r.msgN)
+	r.emit(chatstream.Event{Verb: chatstream.VerbMessageStart, MessageID: msgID, Role: "assistant"})
+	defer r.emit(chatstream.Event{Verb: chatstream.VerbMessageEnd, MessageID: msgID})
+
+	say := route.Say
+	if route.Tool != "" {
+		input := route.Input
+		if input == nil {
+			input = map[string]any{}
+		}
+		call := llmtypes.ToolUseBlock{ID: newID("toolu_route"), Name: route.Tool, Input: input}
+		r.keep(ctx, "assistant", []llmtypes.ContentBlock{{Type: "tool_use", ID: call.ID, Name: call.Name, Input: &input}})
+		content, isError := r.tool(ctx, call)
+		r.keep(context.WithoutCancel(ctx), "user", []llmtypes.ContentBlock{{Type: "tool_result", ToolUseID: call.ID, Content: content, IsError: isError}})
+		switch {
+		case ctx.Err() != nil:
+			return true
+		case isError && r.declined:
+			say = "Not done."
+		case isError, route.ThenModel:
+			// It did not work, or the rule wants the model to read the result.
+			return false
+		case say == "":
+			say = content
+		}
+	}
+	r.partN++
+	part := fmt.Sprintf("p%d", r.partN)
+	r.emit(chatstream.Event{Verb: chatstream.VerbPartStart, PartID: part, Kind: string(chatstream.PartText)})
+	r.emit(chatstream.Event{Verb: chatstream.VerbPartDelta, PartID: part, Text: say})
+	r.emit(chatstream.Event{Verb: chatstream.VerbPartEnd, PartID: part})
+	r.keep(ctx, "assistant", []llmtypes.ContentBlock{{Type: "text", Text: say}})
+	return true
+}
+
+// end closes the run: its record and the stream's last event.
+func (r *run) end(ctx context.Context, finish chatstream.FinishReason, failure error) {
+	rt := r.rt
 	bg := context.WithoutCancel(ctx)
 	switch {
 	case errors.Is(context.Cause(ctx), errCancelled):
@@ -597,11 +682,8 @@ func (r *run) execute(ctx context.Context) {
 	case ctx.Err() != nil:
 		rt.store.finishRun(bg, r.id, "error", "Basalisk stopped while this was running.", r.in, r.out)
 		r.emit(chatstream.Event{Verb: chatstream.VerbRunAbort, Reason: string(chatstream.FinishCancelled)})
-	case failure != nil || loopErr != nil:
+	case failure != nil:
 		err := failure
-		if err == nil {
-			err = loopErr
-		}
 		slog.Warn("agent: run failed", "run", r.id, "err", err)
 		rt.store.finishRun(bg, r.id, "error", err.Error(), r.in, r.out)
 		code, retryable := "upstream_error", false
@@ -661,6 +743,7 @@ func (r *run) tool(ctx context.Context, call llmtypes.ToolUseBlock) (content str
 	r.partN++
 	callPart := fmt.Sprintf("p%d", r.partN)
 	spec, known := r.tools[call.Name]
+	r.declined = false
 	input, _ := json.Marshal(call.Input)
 	if call.Input == nil {
 		input = []byte("{}")
@@ -704,6 +787,7 @@ func (r *run) tool(ctx context.Context, call llmtypes.ToolUseBlock) (content str
 			}
 		case "once":
 		default:
+			r.declined = true
 			r.emit(chatstream.Event{Verb: chatstream.VerbPartEnd, PartID: callPart, Final: input})
 			if decision == "timeout" {
 				return "Nobody answered the permission question, so this did not run.", true
