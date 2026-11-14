@@ -517,3 +517,23 @@
 .agent-tasks:empty {
   display: none;
 }
+
+.needs-reply {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.needs-reply input {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+}
+.needs-reply button {
+  padding: 3px 10px;
+  border-radius: 5px;
+  background: var(--desk-accent);
+  color: var(--desk-bg);
+  font-weight: 600;
+}
+.needs-reply button:disabled {
+  opacity: 0.4;
+}

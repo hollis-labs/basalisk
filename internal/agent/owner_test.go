@@ -74,6 +74,9 @@ func TestOwnerTools(t *testing.T) {
 	if _, err := tools["owner_ack"].Run(ctx, map[string]any{"account": me, "id": "m1", "receipt": "will_reply"}); err != nil {
 		t.Fatal(err)
 	}
+	if mail.read != 0 {
+		t.Fatal("a message the owner must answer themselves stays unread")
+	}
 	if len(mail.replies) != 1 || mail.replies[0].Body != acks["will_reply"] || mail.replies[0].Extra["sent_by"] != "assistant" || mail.replies[0].Extra["on_behalf_of"] != me {
 		t.Fatalf("the receipt is the fixed text, marked as sent for the owner: %+v", mail.replies)
 	}

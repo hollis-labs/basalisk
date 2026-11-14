@@ -131,7 +131,24 @@ export function NeedsStrip() {
                     onChange={(e) => setNote(e.target.value)}
                   />
                 </>
-              ) : null}
+              ) : (
+                <form
+                  className="needs-reply"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    if (note.trim()) void answer(m, "")
+                  }}
+                >
+                  <input
+                    value={note}
+                    placeholder={`Your answer to ${who(m)}`}
+                    onChange={(e) => setNote(e.target.value)}
+                  />
+                  <button type="submit" disabled={!note.trim()}>
+                    Send
+                  </button>
+                </form>
+              )}
               <div className="needs-tools">
                 <button type="button" onClick={() => desk.open("inbox")}>
                   <Inbox size={12} aria-hidden="true" /> Open in Inbox

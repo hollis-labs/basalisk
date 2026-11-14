@@ -163,7 +163,7 @@ func OwnerTools(mail *inbox.Inbox, log *assist.Log, deps ...OwnerDeps) ToolSourc
 		},
 		{
 			Spec: ToolSpec{Name: "owner_ack", Level: LevelAct,
-				Description: "Send the sender of one of the owner's messages a short receipt in the owner's name, from a fixed list (you choose which, not the words): received (\"Received, thank you.\"), will_reply (the owner will answer himself; nothing more needed until then), noted (no reply needed), thanks (that is what was needed). It marks the message read. Use will_reply for anything that asks the owner to decide.",
+				Description: "Send the sender of one of the owner's messages a short receipt in the owner's name, from a fixed list (you choose which, not the words): received (\"Received, thank you.\"), will_reply (the owner will answer himself; nothing more needed until then), noted (no reply needed), thanks (that is what was needed). A receipt marks the message read, except will_reply, which leaves it unread and puts it in front of the owner as needing them. Use will_reply for anything that asks the owner to decide.",
 				InputSchema: obj(map[string]any{"account": which["account"], "id": which["id"], "receipt": map[string]any{"type": "string", "enum": []string{"received", "will_reply", "noted", "thanks"}}}, "account", "id", "receipt")},
 			Run: func(ctx context.Context, in map[string]any) (string, error) {
 				p, it, err := find(ctx, in)
@@ -180,6 +180,13 @@ func OwnerTools(mail *inbox.Inbox, log *assist.Log, deps ...OwnerDeps) ToolSourc
 				}
 				if err := p.Reply(ctx, it.Account, it.ID, inbox.Reply{Body: text, Extra: onBehalf(it.Account)}); err != nil {
 					return "", err
+				}
+				if key == "will_reply" {
+					// It still needs the owner: it stays unread, and is shown to them as a card.
+					if d.Watch != nil {
+						_ = d.Watch.SetState(ctx, it.ID, "open", assist.ClassNeeds)
+					}
+					return "sent: " + text + " The message is left unread and is now shown to the owner as needing them.", nil
 				}
 				_ = p.MarkRead(ctx, it.Account, it.ID)
 				return "sent: " + text, nil
