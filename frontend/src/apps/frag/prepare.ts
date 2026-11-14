@@ -12,6 +12,9 @@
  *   origin), its two state objects are taken out of the HTML as JSON, checked to be for this
  *   video, and put first in <head> as non-executing JSON script elements, which the adapter
  *   reads by id. cleanupPage removes them.
+ *   The transcript: the page's caption files answer empty to any fetch without the player's
+ *   own token (for this server and for the page alike), so the text comes from YouTube's
+ *   transcript panel, opened for the clip and closed again (see transcript() below).
  * - Reddit: on a post's page, comments render as the post scrolls in; wait briefly for them.
  * - The selection: WebKit empties a Browser page's selection the moment the page loses the
  *   keyboard, which a click on the window's clip button does before the clip runs.
@@ -118,35 +121,48 @@ export function preparePage(): void {
       finish({ skipped: true })
       return
     }
-    // The state the adapter would read first: is it for this video?
-    for (const s of Array.from(document.scripts)) {
-      const text = s.textContent ?? ""
-      if (!text.includes("ytInitialPlayerResponse")) continue
-      const player =
-        s.id === "ytInitialPlayerResponse"
-          ? objectAfter(`ytInitialPlayerResponse=${text}`, "ytInitialPlayerResponse")
-          : objectAfter(text, "ytInitialPlayerResponse")
-      if (player) {
-        if (videoIdOf(player) === id) {
-          finish({ skipped: true, youtube: "state is current" })
-          return
-        }
-        break
-      }
+    const ownLanguage = (player: Record<string, unknown> | null) => {
+      // The video's own caption language: the default audio track's default caption track,
+      // else the auto-generated track (it is in the spoken language).
+      const r = (player?.captions as Record<string, unknown> | undefined)
+        ?.playerCaptionsTracklistRenderer as Record<string, unknown> | undefined
+      const tracks = (r?.captionTracks as Record<string, unknown>[] | undefined) ?? []
+      const audio = (r?.audioTracks as Record<string, unknown>[] | undefined) ?? []
+      const i = audio[Number(r?.defaultAudioTrackIndex ?? 0)]?.defaultCaptionTrackIndex
+      const pick = typeof i === "number" ? tracks[i] : tracks.find((t) => t.kind === "asr")
+      return typeof pick?.languageCode === "string" ? pick.languageCode : ""
     }
 
-    const control = new AbortController()
-    const timer = setTimeout(() => control.abort(), 4000)
-    fetch(u.href, {
-      credentials: "same-origin",
-      signal: control.signal,
-      headers: { Accept: "text/html" },
-    })
-      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`answered ${r.status}`))))
-      .then((html) => {
+    // 1. The state: the one the adapter reads first, refreshed when it is for another video.
+    const state = async (): Promise<{
+      note: Record<string, unknown>
+      player: Record<string, unknown> | null
+    }> => {
+      for (const s of Array.from(document.scripts)) {
+        const text = s.textContent ?? ""
+        if (!text.includes("ytInitialPlayerResponse")) continue
+        const player =
+          s.id === "ytInitialPlayerResponse"
+            ? objectAfter(`ytInitialPlayerResponse=${text}`, "ytInitialPlayerResponse")
+            : objectAfter(text, "ytInitialPlayerResponse")
+        if (player) {
+          if (videoIdOf(player) === id) return { note: { youtube: "state is current" }, player }
+          break
+        }
+      }
+      const control = new AbortController()
+      const timer = setTimeout(() => control.abort(), 4000)
+      try {
+        const r = await fetch(u.href, {
+          credentials: "same-origin",
+          signal: control.signal,
+          headers: { Accept: "text/html" },
+        })
+        if (!r.ok) throw new Error(`answered ${r.status}`)
+        const html = await r.text()
         const player = objectAfter(html, "ytInitialPlayerResponse")
         if (videoIdOf(player) !== id)
-          return finish({ youtube: "the fetched state is not for this video" })
+          return { note: { youtube: "the fetched state is not for this video" }, player: null }
         const states: [string, Record<string, unknown> | null][] = [
           ["ytInitialPlayerResponse", player],
           ["ytInitialData", objectAfter(html, "ytInitialData")],
@@ -164,10 +180,82 @@ export function preparePage(): void {
           document.head.insertBefore(el, document.head.firstChild)
           inserted++
         }
-        finish({ youtube: "state refreshed", inserted })
-      })
-      .catch((e) => finish({ youtube: `kept the page's state (${String(e).slice(0, 80)})` }))
-      .finally(() => clearTimeout(timer))
+        return { note: { youtube: "state refreshed", inserted }, player }
+      } catch (e) {
+        return {
+          note: { youtube: `kept the page's state (${String(e).slice(0, 80)})` },
+          player: null,
+        }
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+
+    // 2. The transcript: YouTube's own transcript panel, opened if it is not, read as the
+    // adapter reads a rendered transcript. YouTube's current markup is not one the adapter
+    // knows, so each segment is marked with the adapter's own data-youtube-transcript-*
+    // hooks (cleanupPage removes the marks, and closes the panel if this opened it).
+    const transcript = async (lang: string): Promise<string> => {
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+      const panelSel = 'ytd-engagement-panel-section-list-renderer[target-id*="transcript"]'
+      const SEG = "transcript-segment-view-model"
+      let segs = Array.from(document.querySelectorAll(SEG))
+      if (!segs.length) {
+        const open = document
+          .querySelector(panelSel)
+          ?.getAttribute("visibility")
+          ?.endsWith("EXPANDED")
+        const button = document.querySelector<HTMLElement>(
+          "ytd-video-description-transcript-section-renderer button",
+        )
+        if (!button) return "no transcript on this page"
+        button.click()
+        if (!open) w.__BASALISK_CLIP_PANEL__ = true
+        const started = Date.now()
+        while (Date.now() - started < 5000) {
+          segs = Array.from(document.querySelectorAll(SEG))
+          if (segs.length) break
+          await sleep(150)
+        }
+        // The list arrives in one go; give it a moment to finish rendering.
+        await sleep(250)
+        segs = Array.from(document.querySelectorAll(SEG))
+      }
+      if (!segs.length) return "the transcript did not load in time"
+      const mark = (el: Element | null | undefined, name: string) => {
+        if (!el) return
+        el.setAttribute(name, "")
+        el.setAttribute("data-basalisk-clip-mark", name)
+      }
+      for (const seg of segs) {
+        mark(seg, "data-youtube-transcript-segment")
+        mark(
+          seg.querySelector('[class*="TranscriptSegmentViewModelTimestamp"]:not([class*="A11y"])'),
+          "data-youtube-transcript-timestamp",
+        )
+        mark(
+          seg.querySelector('[role="text"], [class*="ytAttributedStringHost"]'),
+          "data-youtube-transcript-text",
+        )
+      }
+      const panel = document.querySelector(panelSel)
+      if (panel && lang) {
+        panel.setAttribute("data-youtube-transcript-language", lang)
+        panel.setAttribute("data-basalisk-clip-mark", "data-youtube-transcript-language")
+      }
+      return `${segs.length} segments`
+    }
+
+    void (async () => {
+      const st = await state()
+      let tx = ""
+      try {
+        tx = await transcript(ownLanguage(st.player))
+      } catch (e) {
+        tx = `failed (${String(e).slice(0, 60)})`
+      }
+      finish({ ...st.note, ownLanguage: ownLanguage(st.player), transcript: tx })
+    })()
   } catch (e) {
     finish({ failed: String(e).slice(0, 80) })
   }
@@ -202,9 +290,26 @@ export function keepSelection(): void {
   })
 }
 
-/** Removes what preparePage put in the page. */
+/** Removes what preparePage put in the page, and closes a transcript panel it opened. */
 export function cleanupPage(): void {
   for (const el of Array.from(document.querySelectorAll("script[data-basalisk-clip]"))) el.remove()
+  for (const el of Array.from(document.querySelectorAll("[data-basalisk-clip-mark]"))) {
+    const name = el.getAttribute("data-basalisk-clip-mark")
+    if (name) el.removeAttribute(name)
+    el.removeAttribute("data-basalisk-clip-mark")
+  }
+  const w = window as unknown as Record<string, unknown>
+  if (w.__BASALISK_CLIP_PANEL__) {
+    delete w.__BASALISK_CLIP_PANEL__
+    const panel = document.querySelector(
+      'ytd-engagement-panel-section-list-renderer[target-id*="transcript"]',
+    )
+    const close = panel?.querySelector<HTMLElement>(
+      '#visibility-button button, button[aria-label*="Close" i]',
+    )
+    if (close) close.click()
+    else panel?.setAttribute("visibility", "ENGAGEMENT_PANEL_VISIBILITY_HIDDEN")
+  }
   delete (window as unknown as Record<string, unknown>).__BASALISK_CLIP_PREP__
 }
 

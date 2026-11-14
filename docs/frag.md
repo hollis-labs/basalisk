@@ -98,6 +98,18 @@ about four seconds, the page is clipped as it is: never worse than without this.
     elements, which the adapter reads by id, and removes them after the extraction in every
     case. Nothing from the fetched page is executed or rendered.
   - When fe-clipper's adapter gains this itself, this part can go.
+- **YouTube transcript**: YouTube's caption files answer empty to any fetch without the
+  player's own token, from this server and from the page alike, so the text comes from
+  YouTube's transcript panel.
+  - On a watch page the clip opens the panel if it is closed, and waits up to five seconds
+    for its segments.
+  - YouTube's current markup (`transcript-segment-view-model`) is not one the adapter
+    knows, so each segment is marked with the adapter's own `data-youtube-transcript-*`
+    hooks. The adapter then carries the transcript in fe-clipper's own shape:
+    `provider.youtube` → `transcript` (source `rendered_dom`, the video's own language,
+    segments with start times).
+  - The marks are removed, and the panel is closed again if the clip opened it.
+  - The caption files themselves are not sent: each would only be a file not sent.
 - **Reddit**: on a post's page (`/comments/`), comments render as the post scrolls in. The
   clip waits up to about three seconds for the first one before extracting.
 - **The selection**: WebKit empties a Browser page's selection the moment the page loses
@@ -196,5 +208,9 @@ GET  /api/frag/captures   -> {items: [status + content, tags, context]}, newest 
   enforced: headless Chrome already shows `capture.extraction_failed` there. A future WebKit
   that enforces them would need the bundle evaluated in a named `WKContentWorld`, as an
   extension's content script is.
-- **Subtitles.** A captioned YouTube clip carries one subtitles variant per caption track,
-  each fetched and uploaded, as the extension does (31 on one test video).
+- **Subtitles.** YouTube's caption files (`/api/timedtext`) are left out of a clip: they
+  answer empty without the player's token. The extension still lists them, and each one
+  fails there. The transcript comes from the panel instead (above).
+- **YouTube markup.** The transcript route depends on YouTube's panel markup
+  (`ytd-video-description-transcript-section-renderer`, `transcript-segment-view-model`).
+  When YouTube changes it, the transcript is missing and the clip is otherwise as before.

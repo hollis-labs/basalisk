@@ -108,7 +108,8 @@ export async function clipPage(winId: string): Promise<ClipPage> {
     // Get the page ready (prepare.ts); whatever it does or fails to do, the clip goes on.
     try {
       await send({ op: "eval", js: asScript(preparePage) })
-      for (let i = 0; i < 30 && (await send({ op: "eval", js: PREP_DONE })) !== true; i++)
+      // Up to 12 s: a YouTube page may refresh its state (4 s) and load its transcript (5 s).
+      for (let i = 0; i < 60 && (await send({ op: "eval", js: PREP_DONE })) !== true; i++)
         await sleep(200)
     } catch {
       // Clip the page as it is.
@@ -146,9 +147,25 @@ function toPage(c: Captured): ClipPage {
     warnings: (c.warnings ?? [])
       .filter((w) => w.message)
       .map((w) => ({ code: w.code ?? "", message: w.message ?? "" })),
-    // Passed on as found; the server checks and maps them as fe-clipper does.
-    media: (c.media ?? []).slice(0, 64),
+    // Passed on as found; the server checks and maps them as fe-clipper does. YouTube's
+    // caption files are left out: they answer empty to any fetch without the player's own
+    // token, so each would only be a file not sent. The transcript text comes from the page
+    // (prepare.ts) in the provider.youtube extension.
+    media: (c.media ?? [])
+      .map((m) => ({ ...m, variants: m.variants.filter((v) => !youtubeCaptionFile(v)) }))
+      .filter((m) => m.variants.length > 0)
+      .slice(0, 64),
     extensions: (c.extensions ?? []).slice(0, 16),
+  }
+}
+
+function youtubeCaptionFile(v: ClipMedia["variants"][number]): boolean {
+  if (v.kind !== "subtitles") return false
+  try {
+    const u = new URL(v.sourceUrl)
+    return /(^|\.)youtube\.com$/i.test(u.hostname) && u.pathname === "/api/timedtext"
+  } catch {
+    return false
   }
 }
 
