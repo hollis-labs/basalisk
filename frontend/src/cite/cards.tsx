@@ -34,7 +34,8 @@ export interface ResultCard {
   /** Overrides the kind's label in the card's corner ("Torque task", "Note"). */
   label?: string
   /** A passage that changed (notes_edit): shown before and after, a few lines each. */
-  diff?: { before: string; after: string }
+  /** A changed passage. before is null when only the new text is known (a whole-file write). */
+  diff?: { before: string | null; after: string }
 }
 
 /** One row of a list card: it opens the way its single card would. */
@@ -419,6 +420,7 @@ function CardBox({ card }: { card: ResultCard }) {
       {card.diff && (
         <div className="cite-result-diff" title="What changed">
           {(() => {
+            if (card.diff.before === null) return <Passage text={card.diff.after} side="now" />
             const d = changedPart(card.diff.before, card.diff.after)
             return (
               <>

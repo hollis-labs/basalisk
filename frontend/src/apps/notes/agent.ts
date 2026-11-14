@@ -349,7 +349,13 @@ const noteCard =
   }
 registerResultCards({
   notes_read: noteCard((o) => (o.unsaved_edits === true ? "read (unsaved edits open)" : "")),
-  notes_write: noteCard((o) => (o.created === true ? "created" : "replaced")),
+  notes_write: (input, r) => {
+    const card = noteCard((o) => (o.created === true ? "created" : "replaced"))(input, r)
+    // What was written, from the call itself (what it replaced is not known here).
+    return card && typeof input.text === "string" && input.text.trim()
+      ? { ...card, diff: { before: null, after: input.text.trim() } }
+      : card
+  },
   notes_edit: (input, r) => {
     const card = noteCard((o) =>
       typeof o.changed_at_line === "number" ? `edited at line ${o.changed_at_line}` : "edited",
