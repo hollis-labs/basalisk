@@ -16,6 +16,10 @@ this.
 
 ## What passkeys need
 
+> Checked 2026-11-13: the developer account this app is signed under is an **individual**
+> membership, so this entitlement cannot be requested for now. The signing switch below is
+> kept for the day the app is under an organization account.
+
 An entitlement that Apple grants on request:
 [`com.apple.developer.web-browser.public-key-credential`](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.web-browser.public-key-credential)
 (macOS 13.3+). It covers passkeys and security keys for any site, including passkeys kept
