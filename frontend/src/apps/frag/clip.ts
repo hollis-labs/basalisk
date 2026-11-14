@@ -5,7 +5,7 @@
  * page channel, not /api/browser, and is not written to the shell log.
  */
 import { nativeBrowser } from "../../api/browser"
-import { asScript, cleanupPage, preparePage } from "./prepare"
+import { asScript, cleanupPage, keepSelection, preparePage } from "./prepare"
 
 /** What the server takes for a clipped page (internal/api/frag_clip.go). */
 export interface ClipPage {
@@ -170,6 +170,27 @@ export function mediaSummary(media: ClipMedia[] | undefined): string {
     })
     .join(", ")
 }
+
+// ---- Keeping a page's selection for the clip button (prepare.ts keepSelection) ----
+
+// Installed in each Browser page when it finishes loading (once per document: a page that
+// starts loading again gets it again).
+const keeping = new Map<string, string>()
+if (typeof window !== "undefined")
+  window.addEventListener("basalisk:browser", (e) => {
+    const ev = (e as CustomEvent<{ kind?: string; id?: string; url?: string; loading?: boolean }>)
+      .detail
+    if (ev?.kind !== "state" || !ev.id) return
+    if (ev.loading) {
+      keeping.delete(ev.id)
+      return
+    }
+    if (!/^https?:/i.test(ev.url ?? "") || keeping.get(ev.id) === ev.url) return
+    keeping.set(ev.id, ev.url ?? "")
+    void nativeBrowser
+      .send({ id: ev.id, op: "eval", js: asScript(keepSelection) })
+      .catch(() => undefined)
+  })
 
 // ---- Handing a clip to the capture box ----
 

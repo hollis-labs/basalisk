@@ -100,6 +100,15 @@ about four seconds, the page is clipped as it is: never worse than without this.
   - When fe-clipper's adapter gains this itself, this part can go.
 - **Reddit**: on a post's page (`/comments/`), comments render as the post scrolls in. The
   clip waits up to about three seconds for the first one before extracting.
+- **The selection**: WebKit empties a Browser page's selection the moment the page loses
+  the keyboard, which a click on the window's ✂ button does before the clip runs (⌥⇧C does
+  not move the keyboard).
+  - A small listener installed in each page as it loads keeps the last selection.
+  - If the selection is emptied in the same moment as the page loses focus, the listener
+    keeps it; if the person clears it in the page, it drops it.
+  - On a clip, when the page has no selection, the kept one (at most two minutes old) is
+    put back, and the extraction reads it as the highlight. The box shows it before
+    anything is saved.
 
 ### Media and provider metadata
 

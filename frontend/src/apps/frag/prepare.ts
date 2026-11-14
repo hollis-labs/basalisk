@@ -13,6 +13,11 @@
  *   video, and put first in <head> as non-executing JSON script elements, which the adapter
  *   reads by id. cleanupPage removes them.
  * - Reddit: on a post's page, comments render as the post scrolls in; wait briefly for them.
+ * - The selection: WebKit empties a Browser page's selection the moment the page loses the
+ *   keyboard, which a click on the window's clip button does before the clip runs.
+ *   keepSelection (installed in each page as it loads, clip.ts) keeps the last selection
+ *   when it was emptied by that and not by the person; preparePage puts it back when the
+ *   page has none, so the extraction reads it as the highlight.
  *
  * fe-clipper's own adapter could do the YouTube part (a note is filed with its owner); when it
  * does, this part can go.
@@ -23,9 +28,28 @@ export function preparePage(): void {
   const w = window as unknown as Record<string, unknown>
   const KEY = "__BASALISK_CLIP_PREP__"
   const MAX_STATE = 2_000_000 // fe-clipper's MAX_SERIALIZED_STATE_LENGTH
-  w[KEY] = { done: false }
+  // A selection emptied by the page losing the keyboard (keepSelection), put back.
+  let restored = false
+  try {
+    const kept = w.__BASALISK_KEEP_SEL__ as { range: Range | null; at: number } | undefined
+    const sel = window.getSelection()
+    if (
+      sel &&
+      kept?.range &&
+      (sel.isCollapsed || !sel.toString().trim()) &&
+      Date.now() - kept.at < 120_000 &&
+      kept.range.startContainer.isConnected
+    ) {
+      sel.removeAllRanges()
+      sel.addRange(kept.range)
+      restored = sel.toString().trim().length > 0
+    }
+  } catch {
+    // The page's own selection, or none.
+  }
+  w[KEY] = { done: false, restoredSelection: restored }
   const finish = (r: Record<string, unknown>) => {
-    w[KEY] = { done: true, ...r }
+    w[KEY] = { done: true, restoredSelection: restored, ...r }
   }
 
   /** The first JSON object after each `name` in text, parsed (strings and escapes respected). */
@@ -147,6 +171,35 @@ export function preparePage(): void {
   } catch (e) {
     finish({ failed: String(e).slice(0, 80) })
   }
+}
+
+/**
+ * Installed in each Browser page as it loads: keeps the last selection, and keeps it when it
+ * is emptied in the same moment as the page loses the keyboard (WebKit empties it then, a
+ * selectionchange and a blur together), not when the person clears it in the page.
+ */
+export function keepSelection(): void {
+  const w = window as unknown as Record<string, unknown>
+  if (w.__BASALISK_KEEP_SEL__) return
+  const st: { range: Range | null; at: number; blurAt: number } = { range: null, at: 0, blurAt: 0 }
+  w.__BASALISK_KEEP_SEL__ = st
+  window.addEventListener("blur", () => {
+    st.blurAt = Date.now()
+  })
+  document.addEventListener("selectionchange", () => {
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount > 0 && !sel.isCollapsed && sel.toString().trim()) {
+      st.range = sel.getRangeAt(0).cloneRange()
+      st.at = Date.now()
+      return
+    }
+    if (!st.range) return
+    const emptiedAt = Date.now()
+    // The blur comes in the same moment when the keyboard left; otherwise the person cleared it.
+    setTimeout(() => {
+      if (st.blurAt < emptiedAt - 5) st.range = null
+    }, 60)
+  })
 }
 
 /** Removes what preparePage put in the page. */
