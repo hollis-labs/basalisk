@@ -181,7 +181,7 @@
   border-bottom: 1px solid var(--desk-border);
 }
 .inbox-detail-head h2 {
-  margin: 0 96px 4px 0;
+  margin: 0 190px 4px 0;
   font-size: 15px;
   font-weight: 600;
 }
@@ -198,10 +198,12 @@
   font-size: 10.5px !important;
   opacity: 0.75;
 }
-.inbox-detail-head .inbox-tool {
+.inbox-detail-tools {
   position: absolute;
   top: 10px;
   right: 12px;
+  display: flex;
+  gap: 2px;
 }
 .inbox-text {
   flex: 1 1 auto;
@@ -293,4 +295,133 @@
 }
 .inbox-send:disabled {
   opacity: 0.45;
+}
+
+/* The compose box (compose.tsx): the capture box's frame, with message fields. */
+.msg {
+  width: min(44rem, calc(100vw - 3rem));
+  gap: 8px;
+}
+.msg-spacer {
+  flex: 1 1 auto;
+}
+.msg-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--desk-border);
+}
+.msg-label {
+  flex: 0 0 52px;
+  font-size: 11px;
+  color: var(--desk-fg-soft);
+}
+.msg-row input,
+.msg-to input {
+  flex: 1 1 auto;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--desk-fg);
+  font: inherit;
+  font-size: 13px;
+}
+.msg-to {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.msg-addr {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--desk-fg-soft);
+}
+.msg-found {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--desk-border);
+  border-radius: 8px;
+  background: var(--desk-panel);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.45);
+}
+.msg-found button {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--desk-fg);
+}
+.msg-found button[data-on="true"],
+.msg-found button:hover {
+  background: var(--desk-accent-soft);
+}
+.msg-found em {
+  font-style: normal;
+  color: var(--desk-accent);
+}
+.msg-found span {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--desk-fg-soft);
+}
+.msg-body {
+  width: 100%;
+  resize: vertical;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--desk-fg);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.msg-select {
+  background: transparent;
+  color: var(--desk-fg-soft);
+  border: 1px solid var(--desk-border);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 11px;
+}
+.msg-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--desk-accent);
+  color: var(--desk-bg);
+  font-size: 12px;
+  font-weight: 600;
+}
+/* A Tether address in text: click to write to it. */
+.cite-urn {
+  display: inline;
+  padding: 0;
+  font: inherit;
+  color: var(--desk-accent);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  text-align: left;
 }

@@ -1,7 +1,8 @@
-import { Archive, ArchiveRestore, MailOpen, RefreshCw, Send } from "lucide-react"
+import { Archive, ArchiveRestore, Forward, MailOpen, MailPlus, RefreshCw, Send } from "lucide-react"
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { INBOX_CHANGED, type InboxItem, type InboxSource, inbox } from "../../api/inbox"
 import { Markdown } from "../../cite/ui"
+import { composeMessage } from "../../desktop/message"
 import "./inbox.css"
 
 type View = "unread" | "all" | "archived"
@@ -176,6 +177,15 @@ export function InboxWindow() {
         <button
           type="button"
           className="inbox-tool"
+          title="Write a new message (⌥⇧M)"
+          onClick={() => composeMessage()}
+        >
+          <MailPlus aria-hidden="true" size={14} strokeWidth={1.6} />
+          <span>New</span>
+        </button>
+        <button
+          type="button"
+          className="inbox-tool"
           disabled={!unread}
           title="Mark every listed message read"
           onClick={() => void markAll()}
@@ -238,23 +248,50 @@ export function InboxWindow() {
                   {current.from_role ? ` · ${current.from_role}` : ""} · {when(current.at)} ·{" "}
                   {current.kind.replace("_", " ")}
                 </p>
-                <p className="inbox-addr" title={`${current.from} → ${current.account}`}>
-                  {current.from} → {current.account}
+                <p className="inbox-addr">
+                  <button
+                    type="button"
+                    className="cite-urn"
+                    title={`Write to ${who(current)}`}
+                    onClick={() => composeMessage({ to: current.from })}
+                  >
+                    {current.from}
+                  </button>{" "}
+                  → {current.account}
                   {current.ask?.re ? ` · ${current.ask.re}` : ""}
                 </p>
-                <button
-                  type="button"
-                  className="inbox-tool"
-                  title={current.archived ? "Back to the inbox" : "Archive (e)"}
-                  onClick={() => archive(current)}
-                >
-                  {current.archived ? (
-                    <ArchiveRestore aria-hidden="true" size={14} strokeWidth={1.6} />
-                  ) : (
-                    <Archive aria-hidden="true" size={14} strokeWidth={1.6} />
-                  )}
-                  <span>{current.archived ? "Unarchive" : "Archive"}</span>
-                </button>
+                <div className="inbox-detail-tools">
+                  <button
+                    type="button"
+                    className="inbox-tool"
+                    title="Send this message on to someone else"
+                    onClick={() =>
+                      composeMessage({
+                        to: "",
+                        subject: /^fwd:/i.test(current.subject)
+                          ? current.subject
+                          : `Fwd: ${current.subject}`,
+                        body: `\n\n---\nForwarded message from ${who(current)} (${current.from}), ${when(current.at)}:\n\n${current.body}`,
+                      })
+                    }
+                  >
+                    <Forward aria-hidden="true" size={14} strokeWidth={1.6} />
+                    <span>Forward</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="inbox-tool"
+                    title={current.archived ? "Back to the inbox" : "Archive (e)"}
+                    onClick={() => archive(current)}
+                  >
+                    {current.archived ? (
+                      <ArchiveRestore aria-hidden="true" size={14} strokeWidth={1.6} />
+                    ) : (
+                      <Archive aria-hidden="true" size={14} strokeWidth={1.6} />
+                    )}
+                    <span>{current.archived ? "Unarchive" : "Archive"}</span>
+                  </button>
+                </div>
               </header>
               <div className="inbox-text">
                 <Markdown source={current.body || "*(empty)*"} />

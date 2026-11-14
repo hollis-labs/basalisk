@@ -66,6 +66,23 @@ type Reply struct {
 	Choice string
 }
 
+// Outgoing is a new message from the owner.
+type Outgoing struct {
+	To      string
+	Kind    string // the provider's kind; "" means its plain one
+	Subject string
+	Body    string
+}
+
+// Recipient is someone a message can be sent to.
+type Recipient struct {
+	Provider string `json:"provider"`
+	Address  string `json:"address"`
+	Name     string `json:"name,omitempty"`
+	Role     string `json:"role,omitempty"`
+	About    string `json:"about,omitempty"`
+}
+
 // Provider is one place messages come from.
 type Provider interface {
 	ID() string
@@ -78,6 +95,10 @@ type Provider interface {
 	MarkRead(ctx context.Context, account, id string) error
 	Archive(ctx context.Context, account, id string, archived bool) error
 	Reply(ctx context.Context, account, id string, r Reply) error
+	// Send writes a new message from one of the owner's accounts and returns its id.
+	Send(ctx context.Context, account string, m Outgoing) (string, error)
+	// Recipients are the addresses that match what was typed (name, role or address).
+	Recipients(ctx context.Context, query string) ([]Recipient, error)
 }
 
 // ErrUnknown means no such provider, or an account that is not the owner's.
@@ -139,4 +160,33 @@ func (in *Inbox) Provider(id, account string) (Provider, error) {
 		}
 	}
 	return nil, ErrUnknown
+}
+
+// Account is one of the owner's addresses, with the provider it is at.
+type Account struct {
+	Provider string `json:"provider"`
+	Title    string `json:"title"`
+	Address  string `json:"address"`
+}
+
+// Accounts are the addresses the owner can send from.
+func (in *Inbox) Accounts() []Account {
+	out := []Account{}
+	for _, p := range in.providers {
+		for _, a := range p.Accounts() {
+			out = append(out, Account{Provider: p.ID(), Title: p.Title(), Address: a})
+		}
+	}
+	return out
+}
+
+// Recipients asks every provider; one that fails offers nobody.
+func (in *Inbox) Recipients(ctx context.Context, query string) []Recipient {
+	out := []Recipient{}
+	for _, p := range in.providers {
+		if got, err := p.Recipients(ctx, query); err == nil {
+			out = append(out, got...)
+		}
+	}
+	return out
 }

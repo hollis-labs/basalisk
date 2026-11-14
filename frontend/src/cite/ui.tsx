@@ -25,6 +25,7 @@ import {
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { openLink } from "../api/browser"
+import { composeMessage, URN } from "../desktop/message"
 import { parseTachHref } from "./core/tach"
 import { CodeRef, FileLink, placeOf, splitFiles, usePlaces } from "./files"
 import { parseFragmentHref } from "./fragment"
@@ -161,10 +162,39 @@ function CiteSegments({ text, places }: { text: string; places: ReturnType<typeo
   )
 }
 
+/** A Tether address (msg://…): click to write to it. */
+export function UrnLink({ urn }: { urn: string }) {
+  return (
+    <button
+      type="button"
+      className="cite-urn"
+      title="Write a message to this address"
+      onClick={() => composeMessage({ to: urn })}
+    >
+      {urn}
+    </button>
+  )
+}
+
+/** Prose with its references linkified and its Tether addresses made clickable. */
+function UrnText({ text }: { text: string }) {
+  if (!text.includes("msg://")) return <CiteText text={text} />
+  const out: ReactNode[] = []
+  let at = 0
+  for (const m of text.matchAll(URN)) {
+    const i = m.index ?? 0
+    if (i > at) out.push(<CiteText key={`t${at}`} text={text.slice(at, i)} />)
+    out.push(<UrnLink key={`u${i}`} urn={m[0]} />)
+    at = i + m[0].length
+  }
+  if (at < text.length) out.push(<CiteText key={`t${at}`} text={text.slice(at)} />)
+  return <>{out}</>
+}
+
 /** Linkifies the string children of a markdown element, leaving nested elements alone. */
 function linkified(children: ReactNode): ReactNode {
   return Children.map(children, (child) => {
-    if (typeof child === "string") return <CiteText text={child} />
+    if (typeof child === "string") return <UrnText text={child} />
     if (
       isValidElement<{ children?: ReactNode }>(child) &&
       typeof child.type === "string" &&
@@ -199,7 +229,15 @@ const MARKDOWN: Components = {
   del: wrap("del"),
   blockquote: wrap("blockquote"),
   // Inline code that is a file reference opens it (files.tsx); fenced code is left alone.
-  code: ({ node: _node, ...props }) => <CodeRef {...props} />,
+  // An address in backticks is still an address.
+  code: ({ node: _node, ...props }) => {
+    const text = typeof props.children === "string" ? props.children : ""
+    return /^msg:\/\/[A-Za-z0-9][A-Za-z0-9._~/-]*$/.test(text) ? (
+      <UrnLink urn={text} />
+    ) : (
+      <CodeRef {...props} />
+    )
+  },
   // [label](tach:service/id) is a reference with the author's label; other links open outside.
   a({ href, children }) {
     const ref = parseTachHref(href) ?? parseFragmentHref(href)

@@ -33,6 +33,22 @@ export interface InboxSource {
   error?: string
 }
 
+/** One of the owner's addresses a message can be sent from. */
+export interface InboxAccount {
+  provider: string
+  title: string
+  address: string
+}
+
+/** Someone a message can be sent to. */
+export interface InboxRecipient {
+  provider: string
+  address: string
+  name?: string
+  role?: string
+  about?: string
+}
+
 /** Dispatched on window when read state changed, so the bar's count follows. */
 export const INBOX_CHANGED = "basalisk:inbox"
 
@@ -50,6 +66,15 @@ export const inbox = {
     request<void>(at(it, "read"), "POST", { account: it.account }).then(changed),
   archive: (it: InboxItem, archived = true) =>
     request<void>(at(it, "archive"), "POST", { account: it.account, archived }).then(changed),
+  recipients: (q = "") =>
+    request<{ accounts: InboxAccount[]; recipients: InboxRecipient[] }>(
+      `inbox/recipients?q=${encodeURIComponent(q)}`,
+    ),
+  send: (from: InboxAccount, m: { to: string; kind: string; subject: string; body: string }) =>
+    request<{ id: string }>(`inbox/${encodeURIComponent(from.provider)}/send`, "POST", {
+      account: from.address,
+      ...m,
+    }),
   reply: (it: InboxItem, body: string, choice = "") =>
     request<void>(at(it, "reply"), "POST", { account: it.account, body, choice }).then(changed),
 }

@@ -21,6 +21,7 @@ import {
 } from "../../api/scratch"
 import { CiteText } from "../../cite/ui"
 import { useDesk } from "../../desktop/context"
+import { composeMessage } from "../../desktop/message"
 import { moment } from "../frag/context"
 import { captureIdFor, newDraft } from "../frag/draft"
 import { notesFolder } from "../notes/notefiles"
@@ -38,7 +39,7 @@ const KIND_LABEL: Record<string, string> = {
 const CHECKABLE = new Set(["todo", "follow-up", "question", "delegate"])
 
 /** What an item can be made into. */
-type Into = "task" | "note" | "fragment" | "agent"
+type Into = "task" | "note" | "fragment" | "agent" | "message"
 const INTO: { to: Into; label: string; hint: string }[] = [
   {
     to: "task",
@@ -48,6 +49,7 @@ const INTO: { to: Into; label: string; hint: string }[] = [
   { to: "note", label: "Note", hint: "A markdown file in your notes, under scratch/" },
   { to: "fragment", label: "Fragment", hint: "Send it to Fragments Engine" },
   { to: "agent", label: "Task agent", hint: "Hand it to a task agent to do, in the background" },
+  { to: "message", label: "Message", hint: "Send it to someone as a message" },
 ]
 
 /** A file name out of an item's first line. */
@@ -173,6 +175,11 @@ export function ScratchWindow() {
     const tags = it.links.filter((l) => l.rel === "tag").map((l) => l.value)
     try {
       setError("")
+      if (to === "message") {
+        // The compose box opens with the item in it; nothing is sent until it is sent there.
+        composeMessage({ subject: (it.text.split("\n")[0] ?? "").slice(0, 120), body: it.text })
+        return
+      }
       if (to === "task") {
         const r = await scratch.toTask(it.id)
         setNote(

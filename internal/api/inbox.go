@@ -25,6 +25,8 @@ func (a *API) inboxRoutes() []route {
 	return []route{
 		{"GET", "/api/inbox", r, a.inboxList},
 		{"GET", "/api/inbox/unread", r, a.inboxUnread},
+		{"GET", "/api/inbox/recipients", r, a.inboxRecipients},
+		{"POST", "/api/inbox/{provider}/send", w, a.inboxSend},
 		{"POST", "/api/inbox/{provider}/{id}/read", w, a.inboxRead},
 		{"POST", "/api/inbox/{provider}/{id}/archive", w, a.inboxArchive},
 		{"POST", "/api/inbox/{provider}/{id}/reply", w, a.inboxReply},
@@ -150,4 +152,42 @@ func (a *API) inboxReply(w http.ResponseWriter, r *http.Request) {
 	// Answered is read.
 	_ = p.MarkRead(r.Context(), in.Account, id)
 	a.inboxDone(w, nil)
+}
+
+// inboxRecipients is who a message can go to (for what was typed) and the owner's own
+// addresses it can be sent from.
+func (a *API) inboxRecipients(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	reply(w, 200, map[string]any{
+		"accounts":   a.inbox.Accounts(),
+		"recipients": a.inbox.Recipients(r.Context(), r.URL.Query().Get("q")),
+	})
+}
+
+func (a *API) inboxSend(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Account string `json:"account"`
+		To      string `json:"to"`
+		Kind    string `json:"kind"`
+		Subject string `json:"subject"`
+		Body    string `json:"body"`
+	}
+	p, ok := a.inboxTarget(w, r, &in, func() string { return in.Account })
+	if !ok {
+		return
+	}
+	in.To = strings.TrimSpace(in.To)
+	if in.To == "" || strings.TrimSpace(in.Subject+in.Body) == "" {
+		fail(w, 400, "A message needs someone to go to and something to say.")
+		return
+	}
+	id, err := p.Send(r.Context(), in.Account, inbox.Outgoing{To: in.To, Kind: in.Kind, Subject: strings.TrimSpace(in.Subject), Body: in.Body})
+	if err != nil {
+		inboxFail(w, err)
+		return
+	}
+	reply(w, 200, map[string]any{"id": id})
 }

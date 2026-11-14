@@ -302,3 +302,98 @@ func (t *Tether) Reply(ctx context.Context, account, id string, r Reply) error {
 	_, err = t.Link.Call(ctx, "tether_message_notify", args)
 	return err
 }
+
+// Send writes a new message and wakes the recipient's session when one is running.
+func (t *Tether) Send(ctx context.Context, account string, m Outgoing) (string, error) {
+	if !strings.HasPrefix(m.To, "msg://") {
+		return "", errors.New("the recipient must be a Tether address (msg://…)")
+	}
+	kind := m.Kind
+	switch kind {
+	case "":
+		kind = "notice"
+	case "request", "response", "notice", "status_update", "handoff", "escalation":
+	default:
+		return "", fmt.Errorf("%q is not a kind of Tether message", kind)
+	}
+	body, _ := json.Marshal(map[string]any{"subject": m.Subject, "body": m.Body})
+	raw, err := t.Link.Call(ctx, "tether_message_notify", map[string]any{
+		"from": account, "to": m.To, "kind": kind, "payload_json": string(body),
+	})
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		ID      string `json:"id"`
+		Message struct {
+			ID string `json:"id"`
+		} `json:"message"`
+		Result struct {
+			Message struct {
+				ID string `json:"id"`
+			} `json:"message"`
+		} `json:"result"`
+	}
+	_ = json.Unmarshal(raw, &out)
+	for _, id := range []string{out.ID, out.Message.ID, out.Result.Message.ID} {
+		if id != "" {
+			return id, nil
+		}
+	}
+	return "", nil
+}
+
+// Recipients are the registry's active agents matching the query (the registry's own
+// search: a substring of the name, title, role, description, project or address), with
+// names that start with it first.
+func (t *Tether) Recipients(ctx context.Context, query string) ([]Recipient, error) {
+	q := strings.TrimPrefix(strings.TrimSpace(query), "@")
+	args := map[string]any{"kind": "agent", "limit": 40}
+	if q != "" {
+		args["query"] = q
+	}
+	raw, err := t.Link.CallAll(ctx, "tether_registry_search", args)
+	if err != nil {
+		return nil, err
+	}
+	type row struct {
+		URN   string `json:"urn"`
+		Name  string `json:"display_name"`
+		Title string `json:"title"`
+		Role  string `json:"role"`
+		About string `json:"description"`
+	}
+	var rows []row
+	if json.Unmarshal(raw, &rows) != nil {
+		var wrapped map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &wrapped); err != nil {
+			return nil, fmt.Errorf("tether_registry_search: %w", err)
+		}
+		for _, key := range []string{"profiles", "results", "items", "rows", "agents"} {
+			if json.Unmarshal(wrapped[key], &rows) == nil && len(rows) > 0 {
+				break
+			}
+		}
+	}
+	var first, rest []Recipient
+	low := strings.ToLower(q)
+	for _, r := range rows {
+		if r.URN == "" {
+			continue
+		}
+		about := r.About
+		if about == "" && r.Title != r.Name {
+			about = r.Title
+		}
+		if len(about) > 160 {
+			about = about[:160] + "…"
+		}
+		p := Recipient{Provider: t.ID(), Address: r.URN, Name: r.Name, Role: r.Role, About: about}
+		if low == "" || strings.HasPrefix(strings.ToLower(r.Name), low) {
+			first = append(first, p)
+		} else {
+			rest = append(rest, p)
+		}
+	}
+	return append(first, rest...), nil
+}
