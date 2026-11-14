@@ -17,6 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/hollis-labs/basalisk/internal/macshell"
 	"github.com/hollis-labs/basalisk/internal/terminal"
@@ -72,7 +73,9 @@ func (b *basalisk) desktop(ctx context.Context) error {
 		Name:        "Basalisk",
 		Description: "A personal operating system for your data, tools and connections",
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			// Closing the window puts it away; the app (and the assistant in it) keeps running
+			// until it is quit.
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 			ActivationPolicy: policy,
 		},
 		Logger:   slog.Default(),
@@ -97,6 +100,22 @@ func (b *basalisk) desktop(ctx context.Context) error {
 	}
 	win := app.Window.NewWithOptions(options)
 
+	// The window's close button hides it: Basalisk stays in the Dock and goes on working
+	// (mail triage, task agents). Clicking its Dock icon brings the window back; Quit quits.
+	quitting := false
+	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		if quitting || background {
+			return
+		}
+		win.Hide()
+		e.Cancel()
+	})
+	app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) {
+		win.Show()
+		win.Focus()
+	})
+	app.Event.OnApplicationEvent(events.Mac.ApplicationWillTerminate, func(*application.ApplicationEvent) { quitting = true })
+
 	// Shell events reach the page as a DOM event, so the UI updates without polling. The
 	// script goes through the shell's own evaluate call: Wails' ExecJS waits for a Wails
 	// runtime that a page loaded from the loopback server never has. Each one is sent from
@@ -117,6 +136,7 @@ func (b *basalisk) desktop(ctx context.Context) error {
 		for time.Now().Before(deadline) {
 			if ptr := win.NativeWindow(); ptr != nil {
 				macshell.Attach(ptr)
+				startAtLoginOnce(b, background)
 				return
 			}
 			select {
@@ -239,4 +259,27 @@ func devNull(st os.FileInfo) (os.FileInfo, bool) {
 		return st, false
 	}
 	return st, os.SameFile(st, null)
+}
+
+// startAtLoginOnce makes Basalisk a login item the first time the installed app runs, so
+// the assistant is there without being started by hand. It is done once: a marker beside
+// the app's data records it, so turning it off later (the desktop menu, or System Settings)
+// stays off.
+func startAtLoginOnce(b *basalisk, background bool) {
+	if background || b.shell == nil {
+		return
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	marker := filepath.Join(home, ".local", "share", "basalisk", "login-item-set")
+	if _, err := os.Stat(marker); err == nil {
+		return
+	}
+	if err := b.shell.SetLoginItem(true); err != nil {
+		slog.Info("desktop: not made a login item", "reason", err.Error())
+		return // not the installed bundle, or refused: try again next start
+	}
+	_ = os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
 }

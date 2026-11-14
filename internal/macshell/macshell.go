@@ -38,6 +38,8 @@ type Controller interface {
 	Unminimize(pid, index int) error
 	// SetFixMinimized restores a window when an app is activated with all of them minimized.
 	SetFixMinimized(on bool) error
+	// SetLoginItem makes the app start when the owner logs in, or stops that.
+	SetLoginItem(on bool) error
 	// RequestPermission shows the system prompt for "accessibility" or "input-monitoring".
 	RequestPermission(kind string) error
 	// Events returns the log entries after the given sequence number.
@@ -77,13 +79,15 @@ type Status struct {
 	TapInstalled   bool     `json:"tap_installed"`
 	// TapLevel is "hid" when the tap sits ahead of other apps' global hot keys, "session"
 	// when it could only be placed behind them (they will still fire), "" with no tap.
-	TapLevel     string      `json:"tap_level"`
-	FixMinimized bool        `json:"fix_minimized"`
-	Permissions  Permissions `json:"permissions"`
-	Screen       Screen      `json:"screen"`
-	Identity     Identity    `json:"identity"`
-	Chords       Chords      `json:"chords"`
-	LastSeq      int64       `json:"last_seq"`
+	TapLevel     string `json:"tap_level"`
+	FixMinimized bool   `json:"fix_minimized"`
+	// LoginItem says whether the app starts at login.
+	LoginItem   bool        `json:"login_item"`
+	Permissions Permissions `json:"permissions"`
+	Screen      Screen      `json:"screen"`
+	Identity    Identity    `json:"identity"`
+	Chords      Chords      `json:"chords"`
+	LastSeq     int64       `json:"last_seq"`
 }
 
 // Permissions are the privacy grants the native layer depends on.

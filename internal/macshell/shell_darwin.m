@@ -7,6 +7,7 @@
 // thread and run loop so key handling never waits on the UI; it reads only atomics and the
 // combo table. Accessibility calls block on other apps, so they run on the caller's thread.
 
+#import <ServiceManagement/ServiceManagement.h>
 #import <Cocoa/Cocoa.h>
 #import <Carbon/Carbon.h>
 #import <WebKit/WebKit.h>
@@ -543,6 +544,24 @@ int bslUnminimize(int pid, int index) {
 }
 
 void bslSetFixMinimized(int on) { atomic_store(&gFixMin, on ? 1 : 0); }
+
+// Start at login, as a login item of this app bundle (System Settings, General, Login Items).
+int bslLoginItem(void) {
+	if (@available(macOS 13.0, *)) {
+		return [SMAppService mainAppService].status == SMAppServiceStatusEnabled ? 1 : 0;
+	}
+	return -1;
+}
+
+int bslSetLoginItem(int on) {
+	if (@available(macOS 13.0, *)) {
+		NSError *err = nil;
+		BOOL ok = on ? [[SMAppService mainAppService] registerAndReturnError:&err]
+		             : [[SMAppService mainAppService] unregisterAndReturnError:&err];
+		return ok ? 0 : -2;
+	}
+	return -1;
+}
 
 // ---- The page: snapshot and evaluate (how an agent sees and drives the real window) ----
 

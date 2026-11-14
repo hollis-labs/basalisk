@@ -4,7 +4,7 @@ package macshell
 
 /*
 #cgo CFLAGS: -fobjc-arc -mmacosx-version-min=12.0
-#cgo LDFLAGS: -framework Cocoa -framework Carbon -framework ApplicationServices -framework WebKit
+#cgo LDFLAGS: -framework Cocoa -framework Carbon -framework ApplicationServices -framework WebKit -framework ServiceManagement
 #include <stdlib.h>
 #include "shell_darwin.h"
 */
@@ -157,6 +157,7 @@ func (s *Shell) Status() Status {
 		Swallow:        s.swallow,
 		Combos:         append([]string{}, s.combos...),
 		FixMinimized:   s.fixMin,
+		LoginItem:      C.bslLoginItem() == 1,
 		Chords:         Chords{Escape: EscapeChord, ToggleKiosk: ToggleKioskChord, ToggleMenuBar: ToggleMenuBarChord},
 	}
 	attached := s.attached
@@ -284,6 +285,19 @@ func (s *Shell) Unminimize(pid, index int) error {
 		return errors.New("no such window")
 	default:
 		return errors.New("the app refused to restore the window")
+	}
+}
+
+// SetLoginItem implements Controller.
+func (s *Shell) SetLoginItem(on bool) error {
+	switch C.bslSetLoginItem(cbool(on)) {
+	case 0:
+		s.log.add("login-item", "start at login "+onOff(on))
+		return nil
+	case -1:
+		return errors.New("starting at login needs macOS 13 or later")
+	default:
+		return errors.New("macOS refused: the app must be the installed bundle (in /Applications), and Login Items may need allowing in System Settings")
 	}
 }
 

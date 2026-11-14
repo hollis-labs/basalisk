@@ -252,29 +252,51 @@ func (t *Tether) Archive(ctx context.Context, account, id string, archived bool)
 	return err
 }
 
-// Reply answers the sender of a message, in its thread, and wakes the sender's session when
-// one is running. Who it goes to is read from the message itself, not from the request.
-func (t *Tether) Reply(ctx context.Context, account, id string, r Reply) error {
+// Get reads one message whole. It must have been sent to the account.
+func (t *Tether) Get(ctx context.Context, account, id string) (Item, error) {
+	e, err := t.envelope(ctx, account, id)
+	if err != nil {
+		return Item{}, err
+	}
+	items := []Item{t.item(e)}
+	t.name(ctx, items)
+	return items[0], nil
+}
+
+func (t *Tether) envelope(ctx context.Context, account, id string) (envelope, error) {
 	raw, err := t.Link.CallAll(ctx, "tether_message_get", map[string]any{"message_id": id, "as": account})
 	if err != nil {
-		return err
+		return envelope{}, err
 	}
 	var got struct {
 		Message *envelope `json:"message"`
 		envelope
 	}
 	if err := json.Unmarshal(raw, &got); err != nil {
-		return fmt.Errorf("tether_message_get: %w", err)
+		return envelope{}, fmt.Errorf("tether_message_get: %w", err)
 	}
 	e := got.envelope
 	if got.Message != nil {
 		e = *got.Message
 	}
 	if e.ID == "" || e.From == "" {
-		return errors.New("that message could not be read")
+		return envelope{}, errors.New("that message could not be read")
 	}
 	if e.To != "" && e.To != account {
-		return ErrUnknown
+		return envelope{}, ErrUnknown
+	}
+	if e.To == "" {
+		e.To = account
+	}
+	return e, nil
+}
+
+// Reply answers the sender of a message, in its thread, and wakes the sender's session when
+// one is running. Who it goes to is read from the message itself, not from the request.
+func (t *Tether) Reply(ctx context.Context, account, id string, r Reply) error {
+	e, err := t.envelope(ctx, account, id)
+	if err != nil {
+		return err
 	}
 	orig := t.item(e)
 	subject := orig.Subject
@@ -282,6 +304,9 @@ func (t *Tether) Reply(ctx context.Context, account, id string, r Reply) error {
 		subject = "re: " + subject
 	}
 	payload := map[string]any{"subject": subject, "body": r.Body}
+	for k, v := range r.Extra {
+		payload[k] = v
+	}
 	if r.Choice != "" {
 		payload["choice"] = r.Choice
 		if orig.Ask != nil {
@@ -316,10 +341,19 @@ func (t *Tether) Send(ctx context.Context, account string, m Outgoing) (string, 
 	default:
 		return "", fmt.Errorf("%q is not a kind of Tether message", kind)
 	}
-	body, _ := json.Marshal(map[string]any{"subject": m.Subject, "body": m.Body})
-	raw, err := t.Link.Call(ctx, "tether_message_notify", map[string]any{
-		"from": account, "to": m.To, "kind": kind, "payload_json": string(body),
-	})
+	payload := map[string]any{"subject": m.Subject, "body": m.Body}
+	for k, v := range m.Extra {
+		payload[k] = v
+	}
+	body, _ := json.Marshal(payload)
+	args := map[string]any{"from": account, "to": m.To, "kind": kind, "payload_json": string(body)}
+	if m.Thread != "" {
+		args["thread_id"] = m.Thread
+	}
+	if m.InReplyTo != "" {
+		args["in_reply_to"] = m.InReplyTo
+	}
+	raw, err := t.Link.Call(ctx, "tether_message_notify", args)
 	if err != nil {
 		return "", err
 	}

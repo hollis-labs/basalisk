@@ -31,6 +31,7 @@ func (a *API) shellRoutes() []route {
 		route{"POST", "/api/shell/menu-bar", w, a.shellMenuBar},
 		route{"POST", "/api/shell/swallow", w, a.shellSwallow},
 		route{"POST", "/api/shell/fix-minimized", w, a.shellFixMinimized},
+		route{"POST", "/api/shell/login-item", w, a.shellLoginItem},
 		route{"POST", "/api/shell/windows/unminimize", w, a.shellUnminimize},
 		route{"POST", "/api/shell/permissions", w, a.shellPermission},
 	)
@@ -97,6 +98,16 @@ func (a *API) shellSwallow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.shellDone(w, a.shell.SetSwallow(in.On, in.Combos))
+}
+
+func (a *API) shellLoginItem(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		On bool `json:"on"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	a.shellDone(w, a.shell.SetLoginItem(in.On))
 }
 
 func (a *API) shellFixMinimized(w http.ResponseWriter, r *http.Request) {

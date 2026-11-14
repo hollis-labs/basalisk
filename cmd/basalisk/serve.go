@@ -21,6 +21,7 @@ import (
 
 	"github.com/hollis-labs/basalisk/internal/agent"
 	"github.com/hollis-labs/basalisk/internal/api"
+	"github.com/hollis-labs/basalisk/internal/assist"
 	"github.com/hollis-labs/basalisk/internal/collab"
 	"github.com/hollis-labs/basalisk/internal/feeds"
 	"github.com/hollis-labs/basalisk/internal/hostguard"
@@ -142,7 +143,22 @@ func (b *basalisk) serve(ctx context.Context) error {
 			addresses = []string{story.RoundFrom}
 		}
 		a.EnableCollab(&collab.Store{Link: link})
-		a.EnableInbox(inbox.New(&inbox.Tether{Link: link, Addresses: addresses}))
+		ownerMail := inbox.New(&inbox.Tether{Link: link, Addresses: addresses})
+		a.EnableInbox(ownerMail)
+		// The assistant acts on the owner's mail, and records what it does in their name.
+		if agentRT != nil && scratchPath != "" {
+			logPath := filepath.Join(filepath.Dir(scratchPath), "assist.db")
+			if log, err := assist.Open(ctx, logPath); err != nil {
+				slog.Warn("the assistant's mail tools are off: its activity log could not be opened", "path", logPath, "err", err)
+			} else {
+				a.EnableAssist(log)
+				agentRT.AddTools(agent.OwnerTools(ownerMail, log))
+				go func() {
+					<-ctx.Done()
+					_ = log.Close()
+				}()
+			}
+		}
 	}
 	// Story: scripts and storyboards, kept in Caster's "story" namespace through the same
 	// gateway, with a working copy beside the database (internal/story).

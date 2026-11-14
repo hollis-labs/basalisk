@@ -64,6 +64,8 @@ type Reply struct {
 	Body string
 	// Choice is the id of the option picked, when the item asked for one.
 	Choice string
+	// Extra is added to the message's payload (who sent it on the owner's behalf).
+	Extra map[string]any
 }
 
 // Outgoing is a new message from the owner.
@@ -72,6 +74,11 @@ type Outgoing struct {
 	Kind    string // the provider's kind; "" means its plain one
 	Subject string
 	Body    string
+	// Thread and InReplyTo join an existing conversation, when set.
+	Thread    string
+	InReplyTo string
+	// Extra is added to the message's payload (who sent it on the owner's behalf).
+	Extra map[string]any
 }
 
 // Recipient is someone a message can be sent to.
@@ -90,6 +97,8 @@ type Provider interface {
 	// Accounts are the owner's addresses there.
 	Accounts() []string
 	List(ctx context.Context, f Filter) ([]Item, error)
+	// Get is one message, whole, read from the provider (not marked read).
+	Get(ctx context.Context, account, id string) (Item, error)
 	// Unread counts what is unread and not archived.
 	Unread(ctx context.Context) (int, error)
 	MarkRead(ctx context.Context, account, id string) error
@@ -189,4 +198,15 @@ func (in *Inbox) Recipients(ctx context.Context, query string) []Recipient {
 		}
 	}
 	return out
+}
+
+// First is the first provider and its first account: where the owner's mail goes out from
+// when nothing says otherwise. ok is false when there is none.
+func (in *Inbox) First() (p Provider, account string, ok bool) {
+	for _, p := range in.providers {
+		if a := p.Accounts(); len(a) > 0 {
+			return p, a[0], true
+		}
+	}
+	return nil, "", false
 }

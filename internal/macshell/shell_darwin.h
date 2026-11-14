@@ -50,6 +50,10 @@ char *bslWindowsJSON(void);
 // bslUnminimize returns 0, -1 no permission, -2 no such window, -3 the app refused.
 int bslUnminimize(int pid, int index);
 void bslSetFixMinimized(int on);
+// Start at login (macOS 13+): 1 on, 0 off, -1 not available here.
+int bslLoginItem(void);
+// Returns 0 when done, -1 when not available, -2 when the system refused.
+int bslSetLoginItem(int on);
 
 // bslSnapshotPNG renders the web view to a PNG. The caller frees *out. Returns the length,
 // or -1 when there is no web view or the snapshot failed or timed out.

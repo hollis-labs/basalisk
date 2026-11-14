@@ -9,6 +9,7 @@ import {
   Minimize,
   Minus,
   PictureInPicture2,
+  Power,
   Search,
   Settings,
   Square,
@@ -1074,6 +1075,18 @@ function DeskMenu({
               )}
               <span>{status.kiosk ? "Leave kiosk" : "Kiosk mode"}</span>
               <kbd className="desk-menu-hint">⌃⌥⌘F</kbd>
+            </button>
+          )}
+          {status?.available && (
+            <button
+              type="button"
+              role="menuitem"
+              title="Basalisk starts when you log in, so the assistant is always there. Closing the window only puts it away; Quit stops it."
+              onClick={pick(() => void shell.loginItem(!status.login_item).catch(() => undefined))}
+            >
+              <Power aria-hidden="true" size={15} strokeWidth={1.6} />
+              <span>Start at login</span>
+              <kbd className="desk-menu-hint">{status.login_item ? "on" : "off"}</kbd>
             </button>
           )}
           <hr />
