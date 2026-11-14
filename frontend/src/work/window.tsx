@@ -10,6 +10,7 @@ import { Board } from "./board"
 import { Calendar } from "./calendar"
 import { Canvas } from "./canvas"
 import { Detail } from "./detail"
+import { Flow } from "./flow"
 import { Outline } from "./outline"
 import { ago, message, slug } from "./util"
 import "./work.css"
@@ -205,6 +206,7 @@ const NEW_VIEWS = [
   { view: "calendar", title: "Calendar" },
   { view: "outline", title: "Outline" },
   { view: "canvas", title: "Canvas" },
+  { view: "flow", title: "Flow", rel: ["leads-to", "depends-on", "appears-in"] },
 ]
 
 function SpaceView({ ws, back }: { ws: string; back: () => void }) {
@@ -299,7 +301,8 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
                   onClick={async () => {
                     setAddingView(false)
                     try {
-                      const kindsShown = sp.views[0]?.kinds ?? []
+                      // A flow is about links across kinds: it starts with every kind.
+                      const kindsShown = nv.view === "flow" ? [] : (sp.views[0]?.kinds ?? [])
                       const r = await work.newView(ws, { ...nv, kinds: kindsShown })
                       setViewId(r.id)
                     } catch (e) {
@@ -370,6 +373,16 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
           )}
           {view?.view === "board" || !view ? (
             <Board
+              ws={ws}
+              space={sp}
+              view={view}
+              picked={picked}
+              pick={setPicked}
+              changed={() => void load()}
+              setError={setError}
+            />
+          ) : view.view === "flow" ? (
+            <Flow
               ws={ws}
               space={sp}
               view={view}

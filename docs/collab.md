@@ -106,7 +106,8 @@ it draws plainly.
   shape blurred when scaled).
 - **Layout.** A diagram whose nodes have no `x` and `y` is laid out when it opens: ranked
   along the flow (loops left out), each lane in its own band of columns, a long lane wrapping
-  back like a snake after three columns. **Tidy →** and **Tidy ↓** do the same to any diagram
+  back like a snake after three columns, a slot of more than four nodes splits into columns, and
+  lanes wrap into rows when a row gets long. **Tidy →** and **Tidy ↓** do the same to any diagram
   (left to right, top to bottom). Ids are stable; the comparison goes by id.
 
 The window: the canvas fills it, and the controls float over it: the title and the list's

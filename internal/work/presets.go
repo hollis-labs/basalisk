@@ -106,6 +106,7 @@ func writerPreset() Preset {
 			{View: "board", Title: "Board", Kinds: []string{"part", "chapter", "scene"}, GroupBy: "stage"},
 			{View: "board", Title: "Codex", Kinds: codex, GroupBy: "kind"},
 			{View: "canvas", Title: "Canvas", Kinds: append(append([]string{}, manuscript...), codex...)},
+			{View: "flow", Title: "Plot", Kinds: []string{"chapter", "scene", "character", "location"}, Rel: []string{"leads-to", "appears-in"}},
 		},
 	}
 }

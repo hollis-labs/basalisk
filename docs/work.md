@@ -9,7 +9,7 @@ the task is CW-20261114-0076. It generalizes Story (`docs/story.md`), which stay
 
 Built so far: step 1 (the engine, Board, Detail, the Content app), step 2 (Calendar, the
 publication log, material by reference) and step 3 (Outline, the Writer app, links both
-ways) and step 4 (Canvas). Flow, Planner, and rounds and agents follow.
+ways), step 4 (Canvas) and step 5 (Flow). Planner, and rounds and agents follow.
 
 ## Where it is kept
 
@@ -215,6 +215,29 @@ stay as they are.
   applied to the view as it is now, so a change made in another window is not written over;
   other layout keys (an outline's `order`) are kept. Coordinates are whole plane units.
 - Any workspace can have a canvas (the header's **+**); a new Writer workspace has one.
+
+## Step 5: Flow
+
+- The items as nodes and their typed links as edges, drawn by the Diagram's renderer
+  (`frontend/src/apps/diagram`): cards with the kind's icon and colour, the kind and stage as
+  the subtitle, edges routed at right angles, the desktop theme's colours and the blueprint
+  grid. For plot lines, branching scenes and dependencies.
+- The view's `rel` are the relations drawn (chips: leads to, depends on, appears in, uses,
+  relates; a new flow starts with the first three); each has its own line, and the legend
+  names them. Only items with a drawn link are shown; **unlinked (n)** shows the others, to
+  link them (kept as `filter.unlinked`). The kind chips choose the kinds, as elsewhere; a new
+  flow starts with every kind.
+- **Lanes** (`group_by`): none, by kind, by stage or by parent; lanes wrap into rows.
+- Drag a node to place it: the place is kept in the view's `layout.cards`, patched by id
+  like the canvas's. **Tidy →** / **Tidy ↓** lay everything out (the Diagram's layout: ranks
+  along the links, a band per lane, long lanes snake-wrap, piles split into columns) and keep
+  every place.
+- Select a node, then drag from its dot to another node: the link (the relation chosen in
+  **New links**) is added to the source item's `links`, a new revision. Select an edge (it
+  says what it joins) and press Delete or **Remove link**: the link is taken out of the
+  source item. Clicking a node opens its detail.
+- A new Writer workspace gets a **Plot** flow (chapters, scenes, characters, locations;
+  leads to and appears in).
 
 ## Keeping in step with Caster
 

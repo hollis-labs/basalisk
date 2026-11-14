@@ -13,6 +13,11 @@ const GAP_NODE = 60 // between nodes of a rank
 const GAP_LANE = 96 // extra room between lanes
 const GAP_BAND = 100 // between the bands of a wrapped lane
 const WRAP = 3 // slots a lane takes side by side before it wraps
+const STACK = 4 // nodes a slot stacks before it splits into another column
+const ROW_LR = 2600 // how long a row of lanes may grow before the next lane starts a new row
+const ROW_TB = 2000
+const GAP_ROW = 140 // between rows of lanes
+const TOP = 110 // room above a lane's nodes for its title
 
 /** Ranks by longest path from the sources; edges that close a cycle are ignored. */
 function ranks(nodes: DNode[], edges: { from: string; to: string }[]): Map<string, number> {
@@ -110,47 +115,74 @@ export function tidy(dia: Diagram, dir: Direction = "LR"): Diagram {
   const along = (n: DNode) => (dir === "LR" ? nodeSize(n).w : nodeSize(n).h)
   const across = (n: DNode) => (dir === "LR" ? nodeSize(n).h : nodeSize(n).w)
   const span = (list: DNode[]) => list.reduce((a, n) => a + across(n) + GAP_NODE, -GAP_NODE)
-  const placed = new Map<string, { x: number; y: number }>()
-  const ORIGIN = 60
-  const TOP = 110 // room above for a lane's title
-  let lanePos = ORIGIN
+  // Each lane is laid out on its own (along the flow, across it), then the lanes are put in
+  // rows that wrap when a row gets too long, so many lanes do not make one thin strip.
+  const local = new Map<string, { a: number; c: number }>()
+  const laneSize: { lane: string; a: number; c: number }[] = []
   for (const lane of laneIds) {
-    const own = slots.filter((s) => laneOf((bySlot.get(s) ?? [])[0]) === lane)
-    const chunks: number[][] = []
-    for (let i = 0; i < own.length; i += WRAP) chunks.push(own.slice(i, i + WRAP))
-    const cols = Math.min(WRAP, own.length)
+    // A slot holding many nodes (a fan-in, things with no links) is split into columns of
+    // at most STACK, side by side, so it does not become one tall pile.
+    const virt: DNode[][] = []
+    for (const s of slots.filter((x) => laneOf((bySlot.get(x) ?? [])[0]) === lane)) {
+      const list = bySlot.get(s) ?? []
+      for (let i = 0; i < list.length; i += STACK) virt.push(list.slice(i, i + STACK))
+    }
+    const chunks: DNode[][][] = []
+    for (let i = 0; i < virt.length; i += WRAP) chunks.push(virt.slice(i, i + WRAP))
+    const cols = Math.min(WRAP, virt.length)
     // A column's size along the flow: the widest node any band puts there.
     const colSize = Array.from({ length: cols }, (_, c) =>
       Math.max(
         0,
         ...chunks.flatMap((ch, b) => {
-          const s = (b % 2 ? [...ch].reverse() : ch)[c]
-          return s === undefined ? [] : (bySlot.get(s) ?? []).map(along)
+          const v = (b % 2 ? [...ch].reverse() : ch)[c]
+          return v ? v.map(along) : []
         }),
       ),
     )
     const colStart = colSize.map((_, c) =>
       colSize.slice(0, c).reduce((a, v) => a + v + GAP_RANK, 0),
     )
-    let bandPos = TOP + ORIGIN
+    let bandPos = TOP
     for (const [b, ch] of chunks.entries()) {
       const seq = b % 2 ? [...ch].reverse() : ch
       // Reversed bands are right-aligned so the snake turns in place.
       const shift = b % 2 ? cols - seq.length : 0
-      const bandSpan = Math.max(...seq.map((s) => span(bySlot.get(s) ?? [])))
-      for (const [i, s] of seq.entries()) {
-        const list = bySlot.get(s) ?? []
+      const bandSpan = Math.max(...seq.map(span))
+      for (const [i, list] of seq.entries()) {
         const c = i + shift
         let a = bandPos + (bandSpan - span(list)) / 2
         for (const n of list) {
-          const off = lanePos + colStart[c] + (colSize[c] - along(n)) / 2
-          placed.set(n.id, dir === "LR" ? { x: off, y: a } : { x: a, y: off })
+          local.set(n.id, { a: colStart[c] + (colSize[c] - along(n)) / 2, c: a })
           a += across(n) + GAP_NODE
         }
       }
       bandPos += bandSpan + GAP_BAND
     }
-    lanePos += colStart[cols - 1] + colSize[cols - 1] + GAP_LANE + GAP_RANK / 2
+    laneSize.push({ lane, a: colStart[cols - 1] + colSize[cols - 1], c: bandPos - GAP_BAND })
+  }
+  const placed = new Map<string, { x: number; y: number }>()
+  const ORIGIN = 60
+  const rowMax = dir === "LR" ? ROW_LR : ROW_TB
+  let pa = ORIGIN
+  let pc = ORIGIN
+  let rowDeep = 0
+  for (const ls of laneSize) {
+    if (pa > ORIGIN && pa + ls.a > ORIGIN + rowMax) {
+      pa = ORIGIN
+      pc += rowDeep + GAP_ROW
+      rowDeep = 0
+    }
+    for (const n of nodes)
+      if (laneOf(n) === ls.lane) {
+        const l = local.get(n.id)
+        if (!l) continue
+        const a = pa + l.a
+        const c = pc + l.c
+        placed.set(n.id, dir === "LR" ? { x: a, y: c } : { x: c, y: a })
+      }
+    pa += ls.a + GAP_LANE + GAP_RANK / 2
+    rowDeep = Math.max(rowDeep, ls.c)
   }
   return {
     ...dia,
