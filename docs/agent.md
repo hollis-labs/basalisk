@@ -99,6 +99,18 @@ read from the gateway in the background when Basalisk starts (starting the gatew
 take a few seconds), so only a message sent in those first seconds goes out without them.
 Without `tether_mcp` configured there are none.
 
+**Described on demand.** The gateway's definitions are long (written as guidance for
+coding agents: about 57 KB for these 18, measured at about 22,500 tokens of every
+request). So the model is not sent them each time. It gets each tool by name with the
+first line of its description, and one more tool, `tether_describe`, which returns the
+full description and arguments of the tools it names, from the list Basalisk already
+holds (no gateway call). The model asks once per tool, the first time it needs it in a
+conversation; after that the definition is in the thread. A definition under 600 bytes
+(the three single-record `get` tools) is sent whole. What goes with every request is now
+about 4.7 KB. A call made with guessed arguments fails at the gateway, and the failure
+says to describe the tool first. The allowlist and the levels are unchanged, and
+`tether_describe` describes only tools on the allowlist.
+
 ## The router
 
 A message is put to a set of rules before any model sees it (`internal/agent/router.go`,
@@ -257,10 +269,8 @@ never logged. Without a gateway and a model the panel opens and says what to set
 
 ## Limits of this slice
 
-- The gateway's tool definitions are long: about 58 KB for the 18 tools, measured at about
-  22,500 tokens, against about 6,500 for the system prompt and every tool of Basalisk's own.
-  They are cached by the provider between steps (a step then costs little), but a
-  conversation picked up after the cache has lapsed pays to write them again.
+- The first use of a Torque or Tesseract tool in a conversation takes one extra step (the
+  model reads its definition first).
 - No Tesseract writes and no mail yet.
 - Tool calls run one after another.
 - No compaction: a very long thread will eventually exceed the model's window. Start a

@@ -563,3 +563,111 @@ func TestServerToolsRunOnTheServerAndOnlyTheListedOnes(t *testing.T) {
 		t.Fatalf("offered to the model: %s", tools)
 	}
 }
+
+// longLink offers tools with long definitions, as the real gateway does.
+type longLink struct{ fakeLink }
+
+var longText = strings.Repeat("Guidance for coding agents that the panel does not need on every request. ", 20)
+
+func (f *longLink) Tools(context.Context) ([]tetherlink.ToolInfo, error) {
+	return []tetherlink.ToolInfo{
+		{Name: "torque_task_list", Description: "**List tasks** with `filters`; ordered by priority.\n" + longText,
+			InputSchema: map[string]any{"type": "object", "properties": map[string]any{"status": map[string]any{"type": "string", "description": longText}}}},
+		{Name: "torque_task_get", Description: "Get a task.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}}}},
+		{Name: "torque_task_create", Description: "Create a task; returns the record.\n" + longText},
+	}, nil
+}
+func (f *longLink) Call(_ context.Context, tool string, args map[string]any) ([]byte, error) {
+	f.calls = append(f.calls, tool)
+	if _, guessed := args["state"]; guessed {
+		return nil, &tetherlink.ToolError{Message: "unknown argument: state"}
+	}
+	return []byte(`{"items":[]}`), nil
+}
+
+func TestLongGatewayDefinitionsAreGivenInOneLineAndDescribedOnDemand(t *testing.T) {
+	link := &longLink{}
+	src := TetherTools(link)
+	src(t.Context())
+	deadline := time.Now().Add(2 * time.Second)
+	for len(src(t.Context())) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	byName := map[string]ServerTool{}
+	for _, tool := range src(t.Context()) {
+		byName[tool.Spec.Name] = tool
+	}
+	if len(byName) != 4 {
+		t.Fatalf("tools: %+v", byName)
+	}
+	list := byName["torque_task_list"].Spec
+	if !strings.HasPrefix(list.Description, "List tasks with filters; ordered by priority. ") || !strings.HasSuffix(list.Description, "(Arguments: tether_describe first.)") || len(list.Description) > 300 {
+		t.Errorf("one line: %q", list.Description)
+	}
+	if schema, _ := json.Marshal(list.InputSchema); string(schema) != `{"additionalProperties":true,"type":"object"}` {
+		t.Errorf("its schema: %s", schema)
+	}
+	// A short definition is sent whole.
+	if get := byName["torque_task_get"].Spec; get.Description != "Get a task." || get.InputSchema["properties"] == nil {
+		t.Errorf("a short one: %+v", get)
+	}
+	// Levels are as before.
+	if byName["torque_task_create"].Spec.Level != LevelWrite || list.Level != LevelRead || byName["tether_describe"].Spec.Level != LevelRead {
+		t.Errorf("levels changed")
+	}
+	// Describing returns the whole definition, for the long ones only.
+	out, err := byName["tether_describe"].Run(t.Context(), map[string]any{"names": []any{"torque_task_list", "cerberus_ssh_exec"}})
+	if err != nil || !strings.Contains(out, "**List tasks** with `filters`") || !strings.Contains(out, `"status"`) || !strings.Contains(out, `"unknown":["cerberus_ssh_exec"]`) {
+		t.Errorf("describe: %v %.200s", err, out)
+	}
+	if _, err := byName["tether_describe"].Run(t.Context(), map[string]any{"names": []any{"torque_task_get"}}); err == nil || !strings.Contains(err.Error(), "torque_task_create, torque_task_list") {
+		t.Errorf("describing a tool that is sent whole: %v", err)
+	}
+	if len(link.calls) != 0 {
+		t.Errorf("describing called the gateway: %v", link.calls)
+	}
+	// A call with guessed arguments fails, and the failure says where the arguments are.
+	if _, err := byName["torque_task_list"].Run(t.Context(), map[string]any{"state": "done"}); err == nil || !strings.Contains(err.Error(), "unknown argument: state") || !strings.Contains(err.Error(), `tether_describe with {"names":["torque_task_list"]}`) {
+		t.Errorf("a guessed call: %v", err)
+	}
+	if out, err := byName["torque_task_list"].Run(t.Context(), map[string]any{"status": "done"}); err != nil || out != `{"items":[]}` {
+		t.Errorf("a good call: %v %s", err, out)
+	}
+}
+
+// With the real gateway's definitions (a file made by hand; skipped without it), say how
+// much is sent with every request now.
+func TestTheRealDefinitionsMeasured(t *testing.T) {
+	raw, err := os.ReadFile(os.Getenv("TETHER_TOOLS_DUMP"))
+	if err != nil {
+		t.Skip("no TETHER_TOOLS_DUMP")
+	}
+	var all []tetherlink.ToolInfo
+	if err := json.Unmarshal(raw, &all); err != nil {
+		t.Fatal(err)
+	}
+	src := TetherTools(dumpLink(all))
+	src(t.Context())
+	deadline := time.Now().Add(2 * time.Second)
+	for len(src(t.Context())) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	before, after := 0, 0
+	for _, info := range all {
+		if _, ok := tetherTools[info.Name]; ok {
+			before += definitionSize(info)
+		}
+	}
+	for _, tool := range src(t.Context()) {
+		schema, _ := json.Marshal(tool.Spec.InputSchema)
+		after += len(tool.Spec.Description) + len(schema)
+		t.Logf("%-26s %4d  %s", tool.Spec.Name, len(tool.Spec.Description)+len(schema), tool.Spec.Description)
+	}
+	t.Logf("sent with every request: %d bytes before, %d now (%d tools)", before, after, len(src(t.Context())))
+}
+
+type dumpLink []tetherlink.ToolInfo
+
+func (d dumpLink) Configured() bool                                             { return true }
+func (d dumpLink) Tools(context.Context) ([]tetherlink.ToolInfo, error)         { return d, nil }
+func (d dumpLink) Call(context.Context, string, map[string]any) ([]byte, error) { return nil, nil }
