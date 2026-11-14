@@ -289,3 +289,83 @@
   background: var(--desk-border);
   color: var(--desk-muted);
 }
+
+/* Task agents: the strip above the running thread, and a task's own window. */
+.agent-tasks {
+  list-style: none;
+  margin: 0;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--desk-border);
+  max-height: 168px;
+  overflow-y: auto;
+}
+.agent-task {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.agent-task-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.agent-task-open:hover {
+  background: var(--desk-hover, rgba(127, 127, 127, 0.14));
+}
+.agent-task-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-task-state {
+  flex: 0 0 auto;
+  opacity: 0.6;
+}
+.agent-task-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
+}
+.agent-task-dot[data-tone="info"] {
+  background: var(--desk-accent, #8b7cf6);
+  opacity: 1;
+  animation: agent-task-pulse 1.4s ease-in-out infinite;
+}
+.agent-task-dot[data-tone="success"] {
+  background: #3fb27f;
+  opacity: 1;
+}
+.agent-task-dot[data-tone="danger"] {
+  background: #e5484d;
+  opacity: 1;
+}
+@keyframes agent-task-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-task-dot[data-tone="info"] {
+    animation: none;
+  }
+}

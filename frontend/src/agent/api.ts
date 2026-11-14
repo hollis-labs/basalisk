@@ -49,6 +49,23 @@ export interface ThreadState {
   thread_id: string
   messages: StoredMessage[]
   active_run: string
+  /** Present when the thread is a task agent's. */
+  task?: TaskInfo
+}
+
+/** A task agent: one piece of work, in a thread of its own (internal/agent/tasks.go). */
+export interface TaskInfo {
+  id: string
+  title: string
+  state: "running" | "done" | "failed" | "stopped" | ""
+  result: string
+  /** Who started it: agent, owner, or trigger:<name>. */
+  origin: string
+  created_at: string
+  updated_at: string
+  reported: boolean
+  /** Its run, while one is going. */
+  active_run?: string
 }
 
 /** What the page tells the agent about the desktop with each message. */
@@ -105,7 +122,10 @@ export interface StreamEvent {
 
 export const agentApi = {
   state: () => request<AgentState>("agent"),
-  thread: () => request<ThreadState>("agent/thread"),
+  thread: (task?: string) =>
+    request<ThreadState>(task ? `agent/thread?id=${encodeURIComponent(task)}` : "agent/thread"),
+  tasks: () => request<{ tasks: TaskInfo[] }>("agent/tasks").then((r) => r.tasks),
+  closeTask: (id: string) => request<void>(`agent/tasks/${encodeURIComponent(id)}`, "DELETE"),
   newThread: () => request<void>("agent/thread", "DELETE"),
   turn: (body: {
     text: string
@@ -113,6 +133,8 @@ export const agentApi = {
     context: DeskSnapshot
     tools: ToolSpec[]
     hints: RouteHints
+    /** A task's thread, for a follow-up to its agent. */
+    thread?: string
   }) => request<{ run_id: string }>("agent/turns", "POST", body),
   cancel: (run: string) => request<void>(`agent/runs/${run}/cancel`, "POST", {}),
   toolResult: (run: string, call_id: string, content: string, is_error: boolean) =>

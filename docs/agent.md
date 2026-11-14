@@ -7,8 +7,8 @@ describe their windows, and it does the rest.
 
 This page describes the runtime, the stream, the panel and the desktop's own tools, the
 apps' tools, Torque and Tesseract through the Tether gateway, the router in front of the
-model, and reflexes. Triggers that start a turn on their own and per-task agents come
-after and plug into what is here.
+model, reflexes, and task agents. Triggers that start a turn on their own come after and
+plug into what is here.
 
 ## Shape
 
@@ -131,6 +131,7 @@ The rules that ship (`internal/agent/rules.json`; `/help` in the panel lists the
 | `/open <app>`, an app's name as the command (`/terminal`, `/notes`), or "open notes", "launch a terminal", "show the browser" | `desktop_open` |
 | `/do <command title or id>`, or a palette command's title on its own ("Tile windows") | `desktop_run_command` (asks, like any use of it) |
 | `/run <command line>` | `terminal_run` (asks every time) |
+| `/task <what to do>` | `task_start`: a task agent takes it (see Task agents) |
 | `/help` | the list |
 | `/new` | a new conversation (handled by the panel itself) |
 
@@ -237,6 +238,33 @@ typed them (not the `<desktop>` block). Token counts per message are not kept, s
 `input_tokens_window`, `cache_read_window` and `output_growth_window` nodes see zeros.
 The engine's other action kinds (dispatch to an agent, schedule, send a message) and its
 event and interval triggers are not wired: nothing here starts a turn by itself yet.
+
+## Task agents
+
+There is one running thread, and beside it any number of task agents: each is handed one
+piece of work, does it by itself in a thread of its own, and reports
+(`internal/agent/tasks.go`, `frontend/src/agent/tasks.ts`). Up to four run at once, at the
+same time as the running thread.
+
+- **Started** by the main agent when the work is many steps you need not watch (its tool
+  `task_start`), or by you: `/task <what to do>`.
+- **What it knows:** only its brief. It does not see the running thread. It has the same
+  tools and asks permission the same way; a question nobody answers in ten minutes counts
+  as no. A task cannot start tasks.
+- **Where you see it:** a line in the strip at the top of the panel (title and state), a
+  card under the call that started it, and a window of its own (click either), which is
+  its conversation. You can say more to it there, which sets it going again.
+- **When it ends:** its state (done, failed, stopped) and its report, which is its last
+  message, are kept on the task. The running thread is told once, in a `<tasks>` block
+  with your next message, and the main agent can ask with `task_status`. The ✕ on its line
+  puts a finished task away; nothing is deleted.
+- **Its tools run in the page** like any run's, whether or not its window is open: the
+  page follows every running task from the moment the desktop is up. With Basalisk closed
+  a task cannot use the desktop; one that was running when Basalisk stopped is marked
+  stopped.
+
+Routes: `GET /api/agent/tasks`, `GET /api/agent/thread?id=<task>`, `thread` on
+`POST /api/agent/turns` (a follow-up), `DELETE /api/agent/tasks/{id}`.
 
 `GET /api/agent/automation` lists both: the rules in the order they are tried, the
 reflexes with how often and when each last fired, the two files your own go in, and why

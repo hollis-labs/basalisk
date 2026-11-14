@@ -11,13 +11,22 @@
  * A card can name a cite reference (`ref`): the cite resolver (the hover cards' cache) then
  * fills the title, status and facts the result did not carry, and Open is the cite opener.
  */
-import { Brain, FileText, Globe, ListChecks, type LucideIcon, Maximize2, Zap } from "lucide-react"
+import {
+  Bot,
+  Brain,
+  FileText,
+  Globe,
+  ListChecks,
+  type LucideIcon,
+  Maximize2,
+  Zap,
+} from "lucide-react"
 import type { DeskAPI } from "../desktop/registry"
 import { openFileRef } from "./files"
 import { canResolve, openCite, type RefIdentity, useRefState } from "./index"
 import "./cards.css"
 
-export type CardKind = "torque.task" | "tesseract.item" | "file" | "page" | "frag"
+export type CardKind = "torque.task" | "tesseract.item" | "file" | "page" | "frag" | "agent.task"
 type Tone = "neutral" | "info" | "success" | "warning" | "danger"
 
 export interface ResultCard {
@@ -219,6 +228,7 @@ const ICONS: Record<CardKind, LucideIcon> = {
   file: FileText,
   page: Globe,
   frag: Zap,
+  "agent.task": Bot,
 }
 const LABELS: Record<CardKind, string> = {
   "torque.task": "Torque task",
@@ -226,6 +236,7 @@ const LABELS: Record<CardKind, string> = {
   file: "File",
   page: "Web page",
   frag: "Frag",
+  "agent.task": "Task agent",
 }
 
 /** The card for one tool call row, or nothing. */

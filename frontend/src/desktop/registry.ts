@@ -183,6 +183,13 @@ export function registerApp(def: AppDef) {
 export const allApps = () => [...apps.values()]
 export const appById = (id: string) => apps.get(id)
 
+const startups: ((desk: DeskAPI) => void)[] = []
+/** Something to run once, when the desktop is up and its API can be used. */
+export function registerStartup(fn: (desk: DeskAPI) => void) {
+  startups.push(fn)
+}
+export const allStartups = () => [...startups]
+
 export function registerCommands(list: Command[]) {
   for (const c of list) commands.set(c.id, c)
 }

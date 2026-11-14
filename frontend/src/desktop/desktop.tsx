@@ -40,6 +40,7 @@ import {
   type AppDef,
   allApps,
   allCommands,
+  allStartups,
   appById,
   type ConfirmOptions,
   contextDescriber,
@@ -315,6 +316,14 @@ export function Desktop() {
     return () => {
       delete host.basalisk
     }
+  }, [desk])
+
+  // What asked to be run once the desktop is up (registerStartup).
+  const started = useRef(false)
+  useEffect(() => {
+    if (started.current) return
+    started.current = true
+    for (const fn of allStartups()) fn(desk)
   }, [desk])
 
   // References: learn what the server resolves, and open a record in a Notes window.

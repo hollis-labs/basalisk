@@ -2,11 +2,18 @@
  * The agent: one assistant beside the windows (docs/agent.md). It registers a side panel,
  * the command that summons it, and the desktop's tools (tools.ts).
  */
-import { Sparkles } from "lucide-react"
+import { Bot, Sparkles } from "lucide-react"
 import { nativeBrowser } from "../api/browser"
-import { type DeskAPI, registerCommands, registerPanel } from "../desktop/registry"
-import { AgentPanel, FOCUS_EVENT } from "./panel"
+import {
+  type DeskAPI,
+  registerApp,
+  registerCommands,
+  registerPanel,
+  registerStartup,
+} from "../desktop/registry"
+import { AgentPanel, FOCUS_EVENT, TaskWindow } from "./panel"
 import { noteContext, start } from "./session"
+import { startTasks } from "./tasks"
 import "./contexts"
 import "./tools"
 
@@ -16,6 +23,23 @@ registerPanel({
   width: 400,
   render: ({ close }) => <AgentPanel close={close} />,
 })
+
+// A task agent's own window: its conversation, beside the others (docs/agent.md).
+registerApp({
+  id: "agent-task",
+  title: "Task agent",
+  icon: Bot,
+  menu: false,
+  size: [460, 560],
+  bare: true,
+  multi: true,
+  render: ({ args }) =>
+    typeof args.task === "string" ? <TaskWindow task={args.task} /> : <p>No task.</p>,
+})
+
+// Task agents are followed from the moment the desktop is up, panel open or not: this
+// page runs the tools they ask for.
+registerStartup(startTasks)
 
 /** Open the panel and give it the keyboard, noting first what the owner was looking at. */
 async function summon(desk: DeskAPI) {

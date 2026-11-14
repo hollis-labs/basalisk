@@ -1,34 +1,138 @@
 /** The agent's panel: the running thread, what it is doing, and a box to talk to it. */
 import { ArrowUp, ChevronRight, Plus, Square, X } from "lucide-react"
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { ResultCardView } from "../cite/cards"
 import { Markdown } from "../cite/ui"
 import { useDesk } from "../desktop/context"
 import { SlashMenu } from "../slash/menu"
 import type { DeskSnapshot } from "./api"
-import {
-  type Approval,
-  answer,
-  type Item,
-  newThread,
-  noteContext,
-  send,
-  start,
-  stop,
-  useAgentSession,
-} from "./session"
+import { type AgentSession, type Approval, type Item, mainSession, taskSession } from "./session"
+import { closeTask, openTask, toneOf, useTasks } from "./tasks"
 import { describeCall } from "./tools"
 import "./agent.css"
 
 /** Asks the open panel to take the keyboard (the shortcut, when the panel is already open). */
 export const FOCUS_EVENT = "basalisk:agent-focus"
 
+/** The session the parts below talk to: the running thread's, or a task's. */
+const SessionContext = createContext<AgentSession>(mainSession)
+
 export function AgentPanel({ close }: { close: () => void }) {
+  const s = mainSession.use()
+  return (
+    <Conversation
+      session={mainSession}
+      draftKey="basalisk.agent.draft"
+      summoned
+      head={
+        <header className="agent-head">
+          <span className="agent-title">Agent</span>
+          {s.state?.model && <span className="agent-model">{s.state.model}</span>}
+          <span className="agent-spacer" />
+          <button
+            type="button"
+            className="agent-icon"
+            title="New conversation"
+            disabled={!!s.run || !s.items.length}
+            onClick={() => void mainSession.newThread()}
+          >
+            <Plus size={14} />
+          </button>
+          <button type="button" className="agent-icon" title="Close" onClick={close}>
+            <X size={14} />
+          </button>
+        </header>
+      }
+      above={<TaskStrip />}
+      empty="Ask about what is in front of you, or ask for something to be done. The agent sees which window has focus and what you have selected."
+      placeholder="Ask, or say what to do"
+    />
+  )
+}
+
+/** The task agents, above the running thread: one line each, opening the task's window. */
+function TaskStrip() {
   const desk = useDesk()
-  const s = useAgentSession()
+  const tasks = useTasks()
+  if (!tasks.length) return null
+  return (
+    <ul className="agent-tasks" aria-label="Task agents">
+      {tasks.slice(0, 6).map((t) => (
+        <li key={t.id} className="agent-task" data-state={t.state}>
+          <button
+            type="button"
+            className="agent-task-open"
+            title="Open this task's window"
+            onClick={() => openTask(desk, t.id, t.title)}
+          >
+            <span className="agent-task-dot" data-tone={toneOf(t.state)} />
+            <span className="agent-task-title">{t.title}</span>
+            <span className="agent-task-state">{t.state}</span>
+          </button>
+          {t.state !== "running" && (
+            <button
+              type="button"
+              className="agent-icon"
+              title="Put this task away"
+              onClick={() => void closeTask(t.id)}
+            >
+              <X size={12} />
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** A task agent's window: its own conversation, which can be followed up. */
+export function TaskWindow({ task }: { task: string }) {
+  const session = taskSession(task)
+  const s = session.use()
+  const listed = useTasks().find((t) => t.id === task)
+  const info = listed ?? s.task
+  return (
+    <Conversation
+      session={session}
+      draftKey={`basalisk.agent.draft.${task}`}
+      head={
+        <header className="agent-head">
+          <span className="agent-task-dot" data-tone={toneOf(info?.state ?? "")} />
+          <span className="agent-title">{info?.title ?? "Task"}</span>
+          <span className="agent-model">{info?.state}</span>
+        </header>
+      }
+      empty="This task has nothing in it yet."
+      placeholder="Say more to this task's agent"
+    />
+  )
+}
+
+function Conversation({
+  session,
+  draftKey,
+  head,
+  above,
+  empty,
+  placeholder,
+  summoned,
+}: {
+  session: AgentSession
+  /** Where the unsent text is kept across reloads. */
+  draftKey: string
+  head: React.ReactNode
+  above?: React.ReactNode
+  empty: string
+  placeholder: string
+  /** The panel: takes the keyboard when summoned, and offers the slash commands. */
+  summoned?: boolean
+}) {
+  const desk = useDesk()
+  const s = session.use()
+  const { start, noteContext, send, stop } = session
   const [draft, setDraft] = useState(() => {
     try {
-      return window.sessionStorage.getItem("basalisk.agent.draft") ?? ""
+      return window.sessionStorage.getItem(draftKey) ?? ""
     } catch {
       return ""
     }
@@ -39,15 +143,16 @@ export function AgentPanel({ close }: { close: () => void }) {
 
   useEffect(() => {
     void start(desk)
-  }, [desk])
+  }, [desk, start])
 
   // Take the keyboard when summoned.
   useEffect(() => {
+    if (!summoned) return
     const focus = () => box.current?.focus()
     focus()
     window.addEventListener(FOCUS_EVENT, focus)
     return () => window.removeEventListener(FOCUS_EVENT, focus)
-  }, [])
+  }, [summoned])
 
   // The context follows the windows while the panel is open.
   useEffect(() => {
@@ -58,15 +163,15 @@ export function AgentPanel({ close }: { close: () => void }) {
       last = now
       void noteContext()
     })
-  }, [desk])
+  }, [desk, noteContext])
 
   useEffect(() => {
     try {
-      window.sessionStorage.setItem("basalisk.agent.draft", draft)
+      window.sessionStorage.setItem(draftKey, draft)
     } catch {
       // Not kept.
     }
-  }, [draft])
+  }, [draft, draftKey])
 
   // Stay at the bottom while the answer grows, unless the owner scrolled up to read.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the content changes
@@ -96,112 +201,94 @@ export function AgentPanel({ close }: { close: () => void }) {
 
   const ready = !!s.state?.ready
   return (
-    <div
-      className="agent"
-      // What they were looking at is noted before a click here can move the keyboard.
-      onPointerDownCapture={() => {
-        if (!box.current?.contains(document.activeElement)) void noteContext()
-      }}
-    >
-      <header className="agent-head">
-        <span className="agent-title">Agent</span>
-        {s.state?.model && <span className="agent-model">{s.state.model}</span>}
-        <span className="agent-spacer" />
-        <button
-          type="button"
-          className="agent-icon"
-          title="New conversation"
-          disabled={!!s.run || !s.items.length}
-          onClick={() => void newThread()}
-        >
-          <Plus size={14} />
-        </button>
-        <button type="button" className="agent-icon" title="Close" onClick={close}>
-          <X size={14} />
-        </button>
-      </header>
-
+    <SessionContext.Provider value={session}>
       <div
-        className="agent-list"
-        ref={list}
-        onScroll={(e) => {
-          const el = e.currentTarget
-          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+        className="agent"
+        // What they were looking at is noted before a click here can move the keyboard.
+        onPointerDownCapture={() => {
+          if (!box.current?.contains(document.activeElement)) void noteContext()
         }}
       >
-        {!s.loaded && <p className="agent-empty">…</p>}
-        {s.loaded && s.state && !s.state.available && (
-          <p className="agent-empty">The agent is not part of this server.</p>
-        )}
-        {s.loaded && s.state?.available && !ready && (
-          <p className="agent-empty">
-            No model is configured yet. Set <code>agent_gateway_url</code> and{" "}
-            <code>agent_model</code> in Basalisk's config and put the gateway key in{" "}
-            <code>~/.config/basalisk/agent-key</code>.
-          </p>
-        )}
-        {s.loaded && ready && !s.items.length && (
-          <p className="agent-empty">
-            Ask about what is in front of you, or ask for something to be done. The agent sees which
-            window has focus and what you have selected.
-          </p>
-        )}
-        {s.items.map((item) => (
-          <ItemView key={item.id} item={item} />
-        ))}
-        {s.run && !s.approval && <Working items={s.items} />}
-        {s.approval && <ApprovalCard q={s.approval} />}
-        {s.error && (
-          <p className="agent-notice" data-tone="error">
-            {s.error}
-          </p>
-        )}
-      </div>
+        {head}
+        {above}
 
-      <footer className="agent-foot">
-        <ContextLine context={s.context} />
-        <SlashMenu box={box} text={draft} setText={setDraft} />
-        <div className="agent-box">
-          <textarea
-            ref={box}
-            rows={1}
-            value={draft}
-            placeholder={ready ? "Ask, or say what to do" : "No model configured"}
-            disabled={!ready}
-            spellCheck
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault()
-                submit()
-              } else if (e.key === "Escape") {
-                e.preventDefault()
-                // Back to the window, leaving the panel open.
-                const focus = desk.wmState().focus
-                if (focus) desk.wm({ type: "focus", id: focus })
-                e.currentTarget.blur()
-                document.querySelector<HTMLElement>(`[data-win="${focus}"]`)?.focus()
-              }
-            }}
-          />
-          {s.run ? (
-            <button type="button" className="agent-send" title="Stop" onClick={stop}>
-              <Square size={13} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="agent-send"
-              title="Send (Enter)"
-              disabled={!ready || !draft.trim()}
-              onClick={submit}
-            >
-              <ArrowUp size={15} />
-            </button>
+        <div
+          className="agent-list"
+          ref={list}
+          onScroll={(e) => {
+            const el = e.currentTarget
+            pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+          }}
+        >
+          {!s.loaded && <p className="agent-empty">…</p>}
+          {s.loaded && s.state && !s.state.available && (
+            <p className="agent-empty">The agent is not part of this server.</p>
+          )}
+          {s.loaded && s.state?.available && !ready && (
+            <p className="agent-empty">
+              No model is configured yet. Set <code>agent_gateway_url</code> and{" "}
+              <code>agent_model</code> in Basalisk's config and put the gateway key in{" "}
+              <code>~/.config/basalisk/agent-key</code>.
+            </p>
+          )}
+          {s.loaded && ready && !s.items.length && <p className="agent-empty">{empty}</p>}
+          {s.items.map((item) => (
+            <ItemView key={item.id} item={item} />
+          ))}
+          {s.run && !s.approval && <Working items={s.items} />}
+          {s.approval && <ApprovalCard q={s.approval} />}
+          {s.error && (
+            <p className="agent-notice" data-tone="error">
+              {s.error}
+            </p>
           )}
         </div>
-      </footer>
-    </div>
+
+        <footer className="agent-foot">
+          <ContextLine context={s.context} />
+          {summoned && <SlashMenu box={box} text={draft} setText={setDraft} />}
+          <div className="agent-box">
+            <textarea
+              ref={box}
+              rows={1}
+              value={draft}
+              placeholder={ready ? placeholder : "No model configured"}
+              disabled={!ready}
+              spellCheck
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  submit()
+                } else if (e.key === "Escape") {
+                  e.preventDefault()
+                  // Back to the window, leaving the panel open.
+                  const focus = desk.wmState().focus
+                  if (focus) desk.wm({ type: "focus", id: focus })
+                  e.currentTarget.blur()
+                  document.querySelector<HTMLElement>(`[data-win="${focus}"]`)?.focus()
+                }
+              }}
+            />
+            {s.run ? (
+              <button type="button" className="agent-send" title="Stop" onClick={stop}>
+                <Square size={13} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="agent-send"
+                title="Send (Enter)"
+                disabled={!ready || !draft.trim()}
+                onClick={submit}
+              >
+                <ArrowUp size={15} />
+              </button>
+            )}
+          </div>
+        </footer>
+      </div>
+    </SessionContext.Provider>
   )
 }
 
@@ -285,6 +372,7 @@ function Working({ items }: { items: Item[] }) {
 }
 
 function ApprovalCard({ q }: { q: Approval }) {
+  const { answer } = useContext(SessionContext)
   const first = useRef<HTMLButtonElement>(null)
   useEffect(() => first.current?.focus(), [])
   const input = pretty(q.input)
