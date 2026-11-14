@@ -60,7 +60,7 @@ const namespace = "story"
 const maxItem = 512 << 10
 
 func (g GatewayCaster) List(ctx context.Context) ([]Head, error) {
-	raw, err := g.Link.Call(ctx, "caster_ls", map[string]any{"ns": namespace})
+	raw, err := callAll(ctx, g.Link, "caster_ls", map[string]any{"ns": namespace})
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +141,7 @@ func (g GatewayCaster) Put(ctx context.Context, name, content, title string) (in
 }
 
 func (g GatewayCaster) Log(ctx context.Context, name string) ([]Revision, error) {
-	raw, err := g.Link.Call(ctx, "caster_log", map[string]any{"name": namespace + "/" + name})
+	raw, err := callAll(ctx, g.Link, "caster_log", map[string]any{"name": namespace + "/" + name})
 	if err != nil {
 		return nil, err
 	}
@@ -152,4 +152,17 @@ func (g GatewayCaster) Log(ctx context.Context, name string) ([]Revision, error)
 		return nil, fmt.Errorf("caster_log: %w", err)
 	}
 	return out.Revisions, nil
+}
+
+// callAll is Call that reads the whole of a large result when the link can (the gateway
+// cuts a long list and hands out the rest on request; tetherlink.Client.CallAll).
+func callAll(ctx context.Context, link interface {
+	Call(ctx context.Context, tool string, args map[string]any) ([]byte, error)
+}, tool string, args map[string]any) ([]byte, error) {
+	if all, ok := link.(interface {
+		CallAll(ctx context.Context, tool string, args map[string]any) ([]byte, error)
+	}); ok {
+		return all.CallAll(ctx, tool, args)
+	}
+	return link.Call(ctx, tool, args)
 }

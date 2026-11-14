@@ -170,7 +170,7 @@ func (y *Syncer) Import(ctx context.Context, owner string) (int, error) {
 	if y == nil || y.link == nil || !y.link.Configured() {
 		return 0, nil
 	}
-	raw, err := y.link.Call(ctx, "caster_ls", map[string]any{"ns": "scratch"})
+	raw, err := callAll(ctx, y.link, "caster_ls", map[string]any{"ns": "scratch"})
 	if err != nil {
 		return 0, err
 	}
@@ -226,3 +226,16 @@ func (y *Syncer) Import(ctx context.Context, owner string) (int, error) {
 
 // maxImport is the largest text read back from Caster as a scratch item.
 const maxImport = 8 << 10
+
+// callAll is Call that reads the whole of a large result when the link can (the gateway
+// cuts a long list and hands out the rest on request; tetherlink.Client.CallAll).
+func callAll(ctx context.Context, link interface {
+	Call(ctx context.Context, tool string, args map[string]any) ([]byte, error)
+}, tool string, args map[string]any) ([]byte, error) {
+	if all, ok := link.(interface {
+		CallAll(ctx context.Context, tool string, args map[string]any) ([]byte, error)
+	}); ok {
+		return all.CallAll(ctx, tool, args)
+	}
+	return link.Call(ctx, tool, args)
+}

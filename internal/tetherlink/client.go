@@ -218,8 +218,16 @@ func (c *Client) roundTrip(ctx context.Context, method string, params any) (json
 }
 
 // Call runs one tool and returns its text result (JSON, for the tools Basalisk uses). A
-// *ToolError means the tool answered with an error; anything else is the connection.
+// *ToolError means the tool answered with an error; anything else is the connection. A
+// large result comes back cut, with the gateway's note about it after the JSON; CallAll
+// reads the whole of one.
 func (c *Client) Call(ctx context.Context, tool string, args map[string]any) ([]byte, error) {
+	parts, err := c.call(ctx, tool, args)
+	return []byte(strings.Join(parts, "")), err
+}
+
+// call runs one tool and returns the text parts of its result.
+func (c *Client) call(ctx context.Context, tool string, args map[string]any) ([]string, error) {
 	if !c.Configured() {
 		return nil, ErrNotConfigured
 	}
@@ -244,16 +252,75 @@ func (c *Client) Call(ctx context.Context, tool string, args map[string]any) ([]
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("unreadable tool result: %w", err)
 	}
-	var text strings.Builder
+	var parts []string
 	for _, part := range result.Content {
 		if part.Type == "text" {
-			text.WriteString(part.Text)
+			parts = append(parts, part.Text)
 		}
 	}
 	if result.IsError {
-		return nil, &ToolError{Message: text.String()}
+		return nil, &ToolError{Message: strings.Join(parts, "")}
 	}
-	return []byte(text.String()), nil
+	return parts, nil
+}
+
+// maxPages bounds how far CallAll follows a cut result.
+const maxPages = 60
+
+// CallAll runs one tool and returns its whole JSON result. The gateway cuts a large result
+// at one of its lists and says so in a second part ({"gateway_truncated": {"path",
+// "next_cursor"}}); the rest is fetched with tether_result_next and the list put back
+// together, so the caller sees one object as if nothing had been cut.
+func (c *Client) CallAll(ctx context.Context, tool string, args map[string]any) ([]byte, error) {
+	parts, err := c.call(ctx, tool, args)
+	if err != nil || len(parts) < 2 {
+		return []byte(strings.Join(parts, "")), err
+	}
+	type cut struct {
+		G *struct {
+			Path string `json:"path"`
+			Next string `json:"next_cursor"`
+		} `json:"gateway_truncated"`
+	}
+	note := func(parts []string) (path, next string, ok bool) {
+		var n cut
+		if len(parts) < 2 || json.Unmarshal([]byte(parts[len(parts)-1]), &n) != nil || n.G == nil {
+			return "", "", false
+		}
+		return n.G.Path, n.G.Next, true
+	}
+	path, next, ok := note(parts)
+	if !ok {
+		return []byte(strings.Join(parts, "")), nil
+	}
+	var whole map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(parts[0]), &whole); err != nil {
+		return nil, fmt.Errorf("%s: unreadable result: %w", tool, err)
+	}
+	var list []json.RawMessage
+	if err := json.Unmarshal(whole[path], &list); err != nil {
+		return nil, fmt.Errorf("%s: the cut list %q is unreadable: %w", tool, path, err)
+	}
+	for page := 0; next != "" && page < maxPages; page++ {
+		more, err := c.call(ctx, "tether_result_next", map[string]any{"cursor": next})
+		if err != nil {
+			return nil, fmt.Errorf("%s: reading the rest of the result: %w", tool, err)
+		}
+		if len(more) == 0 {
+			break
+		}
+		var obj map[string]json.RawMessage
+		var rest []json.RawMessage
+		if json.Unmarshal([]byte(more[0]), &obj) != nil || json.Unmarshal(obj[path], &rest) != nil {
+			return nil, fmt.Errorf("%s: the rest of the result is unreadable", tool)
+		}
+		list = append(list, rest...)
+		if _, next, ok = note(more); !ok {
+			next = ""
+		}
+	}
+	whole[path], _ = json.Marshal(list)
+	return json.Marshal(whole)
 }
 
 // ToolInfo is one tool the gateway offers, as tools/list describes it.

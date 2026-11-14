@@ -12,6 +12,9 @@ type fake struct {
 }
 
 func (f *fake) Configured() bool { return true }
+func (f *fake) CallAll(ctx context.Context, tool string, args map[string]any) ([]byte, error) {
+	return f.Call(ctx, tool, args)
+}
 func (f *fake) Call(_ context.Context, tool string, args map[string]any) ([]byte, error) {
 	f.tools = append(f.tools, tool)
 	f.calls = append(f.calls, args)

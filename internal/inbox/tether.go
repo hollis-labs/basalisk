@@ -14,6 +14,8 @@ import (
 type Caller interface {
 	Configured() bool
 	Call(ctx context.Context, tool string, args map[string]any) ([]byte, error)
+	// CallAll is Call for a result that may be large: the whole of it, however the gateway cut it.
+	CallAll(ctx context.Context, tool string, args map[string]any) ([]byte, error)
 }
 
 // Tether reads the owner's Tether mailboxes through the gateway. Listing is the
@@ -126,7 +128,7 @@ func (t *Tether) item(e envelope) Item {
 
 func (t *Tether) list(ctx context.Context, account string, args map[string]any) ([]envelope, int, error) {
 	args["to"] = account
-	raw, err := t.Link.Call(ctx, "tether_message_list", args)
+	raw, err := t.Link.CallAll(ctx, "tether_message_list", args)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -253,7 +255,7 @@ func (t *Tether) Archive(ctx context.Context, account, id string, archived bool)
 // Reply answers the sender of a message, in its thread, and wakes the sender's session when
 // one is running. Who it goes to is read from the message itself, not from the request.
 func (t *Tether) Reply(ctx context.Context, account, id string, r Reply) error {
-	raw, err := t.Link.Call(ctx, "tether_message_get", map[string]any{"message_id": id, "as": account})
+	raw, err := t.Link.CallAll(ctx, "tether_message_get", map[string]any{"message_id": id, "as": account})
 	if err != nil {
 		return err
 	}
