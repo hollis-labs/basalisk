@@ -20,6 +20,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/agent"
 	"github.com/hollis-labs/basalisk/internal/files"
 	"github.com/hollis-labs/basalisk/internal/macshell"
+	"github.com/hollis-labs/basalisk/internal/scratch"
 	"github.com/hollis-labs/basalisk/internal/terminal"
 )
 
@@ -45,6 +46,9 @@ type API struct {
 	cite *citeResolver
 	// agent is the AI core (agent.go); nil unless EnableAgent was called.
 	agent *agent.Runtime
+	// scratch is the owner's scratch items (scratch.go); nil unless EnableScratch was called.
+	scratch     *scratch.Store
+	scratchSync *scratch.Syncer
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,
@@ -105,8 +109,9 @@ func (a *API) allRoutes() []route {
 	rts = append(rts, a.terminalRoutes()...)
 	rts = append(rts, a.filesRoutes()...)
 	rts = append(rts, a.browserRoutes()...)
-	rts = append(rts, a.agentRoutes()...) // agent.go
-	return append(rts, a.fragRoutes()...) // frag.go
+	rts = append(rts, a.agentRoutes()...)   // agent.go
+	rts = append(rts, a.scratchRoutes()...) // scratch.go
+	return append(rts, a.fragRoutes()...)   // frag.go
 }
 
 // Handler serves the owner routes; it is httphost.Options.Routes. The auth guard in front of

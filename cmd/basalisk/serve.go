@@ -23,6 +23,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/api"
 	"github.com/hollis-labs/basalisk/internal/hostguard"
 	"github.com/hollis-labs/basalisk/internal/macshell"
+	"github.com/hollis-labs/basalisk/internal/scratch"
 	"github.com/hollis-labs/basalisk/internal/settings"
 	"github.com/hollis-labs/basalisk/internal/terminal"
 	"github.com/hollis-labs/basalisk/internal/tetherlink"
@@ -83,12 +84,14 @@ func (b *basalisk) serve(ctx context.Context) error {
 	}
 	a := svc.API(api.IdentityUsers{Svc: id})
 	var agentRT *agent.Runtime
+	scratchPath := ""
 	// The desktop's settings documents live beside the database, in the private data directory.
 	if db, _ := app.Config["database"].(map[string]any); db != nil {
 		if sq, _ := db["sqlite"].(map[string]any); sq != nil {
 			if p, _ := sq["path"].(string); filepath.IsAbs(p) {
 				a.SetDeskDir(filepath.Join(filepath.Dir(p), "desk"))
 				agentRT = enableAgent(ctx, a, cfg.Agent, filepath.Join(filepath.Dir(p), "agent.db")) // agent.go
+				scratchPath = filepath.Join(filepath.Dir(p), "scratch.db")
 			}
 		}
 	}
@@ -96,6 +99,24 @@ func (b *basalisk) serve(ctx context.Context) error {
 	// one is configured. It starts on first use and stops with the server.
 	link := tetherlink.New(cfg.TetherMCP)
 	a.EnableCite(link)
+	// Scratch: the owner's quick items, kept beside the database and written on to Caster
+	// through the same gateway (internal/scratch).
+	if scratchPath != "" {
+		if store, err := scratch.Open(ctx, scratchPath); err != nil {
+			slog.Warn("scratch is off: its store could not be opened", "path", scratchPath, "err", err)
+		} else {
+			syncer := scratch.NewSyncer(store, link)
+			a.EnableScratch(store, syncer)
+			go syncer.Run(ctx)
+			go func() {
+				<-ctx.Done()
+				_ = store.Close()
+			}()
+			if agentRT != nil {
+				agentRT.AddTools(agent.ScratchTools(store, syncer.Kick))
+			}
+		}
+	}
 	if agentRT != nil {
 		// The agent reaches Torque and Tesseract through the same gateway (internal/agent/tether.go).
 		tools := agent.TetherTools(link, agent.TetherOptions{URN: agentRT.Config().URN})

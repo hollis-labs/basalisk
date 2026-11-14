@@ -165,6 +165,30 @@
         "_help": "/task <what to do>: hand it to a task agent that works in the background."
       },
       "auto": true
+    },
+    {
+      "id": "scratch",
+      "when": [
+        {
+          "field": "slash",
+          "op": "in",
+          "values": [
+            "s",
+            "scratch"
+          ]
+        },
+        {
+          "field": "arg",
+          "op": "exists"
+        }
+      ],
+      "target": "tool:scratch_add",
+      "params": {
+        "text": "{arg}",
+        "_say": "Kept in scratch.",
+        "_help": "/s <text>: keep it in your scratch (::idea, ::follow-up, $ command, +project all work)."
+      },
+      "auto": true
     }
   ]
 }
