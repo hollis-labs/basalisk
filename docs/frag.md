@@ -79,6 +79,28 @@ pending a deeper look he wants later. The note is a `capture_note` annotation. T
 note, selection, title and tags, so clipping the same page with the same note again is the same
 capture.
 
+### Before the extraction
+
+Two kinds of page give fe-clipper's adapters less than they show, so the clip gets them
+ready first (`frontend/src/apps/frag/prepare.ts`). If anything fails, or takes more than
+about four seconds, the page is clipped as it is: never worse than without this.
+
+- **YouTube**: after navigating within YouTube (a click from search or a recommendation),
+  the page's serialized state (`ytInitialPlayerResponse`, `ytInitialData`) still describes
+  the page first loaded. The adapter reads that state, so it found no captions for the video
+  shown (`youtube.captions_unavailable`). The extension has the same limit.
+  - The clip acts only on a `youtube.com/watch` page whose state is not for the current
+    video id; a video loaded directly is left alone.
+  - It fetches the current watch address from the page (same origin, nothing else).
+  - It takes the two state objects out of that HTML as JSON and checks that the player
+    state is for this video id.
+  - It puts them first in `<head>` as non-executing `type="application/json"` script
+    elements, which the adapter reads by id, and removes them after the extraction in every
+    case. Nothing from the fetched page is executed or rendered.
+  - When fe-clipper's adapter gains this itself, this part can go.
+- **Reddit**: on a post's page (`/comments/`), comments render as the post scrolls in. The
+  clip waits up to about three seconds for the first one before extracting.
+
 ### Media and provider metadata
 
 What fe-clipper's adapters find besides the text goes too, mapped as fe-clipper's
@@ -147,3 +169,14 @@ GET  /api/frag/captures   -> {items: [status + content, tags, context]}, newest 
 ```
 
 `context` is up to 16 KiB of JSON kept with the row and never sent to FE.
+
+## Known limits
+
+- **Trusted Types.** The extraction runs in the page's own JavaScript world (the view's
+  `eval`). WebKit on macOS 15 has no Trusted Types, so this is fine today. A page that
+  requires them (YouTube does) makes the bundle's `innerHTML` writes fail where they are
+  enforced: headless Chrome already shows `capture.extraction_failed` there. A future WebKit
+  that enforces them would need the bundle evaluated in a named `WKContentWorld`, as an
+  extension's content script is.
+- **Subtitles.** A captioned YouTube clip carries one subtitles variant per caption track,
+  each fetched and uploaded, as the extension does (31 on one test video).

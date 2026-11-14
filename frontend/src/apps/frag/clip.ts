@@ -5,6 +5,7 @@
  * page channel, not /api/browser, and is not written to the shell log.
  */
 import { nativeBrowser } from "../../api/browser"
+import { asScript, cleanupPage, preparePage } from "./prepare"
 
 /** What the server takes for a clipped page (internal/api/frag_clip.go). */
 export interface ClipPage {
@@ -96,18 +97,33 @@ const loadBundle = () => {
 
 const READ = `(()=>{const c=window.__FE_CLIPPER_CAPTURE__;return c?JSON.stringify(c):null})()`
 
+const PREP_DONE = `(()=>{const p=window.__BASALISK_CLIP_PREP__;return !p||p.done===true})()`
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
 /** Extracts the page shown in a Browser window. */
 export async function clipPage(winId: string): Promise<ClipPage> {
   const send = (msg: Record<string, unknown>) => nativeBrowser.send({ id: winId, ...msg })
   const script = await loadBundle()
-  await send({ op: "eval", js: `${script}\n;0` })
-  // The adapters may walk the page first (X loads replies near the viewport), so poll.
-  for (let i = 0; i < 50; i++) {
-    const raw = await send({ op: "eval", js: READ })
-    if (typeof raw === "string") return toPage(JSON.parse(raw) as Captured)
-    await new Promise((r) => setTimeout(r, 200))
+  try {
+    // Get the page ready (prepare.ts); whatever it does or fails to do, the clip goes on.
+    try {
+      await send({ op: "eval", js: asScript(preparePage) })
+      for (let i = 0; i < 30 && (await send({ op: "eval", js: PREP_DONE })) !== true; i++)
+        await sleep(200)
+    } catch {
+      // Clip the page as it is.
+    }
+    await send({ op: "eval", js: `${script}\n;0` })
+    // The adapters may walk the page first (X loads replies near the viewport), so poll.
+    for (let i = 0; i < 50; i++) {
+      const raw = await send({ op: "eval", js: READ })
+      if (typeof raw === "string") return toPage(JSON.parse(raw) as Captured)
+      await sleep(200)
+    }
+    throw new Error("The page took too long to extract.")
+  } finally {
+    await send({ op: "eval", js: asScript(cleanupPage) }).catch(() => undefined)
   }
-  throw new Error("The page took too long to extract.")
 }
 
 function toPage(c: Captured): ClipPage {
