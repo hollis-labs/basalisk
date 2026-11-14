@@ -87,10 +87,8 @@ func (s *Shell) pump() {
 		case C.BSL_EV_TOGGLE_KIOSK:
 			on := C.bslKiosk() == 0
 			s.log.add("hotkey", fmt.Sprintf("%s: kiosk %s", ToggleKioskChord, onOff(on)))
-			s.mu.Lock()
-			block := s.block
-			s.mu.Unlock()
-			if err := s.SetKiosk(on, on && block); err != nil {
+			// Kiosk blocks Cmd-Tab by default; the escape chord always leaves.
+			if err := s.SetKiosk(on, on); err != nil {
 				s.log.add("error", err.Error())
 			}
 		case C.BSL_EV_TOGGLE_MENUBAR:

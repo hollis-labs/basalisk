@@ -2,6 +2,7 @@ import {
   AppWindow,
   ChevronRight,
   Columns2,
+  Keyboard,
   LayoutGrid,
   LogOut,
   Maximize,
@@ -63,9 +64,24 @@ import {
   place,
   type Rect,
   reducer,
+  saveSession,
   type Win,
   type WMAction,
 } from "./wm"
+
+/** The shortcuts kept from Basalisk itself while it owns the keyboard (set on the Shell page). */
+function ownedCombos(): string[] {
+  let raw = "cmd+q, cmd+h, cmd+m"
+  try {
+    raw = window.localStorage.getItem("basalisk.shell.combos.v2") ?? raw
+  } catch {
+    // The defaults.
+  }
+  return raw
+    .split(/[\s,]+/)
+    .map((c) => c.trim())
+    .filter(Boolean)
+}
 
 const seqOf = (id: string) => Number(id.slice(id.lastIndexOf("-") + 1))
 
@@ -77,7 +93,11 @@ const seqOf = (id: string) => Number(id.slice(id.lastIndexOf("-") + 1))
  * a command's: the defaults are in the commands, the user's changes in the desk settings.
  */
 export function Desktop() {
-  const [state, dispatch] = useReducer(reducer, undefined, initialState)
+  const [state, dispatch] = useReducer(reducer, undefined, () =>
+    initialState((app) => !!appById(app)),
+  )
+  // What is open is kept as it changes, so a restart or a crash reopens it.
+  useEffect(() => saveSession(state), [state])
   const canvas = useRef<HTMLDivElement>(null)
   const [area, setArea] = useState<Rect>({ x: 0, y: 0, w: 1280, h: 720 })
   const areaRef = useRef(area)
@@ -224,7 +244,7 @@ export function Desktop() {
       shellStatus: () => statusRef.current,
       setKiosk: (on) =>
         void shell
-          .kiosk(on, false)
+          .kiosk(on, true)
           .then(setStatus)
           .catch(() => undefined),
       setTheme(id) {
@@ -481,7 +501,7 @@ export function Desktop() {
               status={status}
               onOpen={(id) => desk.open(id)}
               onLayout={() => dispatch({ type: "layout" })}
-              onKiosk={() => status && void shell.kiosk(!status.kiosk, false).then(setStatus)}
+              onKiosk={() => desk.setKiosk(!status?.kiosk)}
               onOpenChange={setMenuOpen}
             />
             <div className="desk-tasks">
@@ -534,19 +554,49 @@ export function Desktop() {
               <span>{state.layout}</span>
             </button>
             {status?.available && (
-              <button
-                type="button"
-                className="desk-bar-button"
-                title={`${status.kiosk ? "Leave" : "Enter"} full screen (⌃⌥⌘F)`}
-                aria-label={status.kiosk ? "Leave full screen" : "Enter full screen"}
-                onClick={() => void shell.kiosk(!status.kiosk, false).then(setStatus)}
-              >
-                {status.kiosk ? (
-                  <Minimize aria-hidden="true" size={14} strokeWidth={1.6} />
-                ) : (
-                  <Maximize aria-hidden="true" size={14} strokeWidth={1.6} />
-                )}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="desk-bar-button"
+                  data-on={status.swallow}
+                  title={
+                    status.swallow
+                      ? "Basalisk owns the keyboard: system shortcuts come here. Click to give it back (⌃⌥⌘Esc always does)"
+                      : "Own the keyboard: system shortcuts (⌘Space, ⌘Tab, ⌘Q…) come to Basalisk"
+                  }
+                  aria-label="Own the keyboard"
+                  aria-pressed={status.swallow}
+                  onClick={() =>
+                    void shell
+                      .swallow(!status.swallow, ownedCombos())
+                      .then(setStatus)
+                      .catch((e) =>
+                        desk.confirm({
+                          title: "The keyboard could not be taken",
+                          message: e instanceof Error ? e.message : "The shell refused.",
+                          confirmLabel: "OK",
+                        }),
+                      )
+                  }
+                >
+                  <Keyboard aria-hidden="true" size={14} strokeWidth={1.6} />
+                </button>
+                <button
+                  type="button"
+                  className="desk-bar-button"
+                  data-on={status.kiosk}
+                  title={`${status.kiosk ? "Leave" : "Enter"} kiosk: full screen, ⌘Tab blocked (⌃⌥⌘F)`}
+                  aria-label="Kiosk mode"
+                  aria-pressed={status.kiosk}
+                  onClick={() => desk.setKiosk(!status.kiosk)}
+                >
+                  {status.kiosk ? (
+                    <Minimize aria-hidden="true" size={14} strokeWidth={1.6} />
+                  ) : (
+                    <Maximize aria-hidden="true" size={14} strokeWidth={1.6} />
+                  )}
+                </button>
+              </>
             )}
             <Clock />
           </div>
@@ -1020,7 +1070,7 @@ function DeskMenu({
               ) : (
                 <Maximize aria-hidden="true" size={15} strokeWidth={1.6} />
               )}
-              <span>{status.kiosk ? "Leave full screen" : "Full screen"}</span>
+              <span>{status.kiosk ? "Leave kiosk" : "Kiosk mode"}</span>
               <kbd className="desk-menu-hint">⌃⌥⌘F</kbd>
             </button>
           )}

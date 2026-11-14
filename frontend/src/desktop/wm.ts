@@ -88,14 +88,61 @@ export const MIN_W = 320
 export const MIN_H = 180
 const LAYOUT_KEY = "basalisk.desk.layout"
 
-export function initialState(): WMState {
+const SESSION_KEY = "basalisk.desk.session"
+
+/**
+ * The windows as they were when the desktop last ran, so a restart, a shutdown or a crash
+ * brings back what was open. `known` says which apps still exist. A terminal window's shell
+ * may have gone with the old process: it is offered as `was` and a new one is made if so.
+ */
+function restored(layout: Layout, known: (app: string) => boolean): WMState | null {
+  try {
+    const raw = window.localStorage.getItem(SESSION_KEY)
+    if (!raw) return null
+    const saved = JSON.parse(raw) as Partial<WMState>
+    if (!Array.isArray(saved.wins)) return null
+    const wins = saved.wins
+      .filter((w) => w && typeof w.id === "string" && typeof w.app === "string" && known(w.app))
+      .map((w) => {
+        const args = { ...(w.args ?? {}) }
+        if (w.app === "terminal" && typeof args.session === "string") {
+          args.was = args.session
+          delete args.session
+        }
+        return { ...w, args, dirty: false, title: String(w.title ?? "").replace(/^● /, "") }
+      })
+    const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d)
+    const seq = Math.max(num(saved.seq, 0), ...wins.map((w) => Number(w.id.split("-").pop()) || 0))
+    return {
+      wins,
+      focus: wins.some((w) => w.id === saved.focus) ? (saved.focus as string) : null,
+      layout,
+      ratio: Math.min(0.78, Math.max(0.22, num(saved.ratio, 0.56))),
+      seq,
+      z: Math.max(num(saved.z, 1), ...wins.map((w) => num(w.z, 1))),
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Keep the windows for the next start (called on every change; cheap and small). */
+export function saveSession(s: WMState) {
+  try {
+    window.localStorage.setItem(SESSION_KEY, JSON.stringify(s))
+  } catch {
+    // Not kept: the next start is an empty desktop.
+  }
+}
+
+export function initialState(known: (app: string) => boolean = () => false): WMState {
   let layout: Layout = "tile"
   try {
     if (window.localStorage.getItem(LAYOUT_KEY) === "float") layout = "float"
   } catch {
     // Default layout.
   }
-  return { wins: [], focus: null, layout, ratio: 0.56, seq: 0, z: 1 }
+  return restored(layout, known) ?? { wins: [], focus: null, layout, ratio: 0.56, seq: 0, z: 1 }
 }
 
 const patch = (s: WMState, id: string, change: Partial<Win>): WMState => ({

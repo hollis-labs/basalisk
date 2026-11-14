@@ -168,7 +168,7 @@ registerCommands([
   },
   {
     id: "shell.kiosk",
-    title: "Toggle full screen",
+    title: "Toggle kiosk mode",
     section: "System",
     icon: Maximize,
     keywords: "kiosk fullscreen",

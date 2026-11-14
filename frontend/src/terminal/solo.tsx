@@ -78,8 +78,16 @@ export function SoloTerminal({ winId, args }: WindowProps) {
   useEffect(() => {
     if (!enabled || session || making.has(winId)) return
     making.add(winId)
-    void api
-      .create(cwd)
+    // A window brought back after a restart: its old shell if it is still there, else a new one.
+    const was = typeof args.was === "string" ? args.was : ""
+    const find = was
+      ? api
+          .state()
+          .then((st) => st.sessions.find((s) => s.id === was && !s.exited))
+          .catch(() => undefined)
+      : Promise.resolve(undefined)
+    void find
+      .then((old) => old ?? api.create(cwd))
       .then((s) => {
         claim(desk, winId, s.id)
         desk.setArgs(winId, { solo: true, session: s.id, cwd: s.cwd })
@@ -87,7 +95,7 @@ export function SoloTerminal({ winId, args }: WindowProps) {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Could not open a terminal."))
       .finally(() => making.delete(winId))
-  }, [enabled, session, cwd, winId, desk])
+  }, [enabled, session, cwd, winId, desk, args.was])
 
   useEffect(() => {
     if (session) claim(desk, winId, session)
