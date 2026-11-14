@@ -371,6 +371,12 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	if where := describeContext(in.Context); where != "" {
 		blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: where})
 	}
+	// Which kind of work the owner is in, when it has changed (slots.go).
+	if !isTask {
+		if slot := rt.slotBlock(ctx, thread, in.Context, tools); slot != "" {
+			blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: slot})
+		}
+	}
 	// Task agents that have ended since the running thread was last told.
 	if !isTask {
 		if ended := tasksBlock(rt.store.unreported(ctx, in.Owner)); ended != "" {

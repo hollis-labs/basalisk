@@ -223,6 +223,8 @@ func (b *basalisk) serve(ctx context.Context) error {
 		// The agent reaches Torque and Tesseract through the same gateway (internal/agent/tether.go).
 		tools := agent.TetherTools(link, agent.TetherOptions{URN: agentRT.Config().URN})
 		agentRT.AddTools(tools)
+		// Its own notes for each kind of work the owner moves between (internal/agent/slots.go).
+		agentRT.AddTools(agentRT.SlotTools())
 		// Ask the gateway for them now, not at the first message: a message sent before they
 		// arrive goes out without them, and their arrival then changes the prompt's prefix,
 		// which the provider has to cache again in full.

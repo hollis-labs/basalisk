@@ -84,6 +84,12 @@ var migrations = []string{
 	// and the last message it covers.
 	`ALTER TABLE threads ADD COLUMN summary TEXT NOT NULL DEFAULT '';
 	ALTER TABLE threads ADD COLUMN summary_upto INTEGER NOT NULL DEFAULT 0;`,
+	// The assistant's own note for each context slot (slots.go).
+	`CREATE TABLE slots (
+		name TEXT PRIMARY KEY,
+		note TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL
+	)`,
 }
 
 // OpenStore opens (and creates or upgrades) the file at path.

@@ -89,14 +89,44 @@ owner should not have to press Enter for goes to @chief with `owner_send`.
 Not yet: Tether's reply-audience fields. Basalisk's own runs are not Tether turns, so there
 is nothing to read them from; they matter when Basalisk shows other seats' sessions.
 
+## Context slots (built, first part)
+
+The owner moves between kinds of work and talks to one assistant throughout. A slot is what
+the assistant brings to one kind (`internal/agent/slots.go`): the tools that are top of
+mind there, its own note of where things stand, and where the rest is kept.
+
+| Slot | Selected by the window in front | Top of mind |
+|---|---|---|
+| messaging | Inbox, Done for you | the `owner_…` tools, the registry, a task by id |
+| planning | Planner, Content, Work sessions, Scratch | Torque, scratch, Tesseract recall, task agents |
+| writing | Writer, Story, Drafts | the collab and story tools, notes |
+| notes | Notes, Frag | notes, capture, scratch, recall |
+| engineering | Terminal, Files, Diagram, Viewer | files, terminals, collab, looking |
+| reading | Browser, Reader, Watch | the browser tools, capture |
+| general | anything else | |
+
+When the slot changes (or its note does), the owner's next message carries a `<context>`
+block: the kind of work, the top-of-mind tools this run has, the assistant's note for that
+slot with when it was written, and where the rest is. A thread is told once while nothing
+changed. The tool definitions and the system prompt do not change with the slot, so the
+provider's cache holds across a switch: a slot changes what is attended to, not what the
+assistant is or can do.
+
+The assistant keeps the notes: `context_note` (the whole note, under a page: where things
+stand, what is next, pointers such as task ids and document names), `context_get` (a note,
+and the list of slots with when each was written) and `context_switch` (move when the
+question has changed kind and the window has not). Notes are in `agent.db`.
+
+Not yet: the last stretch of conversation kept per slot (the thread and its summary are
+still one), slots the owner can define, and pointers gathered automatically (the thread's
+history, what the assistant looked up).
+
 ## Planned, in order
 
 1. Sends through Tether's typed messages (`tether_message_post`) once the address aliases
    land, and a small model for sorting what the rules cannot.
-3. Context slots: one per kind of work (messaging, planning, notes, writing, engineering),
-   each with the tools that are top of mind there, the last stretch of that context and
-   pointers to the rest (chat history, notes, Tesseract, Torque, Planner, scratch).
-   Switching slot swaps tools and recent context, not who the assistant is.
+3. Context slots, second part: recent conversation kept per slot, with the summary made per
+   slot; slots the owner defines; pointers gathered as the assistant works.
 4. Status: what is in flight, read from the owner's own tools (Planner, Torque, scratch,
    notes, seat status) with a short "is this current" check, fanned out to task agents.
 5. Host and command-line work: a list of command kinds the assistant may run outright, and
