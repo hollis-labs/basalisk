@@ -6,6 +6,7 @@ import { Markdown } from "../cite/ui"
 import { useDesk } from "../desktop/context"
 import { SlashMenu } from "../slash/menu"
 import type { DeskSnapshot, TaskInfo } from "./api"
+import { ContextChip } from "./contexts-chip"
 import { NeedsStrip } from "./needs"
 import { type AgentSession, type Approval, type Item, mainSession, taskSession } from "./session"
 import { closeTask, openTask, toneOf, useTasks } from "./tasks"
@@ -27,8 +28,9 @@ export function AgentPanel({ close }: { close: () => void }) {
       summoned
       head={
         <header className="agent-head">
-          <span className="agent-title">Agent</span>
+          <span className="agent-title">Bas</span>
           {s.state?.model && <span className="agent-model">{s.state.model}</span>}
+          <ContextChip busy={!!s.run} />
           <span className="agent-spacer" />
           <button
             type="button"

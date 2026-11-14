@@ -134,6 +134,11 @@ back the owner's messages and the assistant's replies of a slot's recent turns, 
 to search by. Below that size the thread is sent whole, which is cheaper than re-reading it
 after every move.
 
+**In the panel.** The header shows the slot the conversation is in. Its menu moves it by
+hand (it holds until a window with a slot of its own comes to the front) and shows the
+assistant's note for each slot. `GET /api/agent/contexts` (`?note=<slot>` for a note),
+`POST /api/agent/contexts {name}`.
+
 Not yet: slots the owner can define, and pointers gathered automatically.
 
 ## Seen with the window put away (built)

@@ -35,6 +35,8 @@ func (a *API) agentRoutes() []route {
 		route{"POST", "/api/agent/runs/{id}/tool-alive", w, a.agentToolAlive},
 		route{"POST", "/api/agent/runs/{id}/approvals", w, a.agentApproval},
 		route{"POST", "/api/agent/events", w, a.agentEvent},
+		route{"GET", "/api/agent/contexts", r, a.agentContexts},
+		route{"POST", "/api/agent/contexts", w, a.agentPickContext},
 		route{"GET", "/api/agent/tasks", r, a.agentTasks},
 		route{"POST", "/api/agent/tasks", w, a.agentTaskStart},
 		route{"DELETE", "/api/agent/tasks/{id}", w, a.agentTaskClose},
@@ -389,4 +391,38 @@ func (a *API) agentRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(204)
+}
+
+// agentContexts is the assistant's contexts (slots): which one the conversation is in, and
+// its note for one when asked for by name.
+func (a *API) agentContexts(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	out := map[string]any{"contexts": a.agent.SlotList(r.Context())}
+	if name := r.URL.Query().Get("note"); name != "" {
+		note, when := a.agent.SlotNote(r.Context(), name)
+		out["note"], out["written"] = note, when
+	}
+	reply(w, 200, out)
+}
+
+// agentPickContext is the owner choosing the context.
+func (a *API) agentPickContext(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var in struct {
+		Name string `json:"name"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := a.agent.PickSlot(in.Name); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	reply(w, 200, map[string]any{"contexts": a.agent.SlotList(r.Context())})
 }

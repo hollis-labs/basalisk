@@ -559,3 +559,73 @@
 .needs-answer:hover {
   border-color: var(--desk-accent);
 }
+
+/* The context the assistant is in (contexts-chip.tsx). */
+.agent-context {
+  position: relative;
+}
+.agent-context-chip {
+  padding: 1px 8px;
+  border: 1px solid var(--desk-border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--desk-accent);
+}
+.agent-context-chip:hover {
+  border-color: var(--desk-accent);
+}
+.agent-context-menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  padding: 4px;
+  border: 1px solid var(--desk-border);
+  border-radius: 8px;
+  background: var(--desk-panel);
+  box-shadow: 0 14px 36px rgb(0 0 0 / 0.45);
+}
+.agent-context-row {
+  display: flex;
+  align-items: center;
+  border-radius: 5px;
+}
+.agent-context-row[data-on="true"] {
+  background: var(--desk-accent-soft);
+}
+.agent-context-row button {
+  padding: 4px 8px;
+  font-size: 12px;
+  text-align: left;
+}
+.agent-context-row button:first-child {
+  flex: 1 1 auto;
+}
+.agent-context-note {
+  font-size: 10.5px !important;
+  color: var(--desk-fg-soft);
+}
+.agent-context-note:disabled {
+  opacity: 0.35;
+}
+.agent-context-text {
+  display: block;
+  max-height: 220px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  overflow-y: auto;
+  border-top: 1px solid var(--desk-border);
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  color: var(--desk-fg-soft);
+  user-select: text;
+}
+.agent-context-text strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--desk-fg);
+}

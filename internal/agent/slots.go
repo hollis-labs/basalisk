@@ -424,3 +424,41 @@ func (rt *Runtime) recallTool(names []string) ServerTool {
 		},
 	}
 }
+
+// SlotInfo is a slot as the interface shows it.
+type SlotInfo struct {
+	Name    string `json:"name"`
+	About   string `json:"about"`
+	Written string `json:"note_written,omitempty"`
+	Current bool   `json:"current"`
+}
+
+// SlotList is the slots, with which one the conversation is in.
+func (rt *Runtime) SlotList(ctx context.Context) []SlotInfo {
+	slotState.Lock()
+	cur := slotState.current
+	slotState.Unlock()
+	out := make([]SlotInfo, 0, len(Slots))
+	for _, s := range Slots {
+		_, when := rt.store.slotNote(ctx, s.Name)
+		out = append(out, SlotInfo{Name: s.Name, About: s.About, Written: when, Current: s.Name == cur})
+	}
+	return out
+}
+
+// PickSlot is the owner choosing the context themselves. It holds until a window with a
+// slot of its own comes to the front.
+func (rt *Runtime) PickSlot(name string) error {
+	if _, ok := slotNamed(name); !ok {
+		return errors.New("there is no such context")
+	}
+	slotState.Lock()
+	slotState.current, slotState.pinned = name, true
+	slotState.Unlock()
+	return nil
+}
+
+// SlotNote is the assistant's note for a slot, for the owner to read.
+func (rt *Runtime) SlotNote(ctx context.Context, name string) (note, when string) {
+	return rt.store.slotNote(ctx, name)
+}
