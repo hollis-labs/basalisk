@@ -40,8 +40,11 @@ import (
 // completed with one outcome per variant.
 
 const (
-	maxClipMedia      = 64
-	maxClipVariants   = 8
+	maxClipMedia = 64
+	// A captioned YouTube video carries a subtitles variant per caption track, with its
+	// posters and the stream reference on the same item: 37 on the first one clipped. FE's
+	// schema and fe-clipper set no limit; this one only stops something absurd.
+	maxClipVariants   = 256
 	maxClipExtensions = 16
 	maxClipExtBytes   = 1024 * 1024
 	maxAssetBytes     = 64 * 1024 * 1024

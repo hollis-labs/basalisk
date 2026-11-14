@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -416,5 +417,25 @@ func TestFragClipMediaCapabilityLimit(t *testing.T) {
 	}
 	if strings.Contains(f.peer.completes[0], "127.0.0.1") || strings.Contains(f.peer.completes[0], "secret-value") || strings.Contains(f.peer.completes[0], "moved.png") {
 		t.Fatal("the completion names the media's address")
+	}
+}
+
+// A captioned video has a variant per caption track; that many is ordinary, not an error.
+func TestFragClipMediaManyVariants(t *testing.T) {
+	item := func(n int) clipMedia {
+		m := clipMedia{CandidateID: "v", Kind: "video", Role: "primary"}
+		for i := 0; i < n; i++ {
+			m.Variants = append(m.Variants, clipVariant{VariantID: fmt.Sprintf("sub-%d", i), Kind: "subtitles", SourceURL: "https://media.example/t"})
+		}
+		return m
+	}
+	if msg := validClipMedia(&fragPage{Media: []clipMedia{item(37)}}); msg != "" {
+		t.Errorf("37 variants: %s", msg)
+	}
+	if msg := validClipMedia(&fragPage{Media: []clipMedia{item(maxClipVariants)}}); msg != "" {
+		t.Errorf("%d variants: %s", maxClipVariants, msg)
+	}
+	if msg := validClipMedia(&fragPage{Media: []clipMedia{item(maxClipVariants + 1)}}); msg == "" {
+		t.Errorf("%d variants were accepted", maxClipVariants+1)
 	}
 }
