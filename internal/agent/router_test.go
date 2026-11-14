@@ -26,6 +26,10 @@ func TestTheRulesThatShip(t *testing.T) {
 	}{
 		{"/open notes", "open-app", "desktop_open", `{"app":"notes"}`, "Opened Notes."},
 		{"/open Terminal", "open-app", "desktop_open", `{"app":"terminal"}`, "Opened Terminal."},
+		{"/terminal", "open-app-named", "desktop_open", `{"app":"terminal"}`, "Opened Terminal."},
+		{"/Notes", "", "", "", ""}, // a slash command is lower case
+		{"/notes", "open-app-named", "desktop_open", `{"app":"notes"}`, "Opened Notes."},
+		{"/notes about tiling", "", "", "", ""},
 		{"open notes", "open-app-said", "desktop_open", `{"app":"notes"}`, "Opened Notes."},
 		{"Open the Browser.", "open-app-said", "desktop_open", `{"app":"browser"}`, "Opened Browser."},
 		{"launch a terminal", "open-app-said", "desktop_open", `{"app":"terminal"}`, "Opened Terminal."},

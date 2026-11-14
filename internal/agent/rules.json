@@ -39,6 +39,23 @@
       "auto": true
     },
     {
+      "id": "open-app-named",
+      "when": [
+        {
+          "field": "slash_app",
+          "op": "eq",
+          "value": "yes"
+        }
+      ],
+      "target": "tool:desktop_open",
+      "params": {
+        "app": "{app}",
+        "_say": "Opened {app_title}.",
+        "_help": "/<app>: open that app, for example /terminal or /notes."
+      },
+      "auto": true
+    },
+    {
       "id": "open-app-said",
       "when": [
         {

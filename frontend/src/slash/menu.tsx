@@ -4,12 +4,13 @@
  * Enter takes one, Esc puts the list away. A path ("/Users/…") begins no command, so it is
  * never in the way.
  *
- * The commands are the router's (each rule's help line, GET /api/agent/automation) plus the
- * panel's own /new and /help. Keys are taken on the box itself, before the panel's handler,
+ * The commands are the router's (each rule's help line, GET /api/agent/automation), the
+ * panel's own /new and /help, and each app by its name (/terminal). Keys are taken on the box itself, before the panel's handler,
  * and only while the list is showing.
  */
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react"
 import { request } from "../api/account"
+import { allApps } from "../desktop/registry"
 import "./menu.css"
 
 export interface SlashCommand {
@@ -39,7 +40,9 @@ function commands(): Promise<SlashCommand[]> {
     .catch(() => [] as (SlashCommand | null)[])
     .then((found) => {
       const out = new Map<string, SlashCommand>()
-      for (const c of [...found, ...OWN]) if (c && !out.has(c.name)) out.set(c.name, c)
+      // An app's own name is a command too ("/terminal"); the router opens it.
+      const apps = allApps().map((a) => ({ name: `/${a.id}`, arg: "", about: `Open ${a.title}.` }))
+      for (const c of [...found, ...OWN, ...apps]) if (c && !out.has(c.name)) out.set(c.name, c)
       return [...out.values()]
     })
   return loaded

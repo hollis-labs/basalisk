@@ -145,6 +145,7 @@ var (
 //	verb, object     its first word, and the rest without a leading article
 //	words            how many words
 //	app, app_title   the app the object (or arg) names, by id or title
+//	slash_app        "yes" when the slash command itself is an app's name ("/terminal")
 //	command, command_title   the palette command the message (or arg) names, by title or id
 //	focused.app      the app of the window in front
 //	selection        "yes" when text is selected there
@@ -185,6 +186,9 @@ func subject(text string, deskContext json.RawMessage, hints Hints) map[string]s
 	}
 	if n, ok := named(hints.Apps, appName); ok {
 		f["app"], f["app_title"] = n.ID, n.Title
+	} else if n, ok := named(hints.Apps, f["slash"]); ok && f["arg"] == "" {
+		// The app's own name as the command: "/terminal".
+		f["app"], f["app_title"], f["slash_app"] = n.ID, n.Title, "yes"
 	}
 	if n, ok := named(hints.Commands, commandName); ok {
 		f["command"], f["command_title"] = n.ID, n.Title

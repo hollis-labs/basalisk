@@ -116,7 +116,7 @@ The rules that ship (`internal/agent/rules.json`; `/help` in the panel lists the
 
 | You type | What runs |
 |---|---|
-| `/open <app>`, or "open notes", "launch a terminal", "show the browser" | `desktop_open` |
+| `/open <app>`, an app's name as the command (`/terminal`, `/notes`), or "open notes", "launch a terminal", "show the browser" | `desktop_open` |
 | `/do <command title or id>`, or a palette command's title on its own ("Tile windows") | `desktop_run_command` (asks, like any use of it) |
 | `/run <command line>` | `terminal_run` (asks every time) |
 | `/help` | the list |
@@ -131,6 +131,7 @@ A rule tests plain fields of the message, all of them strings:
 | `text` | the message in lower case, on one line, without closing punctuation (messages up to 160 characters) |
 | `verb`, `object`, `words` | its first word, the rest without a leading article, and the word count |
 | `app`, `app_title` | the app that `object` (or `arg`) names, by id or title |
+| `slash_app` | "yes" when the slash command itself is an app's name (`/terminal`) |
 | `command`, `command_title` | the palette command the message (or `arg`) names, by title or id |
 | `focused.app`, `selection` | the app of the window in front; "yes" when text is selected in it |
 
