@@ -228,6 +228,51 @@ registerAgentTools([
     },
   },
   {
+    name: "terminal_prepare",
+    level: "act",
+    description:
+      "Put a command in front of the owner, ready to run, without running it: a new terminal window opens with the command line typed and the cursor after it; pressing Enter is theirs. Give host (an ssh host name from their config: agent-os, worker-1…) for a command that belongs on another machine: the line typed is then ssh -t <host> '<command>'. Use this for anything on a host, anything that needs sudo or a password, and anything you were not asked to run yourself. Say in your reply what the command does and that it is waiting in the terminal.",
+    input_schema: object(
+      {
+        command: str("The command line. One line, plain text."),
+        host: str("The ssh host to run it on. Leave out for this Mac."),
+        folder: str("The folder to start in, for a command on this Mac."),
+      },
+      ["command"],
+    ),
+    describe: (input) =>
+      `Type \`${String(input.command ?? "").slice(0, 80)}\` into a new terminal${input.host ? ` for ${String(input.host)}` : ""}, not run`,
+    run: async (input, desk) => {
+      const command = typeof input.command === "string" ? input.command.trim() : ""
+      const host = typeof input.host === "string" ? input.host.trim() : ""
+      if (!command) throw new Error("command is empty.")
+      if ([...command].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127))
+        throw new Error("command must be one line of plain text (join steps with && or ;).")
+      if (host && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(host))
+        throw new Error("host is an ssh host name, like agent-os.")
+      const line = host ? `ssh -t ${host} '${command.replaceAll("'", "'\\''")}'` : command
+      await sessions()
+      const folder = !host && typeof input.folder === "string" ? input.folder.trim() : ""
+      const s = await api.create(folder)
+      if (s.cwd) folders.set(s.id, s.cwd)
+      openTerminalWindow(desk, {
+        session: s.id,
+        title: host ? `${host}: ready to run` : "Ready to run",
+      })
+      const t = await mounted(s.id)
+      if (!t) throw notMounted(s.id)
+      // Let the shell draw its prompt, then type the line and stop before Enter.
+      await new Promise((r) => setTimeout(r, 700))
+      t.input(line, true)
+      return {
+        shell_id: s.id,
+        typed: line,
+        run: false,
+        note: "It is typed and waiting; the owner presses Enter.",
+      }
+    },
+  },
+  {
     name: "terminal_run",
     level: "confirm",
     description:

@@ -70,6 +70,13 @@ their address, with no assistant marker.
 Routes: `GET /api/assist/needs`, `POST /api/assist/mail/{id}` (`state`, and `rule` to make
 one).
 
+## Commands on hosts (built: ready to run)
+
+`terminal_prepare` opens a terminal window with a command typed and not run; Enter is the
+owner's. With `host` the line is `ssh -t <host> '<command>'`. It runs at once (it only
+types). `terminal_run` still runs a command on this Mac after asking each time. Work the
+owner should not have to press Enter for goes to @chief with `owner_send`.
+
 ## Planned, in order
 
 1. Sends through Tether's typed messages (`tether_message_post`) once the address aliases
@@ -83,7 +90,7 @@ one).
    Switching slot swaps tools and recent context, not who the assistant is.
 4. Status: what is in flight, read from the owner's own tools (Planner, Torque, scratch,
    notes, seat status) with a short "is this current" check, fanned out to task agents.
-5. Host and command-line work: handed to @chief, or a terminal opened on the right host
-   with the command ready.
+5. Host and command-line work: a list of command kinds the assistant may run outright, and
+   a delegation to @chief that follows its create-task shape.
 6. Tuning: "that was noise" and "always tell me" on a card become rules; the assistant
    edits its own rules on request; what configuration cannot do goes to Local Dev.
