@@ -18,6 +18,8 @@ export interface FragCapture {
   content: string
   tags: string[]
   context?: unknown
+  /** How a clip's media went, once saved (internal/api/frag_media.go). */
+  media?: { sent: number; linked: number; failed: number; reasons?: string[] }
 }
 
 export const frag = {

@@ -208,6 +208,29 @@ func (c *Client) Accept(ctx context.Context, origin, bearer, captureID string, m
 	return r, nil
 }
 
+// Capabilities is what FE says it takes (GET /v1/capabilities), as much as delivery uses.
+type Capabilities struct {
+	SchemaVersion string `json:"schema_version"`
+	Operations    struct {
+		AssetUpload bool `json:"asset_upload"`
+	} `json:"operations"`
+	Capture struct {
+		MaxManifestBytes int64 `json:"max_manifest_bytes"`
+		MaxAssetBytes    int64 `json:"max_asset_bytes"`
+	} `json:"capture"`
+}
+
+func (c *Client) Capabilities(ctx context.Context, origin, bearer string) (Capabilities, error) {
+	var caps Capabilities
+	if err := c.request(ctx, "GET", origin+"/v1/capabilities", bearer, nil, &caps, 200); err != nil {
+		return caps, err
+	}
+	if caps.SchemaVersion != "fe.capabilities.v1" {
+		return caps, failed("invalid_capabilities", false)
+	}
+	return caps, nil
+}
+
 // Upload sends one variant's bytes to the path FE gave for it (PUT, the RFC 9530 digest of
 // the bytes, 204). The body is the media file as fetched; nothing else is sent with it.
 func (c *Client) Upload(ctx context.Context, origin, bearer, href, mime string, body []byte, sha []byte) error {

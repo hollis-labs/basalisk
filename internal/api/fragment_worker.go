@@ -361,6 +361,7 @@ func (w *FragmentWorker) deliver(ctx context.Context, j *deliveryJob) error {
 	if err != nil {
 		return err
 	}
+	j.receipt = withMediaSummary(j.receipt, outcomes)
 	return w.confirm(ctx, *j, confirmed)
 }
 func (w *FragmentWorker) confirm(ctx context.Context, j deliveryJob, r fecapture.Receipt) error {
@@ -370,7 +371,7 @@ func (w *FragmentWorker) confirm(ctx context.Context, j deliveryJob, r fecapture
 	}
 	defer func() { _ = tx.Rollback() }()
 	now := time.Now().UTC().Format(timestampFormat)
-	result, err := tx.ExecContext(ctx, `UPDATE fragment_submissions SET state='saved',code='confirmed',fragment_id=?,fragment_revision_id=?,lease_token='',lease_until=0,updated_at=? WHERE sequence=? AND lease_token=? AND state='queued'`, r.FragmentID, r.RevisionID, now, j.sequence, j.lease)
+	result, err := tx.ExecContext(ctx, `UPDATE fragment_submissions SET state='saved',code='confirmed',fragment_id=?,fragment_revision_id=?,receipt=?,lease_token='',lease_until=0,updated_at=? WHERE sequence=? AND lease_token=? AND state='queued'`, r.FragmentID, r.RevisionID, j.receipt, now, j.sequence, j.lease)
 	if err != nil {
 		return err
 	}

@@ -18,6 +18,21 @@ type Submission = {
   nextAttempt?: number
   mayHaveSent: boolean
   delivering: boolean
+  /** How a clip's media went (internal/api/frag_media.go). */
+  media?: { sent: number; linked: number; failed: number; reasons?: string[] }
+}
+
+/** "3 files sent, 1 kept as a link, 1 not sent (the media answered 404)" */
+function mediaLine(m: NonNullable<Submission["media"]>): string {
+  const files = (n: number) => `${n} file${n === 1 ? "" : "s"}`
+  const parts = [
+    m.sent ? `${files(m.sent)} sent` : "",
+    m.linked ? `${files(m.linked)} kept as ${m.linked === 1 ? "a link" : "links"}` : "",
+    m.failed
+      ? `${files(m.failed)} not sent${m.reasons?.length ? ` (${m.reasons.join("; ")})` : ""}`
+      : "",
+  ].filter(Boolean)
+  return `Media: ${parts.join(", ")}.`
 }
 type Detail = { content: string; tags: string[] }
 type Page = { items: Submission[]; nextBefore: number }
@@ -177,6 +192,9 @@ export function OutboxPage() {
             )}
             {item.state === "saved" && item.fragmentID && (
               <CiteText text={fragmentRef(item.fragmentID)} />
+            )}
+            {item.state === "saved" && item.media && (
+              <p className="text-fg-muted">{mediaLine(item.media)}</p>
             )}
             {item.state === "saved" && item.fragmentURL && (
               <a href={item.fragmentURL} target="_blank" rel="noreferrer">

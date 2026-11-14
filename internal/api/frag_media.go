@@ -383,23 +383,46 @@ func publicAddr(ip netip.Addr) bool {
 	return true
 }
 
-// mediaAddrAllowed is publicAddr; tests replace it to fetch from a local server.
-var mediaAddrAllowed = publicAddr
+// mediaAddrAllowed decides by the address connected to; tests replace it to fetch from a
+// local server (the port rule below still applies).
+var mediaAddrAllowed = func(ap netip.AddrPort) bool { return publicAddr(ap.Addr()) }
 
-var errNotPublic = errors.New("not a public address")
+// mediaFetchTimeout is the deadline for one whole fetch, body included.
+var mediaFetchTimeout = 30 * time.Second
 
-func mediaClient() *http.Client {
+var (
+	errNotPublic = errors.New("not a public address")
+	errPort      = errors.New("port not allowed")
+)
+
+// mediaPorts are the ports media may be fetched from: 80 and 443, and the page's own port
+// when its address named another.
+func mediaPorts(pageURL string) map[uint16]bool {
+	ports := map[uint16]bool{80: true, 443: true}
+	if u, err := url.Parse(pageURL); err == nil && u.Port() != "" {
+		var p uint16
+		if _, err := fmt.Sscan(u.Port(), &p); err == nil && p > 0 {
+			ports[p] = true
+		}
+	}
+	return ports
+}
+
+func mediaClient(ports map[uint16]bool) *http.Client {
 	dialer := &net.Dialer{
 		Timeout: 10 * time.Second,
-		// Checked on the address actually connected to, after DNS, so a name that resolves to
-		// a private address (or changes to one) is refused.
+		// Checked on the address actually connected to, after DNS, on every connection (so on
+		// every redirect hop too): a name that resolves to a private address, or changes to
+		// one, is refused, and so is a port other than 80, 443 or the page's own.
 		Control: func(_, address string, _ syscall.RawConn) error {
-			host, _, err := net.SplitHostPort(address)
+			ap, err := netip.ParseAddrPort(address)
 			if err != nil {
 				return errNotPublic
 			}
-			ip, err := netip.ParseAddr(host)
-			if err != nil || !mediaAddrAllowed(ip) {
+			if !ports[ap.Port()] {
+				return errPort
+			}
+			if !mediaAddrAllowed(ap) {
 				return errNotPublic
 			}
 			return nil
@@ -407,7 +430,7 @@ func mediaClient() *http.Client {
 	}
 	transport := &http.Transport{Proxy: nil, DialContext: dialer.DialContext, ForceAttemptHTTP2: true, MaxIdleConns: 4, IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 20 * time.Second}
 	return &http.Client{
-		Timeout:   30 * time.Second,
+		Timeout:   mediaFetchTimeout,
 		Transport: transport,
 		CheckRedirect: func(r *http.Request, via []*http.Request) error {
 			if len(via) >= 5 || (r.URL.Scheme != "http" && r.URL.Scheme != "https") || r.URL.User != nil {
@@ -443,18 +466,22 @@ func fetchMedia(ctx context.Context, client *http.Client, raw string, max int64)
 		if errors.Is(err, errNotPublic) {
 			return fetched{}, "the media is on a private or local address", false
 		}
+		if errors.Is(err, errPort) {
+			return fetched{}, "the media is on a port other than 80, 443 or the page's own", false
+		}
 		return fetched{}, "the media could not be fetched", true
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != 200 {
 		return fetched{}, fmt.Sprintf("the media answered %d", res.StatusCode), res.StatusCode >= 500 || res.StatusCode == 429 || res.StatusCode == 408
 	}
+	// The cap is on the bytes read, whatever the response says its length is.
 	body, err := io.ReadAll(io.LimitReader(res.Body, max+1))
 	if err != nil {
-		return fetched{}, "the media could not be read", true
+		return fetched{}, "the media could not be read in time", true
 	}
 	if int64(len(body)) > max {
-		return fetched{}, fmt.Sprintf("the media is larger than %d MiB", max>>20), false
+		return fetched{}, "the media is larger than FE takes", false
 	}
 	sum := sha256.Sum256(body)
 	return fetched{body: body, sha: sum[:], mime: sniffMedia(body)}, "", false
@@ -498,9 +525,12 @@ type manifestVariant struct {
 	mediaKind, kind, source, expires string
 }
 
-// manifestVariants reads the frozen manifest's variants by client id.
-func manifestVariants(manifest string) map[string]manifestVariant {
+// manifestVariants reads the frozen manifest's variants by client id, and the page address.
+func manifestVariants(manifest string) (map[string]manifestVariant, string) {
 	var m struct {
+		Source struct {
+			Submitted string `json:"submitted_url"`
+		} `json:"source"`
 		Media []struct {
 			Kind     string `json:"kind"`
 			Variants []struct {
@@ -513,14 +543,14 @@ func manifestVariants(manifest string) map[string]manifestVariant {
 	}
 	out := map[string]manifestVariant{}
 	if json.Unmarshal([]byte(manifest), &m) != nil {
-		return out
+		return out, ""
 	}
 	for _, it := range m.Media {
 		for _, v := range it.Variants {
 			out[v.ID] = manifestVariant{it.Kind, v.Kind, v.Source, v.Expires}
 		}
 	}
-	return out
+	return out, m.Source.Submitted
 }
 
 func failedOutcome(id, reason string, retryable bool) map[string]any {
@@ -538,7 +568,7 @@ func transferMedia(ctx context.Context, client *fecapture.Client, origin, bearer
 	if len(receipt.AssetInstructions) == 0 {
 		return []any{}, nil
 	}
-	variants := manifestVariants(manifest)
+	variants, page := manifestVariants(manifest)
 	known := map[string]bool{}
 	for id := range variants {
 		known[id] = true
@@ -552,7 +582,17 @@ func transferMedia(ctx context.Context, client *fecapture.Client, origin, bearer
 		a, b := variants[instructions[i].ClientVariantID].expires, variants[instructions[j].ClientVariantID].expires
 		return a != "" && (b == "" || a < b)
 	})
-	fetcher := mediaClient()
+	fetcher := mediaClient(mediaPorts(page))
+	// FE's own limit on one file, when it says (GET /v1/capabilities); 64 MiB at most.
+	limit := int64(maxAssetBytes)
+	for _, in := range instructions {
+		if in.Action == "request_upload" {
+			if caps, err := client.Capabilities(ctx, origin, bearer); err == nil && caps.Capture.MaxAssetBytes > 0 && caps.Capture.MaxAssetBytes < limit {
+				limit = caps.Capture.MaxAssetBytes
+			}
+			break
+		}
+	}
 	outcomes := []any{}
 	for _, in := range instructions {
 		v := variants[in.ClientVariantID]
@@ -580,7 +620,7 @@ func transferMedia(ctx context.Context, client *fecapture.Client, origin, bearer
 				outcomes = append(outcomes, map[string]any{"client_variant_id": in.ClientVariantID, "outcome": "not_available", "reason": "video streams are kept as references"})
 				continue
 			}
-			f, reason, retry := fetchMedia(ctx, fetcher, v.source, maxAssetBytes)
+			f, reason, retry := fetchMedia(ctx, fetcher, v.source, limit)
 			if reason != "" {
 				outcomes = append(outcomes, failedOutcome(in.ClientVariantID, reason, retry))
 				continue
@@ -602,4 +642,59 @@ func transferMedia(ctx context.Context, client *fecapture.Client, origin, bearer
 		}
 	}
 	return outcomes, nil
+}
+
+// mediaSummary is how a capture's media went, for the outbox: counts by outcome and the first
+// few reasons a file was not sent (plain words, never an address).
+type mediaSummary struct {
+	Sent    int      `json:"sent"`
+	Linked  int      `json:"linked"`
+	Failed  int      `json:"failed"`
+	Reasons []string `json:"reasons,omitempty"`
+}
+
+// withMediaSummary keeps the summary in the row's receipt (under a key of Basalisk's own,
+// which the receipt's readers ignore), so the outbox can say it without a schema change.
+func withMediaSummary(receipt string, outcomes []any) string {
+	if len(outcomes) == 0 {
+		return receipt
+	}
+	var sum mediaSummary
+	for _, o := range outcomes {
+		m, _ := o.(map[string]any)
+		switch m["outcome"] {
+		case "uploaded", "already_available":
+			sum.Sent++
+		case "deferred":
+			sum.Linked++
+		default:
+			sum.Failed++
+			if r, _ := m["reason"].(string); r != "" && len(sum.Reasons) < 3 && !slices.Contains(sum.Reasons, r) {
+				sum.Reasons = append(sum.Reasons, r)
+			}
+		}
+	}
+	var doc map[string]any
+	if json.Unmarshal([]byte(receipt), &doc) != nil {
+		return receipt
+	}
+	doc["basalisk_media"] = sum
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return receipt
+	}
+	return string(out)
+}
+
+func receiptMedia(receipt string) *mediaSummary {
+	if !strings.Contains(receipt, "basalisk_media") {
+		return nil
+	}
+	var doc struct {
+		Media *mediaSummary `json:"basalisk_media"`
+	}
+	if json.Unmarshal([]byte(receipt), &doc) != nil {
+		return nil
+	}
+	return doc.Media
 }

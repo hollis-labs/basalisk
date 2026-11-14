@@ -41,16 +41,19 @@ type fragmentSubmissionStatus struct {
 	NextAttempt        int64  `json:"nextAttempt,omitempty"`
 	MayHaveSent        bool   `json:"mayHaveSent"`
 	Delivering         bool   `json:"delivering"`
+	// How a clip's media went, once FE confirmed it (frag_media.go); absent without media.
+	Media *mediaSummary `json:"media,omitempty"`
 }
 
-const submissionColumns = `sequence,capture_id,device_id,integration_id,state,code,created_at,updated_at,fragment_id,fragment_revision_id,delivery_origin,next_attempt,may_have_sent,lease_until`
+const submissionColumns = `sequence,capture_id,device_id,integration_id,state,code,created_at,updated_at,fragment_id,fragment_revision_id,delivery_origin,next_attempt,may_have_sent,lease_until,receipt`
 
 func readSubmission(row interface{ Scan(...any) error }) (fragmentSubmissionStatus, error) {
 	var s fragmentSubmissionStatus
-	var origin string
+	var origin, receipt string
 	var leaseUntil int64
-	err := row.Scan(&s.Sequence, &s.CaptureID, &s.DeviceID, &s.IntegrationID, &s.State, &s.Code, &s.CreatedAt, &s.UpdatedAt, &s.FragmentID, &s.FragmentRevisionID, &origin, &s.NextAttempt, &s.MayHaveSent, &leaseUntil)
+	err := row.Scan(&s.Sequence, &s.CaptureID, &s.DeviceID, &s.IntegrationID, &s.State, &s.Code, &s.CreatedAt, &s.UpdatedAt, &s.FragmentID, &s.FragmentRevisionID, &origin, &s.NextAttempt, &s.MayHaveSent, &leaseUntil, &receipt)
 	s.Delivering = leaseUntil > time.Now().Unix()
+	s.Media = receiptMedia(receipt)
 	if s.State == "saved" && s.FragmentID != "" {
 		s.FragmentURL = origin + "/sysop/reader/" + s.FragmentID
 	}

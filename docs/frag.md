@@ -96,17 +96,30 @@ What fe-clipper's adapters find besides the text goes too, mapped as fe-clipper'
 FE answers each media variant with an instruction. For `request_upload` the delivery worker
 fetches the file itself:
 
-- no cookies, no referrer and nothing of the owner's;
-- 30 seconds, at most 5 redirects, 64 MiB;
-- **public addresses only**: loopback, private, link-local and tailnet (100.64/10)
-  addresses are refused after DNS, because the addresses come from a web page;
+- no cookies, no referrer, no FE token and nothing else of the owner's;
+- http and https only, no credentials in the address;
+- 30 seconds for the whole fetch, at most 5 redirects;
+- at most 64 MiB, or FE's own `max_asset_bytes` (`GET /v1/capabilities`) when smaller,
+  counted on the bytes read, whatever length the response declares;
+- **public addresses only**, checked on the address actually connected to on every hop:
+  loopback, private, link-local, tailnet (100.64/10), unique-local, unspecified,
+  multicast and their IPv4-mapped forms are refused, because the addresses come from a web
+  page;
+- ports 80 and 443 only, plus the page's own port when its address named one;
 - the type is decided from the bytes.
 
 It then PUTs the file to FE with its `Digest` and completes the capture with one outcome per
 variant: `uploaded`, `already_available`, `deferred`, `not_available` or `failed`. A file
 that cannot be had is a failed outcome, and FE marks the capture `partial`. The bytes are
 held in memory for the upload and never written down; what is kept at rest is still the
-markdown and the media's addresses.
+markdown and the media's addresses. A failure is recorded as a plain reason, never with the
+address.
+
+The upload goes only to the path FE gave for that variant on the configured FE origin
+(`/v1/captures/{id}/assets/{variant}/content`); an instruction pointing elsewhere makes the
+receipt invalid. Once FE confirms the capture, the outbox says how the media went ("Media: 3
+files sent, 1 file kept as a link, 1 file not sent (the media answered 404)"). The counts are
+kept with the row's receipt.
 
 ## Delivery modes
 

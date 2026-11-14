@@ -355,10 +355,11 @@ func (a *API) fragCaptures(w http.ResponseWriter, r *http.Request) {
 	}
 	list := []item{}
 	for rows.Next() {
-		var payload, origin string
+		var payload, origin, receipt string
 		var leaseUntil int64
 		var it item
-		err := rows.Scan(&it.Sequence, &it.CaptureID, &it.DeviceID, &it.IntegrationID, &it.State, &it.Code, &it.CreatedAt, &it.UpdatedAt, &it.FragmentID, &it.FragmentRevisionID, &origin, &it.NextAttempt, &it.MayHaveSent, &leaseUntil, &payload)
+		err := rows.Scan(&it.Sequence, &it.CaptureID, &it.DeviceID, &it.IntegrationID, &it.State, &it.Code, &it.CreatedAt, &it.UpdatedAt, &it.FragmentID, &it.FragmentRevisionID, &origin, &it.NextAttempt, &it.MayHaveSent, &leaseUntil, &receipt, &payload)
+		it.Media = receiptMedia(receipt)
 		if err != nil {
 			fail(w, 503, "Capture storage unavailable.")
 			return

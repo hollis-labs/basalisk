@@ -70,6 +70,7 @@ registerAgentTools([
           when: c.createdAt,
           ...stateOf(c),
           ...(c.tags.length ? { tags: c.tags } : {}),
+          ...(c.media ? { media: c.media } : {}),
         })),
       }
     },

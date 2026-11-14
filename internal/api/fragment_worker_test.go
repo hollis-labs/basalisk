@@ -36,6 +36,8 @@ type capturePeer struct {
 	// (frag_media_test.go); nil answers none. uploads are the bytes PUT, by variant.
 	instruct func(id string, variant map[string]any) map[string]any
 	uploads  map[string][]byte
+	// maxAsset, when set, is served as capture.max_asset_bytes from /v1/capabilities.
+	maxAsset int64
 }
 
 func (p *capturePeer) serve(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +75,14 @@ func (p *capturePeer) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw, _ := io.ReadAll(r.Body)
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/capabilities" {
+		if p.maxAsset == 0 {
+			http.NotFound(w, r)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"schema_version": "fe.capabilities.v1", "operations": map[string]bool{"asset_upload": true}, "capture": map[string]any{"max_manifest_bytes": 2 << 20, "max_asset_bytes": p.maxAsset}})
+		return
+	}
 	if r.Method == http.MethodPut {
 		// An asset upload: the body must match its RFC 9530 digest.
 		parts := strings.Split(r.URL.Path, "/")

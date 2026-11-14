@@ -63,8 +63,8 @@ func TestFragClipManifest(t *testing.T) {
 			Kind, Text string
 			Selector   struct{ Exact string }
 		}
-		Media       []any
-		Extraction  struct {
+		Media      []any
+		Extraction struct {
 			Capabilities []string `json:"observed_capabilities"`
 			Warnings     []struct{ Code, Message string }
 		}
