@@ -8,6 +8,8 @@
  * subtitle and tone; an edge's style (which the legend explains); the diagram's theme.
  * A diagram written with none of it draws as before.
  */
+import { SANS, wrap } from "./text"
+
 export type NodeKind =
   | "service"
   | "store"
@@ -108,8 +110,8 @@ export interface Diagram {
   groups: DGroup[]
 }
 
-export const NODE_W = 200
-export const NODE_H = 54
+export const NODE_W = 236
+export const NODE_H = 66
 
 export const empty = (): Diagram => ({ diagram: "v1", nodes: [], edges: [], groups: [] })
 
@@ -266,20 +268,57 @@ export function freshId(label: string, taken: (id: string) => boolean): string {
 
 // ---- Sizes: a node's box follows what it shows ----
 
-export const ITEM_H = 26
+/** A card's measures: padding, the header with and without a subtitle, an inner row. */
+export const CARD = {
+  pad: 18,
+  head: 66,
+  headSub: 84,
+  row: 32,
+  rowH: 26,
+  line: 19,
+  lead: 48,
+  tag: 24,
+}
+
+/** Kinds that draw an icon chip by default (the others have none unless one is named). */
+export const KIND_HAS_ICON = new Set<NodeKind>([
+  "service",
+  "store",
+  "queue",
+  "client",
+  "external",
+  "actor",
+  "agent",
+])
+
+/** Where a card's title starts, and how wide it may be (a step or an icon takes the left). */
+export function titleBox(n: DNode, w: number): { x: number; max: number } {
+  const lead =
+    !!n.step || (n.kind !== "note" && (!!n.icon || KIND_HAS_ICON.has(n.kind ?? "service")))
+  const x = lead ? CARD.pad + CARD.lead : CARD.pad
+  return { x, max: w - x - CARD.pad }
+}
+/** The lines a card's title takes (one or two). */
+export function titleLines(n: DNode, w: number): number {
+  const { max } = titleBox(n, w)
+  return wrap(n.label, max, `600 15px ${SANS}`, 2).length
+}
+export const ITEM_H = CARD.row
 /** A node's size: its width (given, or by kind) and a height that holds its lines and rows. */
 export function nodeSize(n: DNode): { w: number; h: number } {
   switch (n.kind) {
     case "decision":
-      return { w: n.w ?? 150, h: 96 }
+      return { w: n.w ?? 172, h: 112 }
     case "start":
     case "end":
-      return { w: n.w ?? 150, h: 44 }
+      return { w: n.w ?? 172, h: 52 }
     default: {
       const w = n.w ?? NODE_W
-      let h = n.subtitle ? 62 : 48
-      if (n.items?.length) h += 6 + n.items.length * ITEM_H + 4
-      if (n.tag && !n.items?.length) h += 0
+      let h =
+        (n.subtitle ? CARD.headSub : CARD.head) +
+        (titleLines(n, w) - 1) * CARD.line +
+        (n.tag ? CARD.tag : 0)
+      if (n.items?.length) h += n.items.length * CARD.row + 6
       return { w, h }
     }
   }

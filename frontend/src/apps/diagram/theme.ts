@@ -20,6 +20,12 @@ export interface Palette {
   glow: boolean
   tones: Record<Tone, string>
   note: string
+  /** Text on a filled tone (a step badge, a mark count). */
+  onTone: string
+  /** A faint highlight along a card's top edge. */
+  sheen: string
+  /** How dark the cards' shadow is. */
+  shadow: number
 }
 
 const DARK_TONES: Record<Tone, string> = {
@@ -34,32 +40,35 @@ const DARK_TONES: Record<Tone, string> = {
 }
 export const PALETTES: Record<Theme, Palette> = {
   dark: {
-    bg: "#14151b",
-    grid: "#2a2c36",
-    card: "#1c1e27",
-    cardStroke: "#323646",
-    text: "#e7e8ef",
-    muted: "#9a9eb2",
-    laneFill: "#181a22",
-    laneStroke: "#2b2e3b",
-    laneTitle: "#aab1cc",
-    row: "#20232e",
+    bg: "#131419",
+    grid: "#272934",
+    card: "#1d1f28",
+    cardStroke: "#343849",
+    text: "#eceef5",
+    muted: "#9599ad",
+    laneFill: "#17181f",
+    laneStroke: "#2a2d39",
+    laneTitle: "#b4bbd6",
+    row: "#232632",
     select: "#a78bfa",
     glow: false,
     tones: DARK_TONES,
     note: "#3a3420",
+    onTone: "#101218",
+    sheen: "#2c2f3c",
+    shadow: 0.45,
   },
   light: {
-    bg: "#f4f5f9",
-    grid: "#d9dce6",
+    bg: "#f3f4f8",
+    grid: "#d6dae4",
     card: "#ffffff",
-    cardStroke: "#c8cedb",
-    text: "#1b2233",
-    muted: "#5f6a83",
-    laneFill: "#fbfbfd",
-    laneStroke: "#d5d9e3",
-    laneTitle: "#1b2233",
-    row: "#f7f8fb",
+    cardStroke: "#d2d8e3",
+    text: "#18202f",
+    muted: "#5d6880",
+    laneFill: "#fafbfd",
+    laneStroke: "#dce0e9",
+    laneTitle: "#18202f",
+    row: "#f6f7fa",
     select: "#6d4fe0",
     glow: false,
     tones: {
@@ -73,6 +82,9 @@ export const PALETTES: Record<Theme, Palette> = {
       slate: "#5d6678",
     },
     note: "#fff3c4",
+    onTone: "#ffffff",
+    sheen: "#ffffff",
+    shadow: 0.08,
   },
   neon: {
     bg: "#0a0f1f",
@@ -98,6 +110,9 @@ export const PALETTES: Record<Theme, Palette> = {
       slate: "#94a3b8",
     },
     note: "#2a2410",
+    onTone: "#071022",
+    sheen: "#16213d",
+    shadow: 0.5,
   },
 }
 

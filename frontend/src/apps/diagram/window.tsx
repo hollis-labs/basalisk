@@ -56,7 +56,7 @@ import {
   TONES,
   type Tone,
 } from "./model"
-import { Defs, extent, ICON_NAMES, LEGEND_H, legendOf, PALETTES, Scene } from "./render"
+import { Defs, extent, ICON_NAMES, LEGEND_H, laneHeads, legendOf, PALETTES, Scene } from "./render"
 import { routeAll } from "./route"
 import "../../collab/collab.css"
 import "./diagram.css"
@@ -461,8 +461,9 @@ export function DiagramWindow({ winId, args }: WindowProps) {
       routeAll(
         [...(diff?.goneNodes ?? []), ...dia.nodes],
         [...(diff?.goneEdges ?? []), ...dia.edges],
+        laneHeads(dia),
       ),
-    [dia.nodes, dia.edges, diff],
+    [dia, diff],
   )
   const counts = useMemo(() => {
     const c = { added: 0, removed: 0, changed: 0, moved: 0 }
@@ -574,151 +575,156 @@ export function DiagramWindow({ winId, args }: WindowProps) {
       )}
       {doc ? (
         <section className="collab-main">
-          <header className="collab-bar dia-bar">
-            <button
-              type="button"
-              className="dia-iconbtn"
-              data-on={listOpen}
-              title="Diagrams"
-              aria-label="Diagrams"
-              onClick={() => setListOpen((o) => !o)}
-            >
-              <PanelLeft {...ICON} />
-            </button>
-            <input
-              className="collab-title"
-              value={title}
-              aria-label="Title"
-              onChange={(e) => setTitle(e.target.value)}
-            />
-            <span className="collab-rev" title={doc.name}>
-              r{doc.rev} · {dia.nodes.length} nodes · {dia.edges.length} edges
-            </span>
-            <fieldset className="dia-seg" aria-label="Look">
-              {THEMES.map((t) => (
+          <div className="dia-stage">
+            <div className="dia-overlay">
+              <div className="dia-float dia-float-left">
                 <button
-                  key={t}
                   type="button"
-                  data-on={theme === t}
-                  onClick={() => setDia((d) => ({ ...d, theme: t === "dark" ? undefined : t }))}
-                  title={`The ${t} look (kept with the diagram)`}
+                  className="dia-iconbtn"
+                  data-on={listOpen}
+                  title="Diagrams"
+                  aria-label="Diagrams"
+                  onClick={() => setListOpen((o) => !o)}
                 >
-                  {t}
+                  <PanelLeft {...ICON} />
                 </button>
-              ))}
-            </fieldset>
-            {!comparing && (
-              <button
-                type="button"
-                className="viewer-tool"
-                title="Add a node (or double-click the canvas)"
-                onClick={() => {
-                  const box = svg.current?.getBoundingClientRect()
-                  addNode(
-                    ((box?.width ?? 600) / 2 - view.x) / view.k,
-                    ((box?.height ?? 400) / 2 - view.y) / view.k,
-                  )
-                }}
-              >
-                <Plus {...ICON} /> Node
-              </button>
-            )}
-            {!comparing && (
-              <fieldset className="dia-seg" aria-label="Tidy">
-                {(["LR", "TB"] as Direction[]).map((d) => (
+                <input
+                  className="collab-title"
+                  value={title}
+                  size={Math.max(8, title.length + 1)}
+                  aria-label="Title"
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+                <span className="collab-rev" title={doc.name}>
+                  r{doc.rev} · {dia.nodes.length} nodes · {dia.edges.length} edges
+                </span>
+              </div>
+              <div className="dia-float dia-float-right">
+                <fieldset className="dia-seg" aria-label="Look">
+                  {THEMES.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      data-on={theme === t}
+                      onClick={() => setDia((d) => ({ ...d, theme: t === "dark" ? undefined : t }))}
+                      title={`The ${t} look (kept with the diagram)`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </fieldset>
+                {!comparing && (
                   <button
-                    key={d}
                     type="button"
-                    title={
-                      d === "LR"
-                        ? "Tidy: lay it out left to right"
-                        : "Tidy: lay it out top to bottom"
-                    }
+                    className="viewer-tool"
+                    title="Add a node (or double-click the canvas)"
                     onClick={() => {
-                      setDia((x) => tidy(x, d))
-                      requestAnimationFrame(() => fitRef.current())
+                      const box = svg.current?.getBoundingClientRect()
+                      addNode(
+                        ((box?.width ?? 600) / 2 - view.x) / view.k,
+                        ((box?.height ?? 400) / 2 - view.y) / view.k,
+                      )
                     }}
                   >
-                    {d === "LR" ? "Tidy →" : "Tidy ↓"}
+                    <Plus {...ICON} /> Node
                   </button>
-                ))}
-              </fieldset>
-            )}
-            <button
-              type="button"
-              className="viewer-tool"
-              data-on={comparing}
-              title="Compare with another revision"
-              onClick={() => setComparing((c) => !c)}
-            >
-              <GitCompare {...ICON} /> Compare
-            </button>
-            <button
-              type="button"
-              className="viewer-tool"
-              data-on={marksOpen}
-              title="Marks and notes"
-              onClick={() => setMarksOpen((o) => !o)}
-            >
-              <MessageSquare {...ICON} /> {open.length || ""}
-            </button>
-            <button
-              type="button"
-              className="collab-primary"
-              disabled={!dirty}
-              title="Save a new revision (⌘S)"
-              onClick={() => void save()}
-            >
-              <Save {...ICON} /> Save
-            </button>
-          </header>
-          {comparing && (
-            <p className="collab-status" data-tone="ok">
-              <select
-                value={fromRev}
-                aria-label="Compare from revision"
-                onChange={(e) => setFrom(Number(e.target.value))}
-              >
-                {revs.map((r) => (
-                  <option key={r.rev} value={r.rev}>
-                    revision {r.rev} ·{" "}
-                    {new Date(r.at).toLocaleString([], {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </option>
-                ))}
-                {!revs.some((r) => r.rev === fromRev) && (
-                  <option value={fromRev}>revision {fromRev}</option>
                 )}
-              </select>
-              → {dirty ? "what is on the canvas (unsaved)" : `revision ${doc.rev}`}
-              <span className="dia-legend">
-                <b data-c="added">{counts.added} added</b>
-                <b data-c="changed">{counts.changed} changed</b>
-                <b data-c="removed">{counts.removed} removed</b>
-                <b data-c="moved">{counts.moved} moved</b>
-              </span>
-            </p>
-          )}
-          {status.text && !comparing && (
-            <p className="collab-status" data-tone={status.tone} role="status">
-              {status.text}
-              {status.newer && (
-                <>
-                  <button type="button" onClick={() => void load(doc.name)}>
-                    Load it (drops your edits)
-                  </button>
-                  <button type="button" onClick={() => void save(true)}>
-                    Save mine over it
-                  </button>
-                </>
-              )}
-            </p>
-          )}
-          <div className="dia-stage">
+                {!comparing && (
+                  <fieldset className="dia-seg" aria-label="Tidy">
+                    {(["LR", "TB"] as Direction[]).map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        title={
+                          d === "LR"
+                            ? "Tidy: lay it out left to right"
+                            : "Tidy: lay it out top to bottom"
+                        }
+                        onClick={() => {
+                          setDia((x) => tidy(x, d))
+                          requestAnimationFrame(() => fitRef.current())
+                        }}
+                      >
+                        {d === "LR" ? "Tidy →" : "Tidy ↓"}
+                      </button>
+                    ))}
+                  </fieldset>
+                )}
+                <button
+                  type="button"
+                  className="viewer-tool"
+                  data-on={comparing}
+                  title="Compare with another revision"
+                  onClick={() => setComparing((c) => !c)}
+                >
+                  <GitCompare {...ICON} /> Compare
+                </button>
+                <button
+                  type="button"
+                  className="viewer-tool"
+                  data-on={marksOpen}
+                  title="Marks and notes"
+                  onClick={() => setMarksOpen((o) => !o)}
+                >
+                  <MessageSquare {...ICON} /> {open.length || ""}
+                </button>
+                <button
+                  type="button"
+                  className="collab-primary"
+                  disabled={!dirty}
+                  title="Save a new revision (⌘S)"
+                  onClick={() => void save()}
+                >
+                  <Save {...ICON} /> Save
+                </button>
+              </div>
+            </div>
+            {comparing && (
+              <p className="collab-status dia-banner" data-tone="ok">
+                <select
+                  value={fromRev}
+                  aria-label="Compare from revision"
+                  onChange={(e) => setFrom(Number(e.target.value))}
+                >
+                  {revs.map((r) => (
+                    <option key={r.rev} value={r.rev}>
+                      revision {r.rev} ·{" "}
+                      {new Date(r.at).toLocaleString([], {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </option>
+                  ))}
+                  {!revs.some((r) => r.rev === fromRev) && (
+                    <option value={fromRev}>revision {fromRev}</option>
+                  )}
+                </select>
+                → {dirty ? "what is on the canvas (unsaved)" : `revision ${doc.rev}`}
+                <span className="dia-legend">
+                  <b data-c="added">{counts.added} added</b>
+                  <b data-c="changed">{counts.changed} changed</b>
+                  <b data-c="removed">{counts.removed} removed</b>
+                  <b data-c="moved">{counts.moved} moved</b>
+                </span>
+              </p>
+            )}
+            {status.text && !comparing && (
+              <p className="collab-status dia-banner" data-tone={status.tone} role="status">
+                {status.text}
+                {status.newer && (
+                  <>
+                    <button type="button" onClick={() => void load(doc.name)}>
+                      Load it (drops your edits)
+                    </button>
+                    <button type="button" onClick={() => void save(true)}>
+                      Save mine over it
+                    </button>
+                  </>
+                )}
+              </p>
+            )}
             <svg
               ref={svg}
               className="dia-canvas"

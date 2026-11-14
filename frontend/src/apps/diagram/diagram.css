@@ -3,8 +3,55 @@
   position: relative;
   outline: none;
 }
-.dia-bar {
-  gap: 8px;
+/* Controls float over the canvas, which fills the window. */
+.dia-overlay {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  pointer-events: none;
+}
+.dia-float {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--desk-border);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--desk-surface) 90%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+.dia-float-left {
+  flex: 0 1 auto;
+}
+.dia-float-left .collab-title {
+  flex: 0 1 auto;
+  min-width: 80px;
+  max-width: 420px;
+  font-weight: 600;
+}
+.dia-float-right {
+  flex: 0 0 auto;
+}
+.dia-banner {
+  position: absolute;
+  z-index: 4;
+  top: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 40px);
+  border: 1px solid var(--desk-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--desk-surface) 94%, transparent);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
 }
 .dia-iconbtn {
   display: inline-flex;
@@ -125,10 +172,10 @@
 .dia-side {
   position: absolute;
   z-index: 5;
-  top: 44px;
+  top: 58px;
   right: 10px;
   bottom: 10px;
-  width: 300px;
+  width: 310px;
   border: 1px solid var(--desk-border);
   border-radius: 12px;
   background: var(--desk-surface);

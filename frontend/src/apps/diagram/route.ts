@@ -28,7 +28,7 @@ export interface Route {
   horizontal: boolean
 }
 
-const STUB = 18
+const STUB = 24
 const centre = (b: Box): Pt => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 })
 const normal: Record<Side, Pt> = {
   top: { x: 0, y: -1 },
@@ -85,13 +85,15 @@ function crosses(p: Pt, q: Pt, b: Box, pad = 6): boolean {
   return false
 }
 
-function cost(pts: Pt[], boxes: Box[], own: Box[]): number {
+function cost(pts: Pt[], boxes: Box[], own: Box[], soft: Box[] = []): number {
   let c = 0
   for (let i = 0; i + 1 < pts.length; i++) {
     const p = pts[i]
     const q = pts[i + 1]
     c += Math.abs(p.x - q.x) + Math.abs(p.y - q.y)
     for (const b of boxes) if (crosses(p, q, b)) c += 4000
+    // Running along a lane's title is worse than a detour, better than crossing a node.
+    for (const b of soft) if (crosses(p, q, b, 0)) c += 700
     // The middle segments must not run back through the edge's own nodes.
     if (i > 0 && i + 2 < pts.length) for (const b of own) if (crosses(p, q, b, 2)) c += 4000
   }
@@ -137,8 +139,8 @@ function candidates(p: Pt, sp: Side, q: Pt, sq: Side, boxes: Box[]): Pt[][] {
   return out
 }
 
-/** Route every edge of a diagram. */
-export function routeAll(nodes: DNode[], edges: DEdge[]): Map<string, Route> {
+/** Route every edge of a diagram; soft boxes (lanes' titles) are avoided when it is cheap. */
+export function routeAll(nodes: DNode[], edges: DEdge[], soft: Box[] = []): Map<string, Route> {
   const box = new Map(nodes.map((n) => [n.id, boxOf(n)]))
   const sides = new Map<string, [Side, Side]>()
   // Which edges use each side of each node, to spread their ports.
@@ -186,9 +188,9 @@ export function routeAll(nodes: DNode[], edges: DEdge[]): Map<string, Route> {
     )
     let best: Pt[] = []
     let bestCost = Number.POSITIVE_INFINITY
-    for (const c of candidates(p, s[0], q, s[1], near)) {
+    for (const c of candidates(p, s[0], q, s[1], [...near, ...soft])) {
       const pts = simplify(c)
-      const k = cost(pts, near, [a, b])
+      const k = cost(pts, near, [a, b], soft)
       if (k < bestCost) {
         bestCost = k
         best = pts
@@ -222,7 +224,7 @@ export function routeAll(nodes: DNode[], edges: DEdge[]): Map<string, Route> {
 }
 
 /** An SVG path through the points with rounded corners. */
-export function pathOf(pts: Pt[], r = 10): string {
+export function pathOf(pts: Pt[], r = 14): string {
   if (pts.length < 2) return ""
   let d = `M${pts[0].x} ${pts[0].y}`
   for (let i = 1; i < pts.length - 1; i++) {

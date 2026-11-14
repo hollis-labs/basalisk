@@ -8,10 +8,10 @@ import { type Diagram, type DNode, nodeSize, parse } from "./model"
 
 export type Direction = "LR" | "TB"
 
-const GAP_RANK = 110 // between ranks (columns in LR)
-const GAP_NODE = 46 // between nodes of a rank
-const GAP_LANE = 70 // extra room between lanes
-const GAP_BAND = 80 // between the bands of a wrapped lane
+const GAP_RANK = 130 // between ranks (columns in LR)
+const GAP_NODE = 60 // between nodes of a rank
+const GAP_LANE = 96 // extra room between lanes
+const GAP_BAND = 100 // between the bands of a wrapped lane
 const WRAP = 3 // slots a lane takes side by side before it wraps
 
 /** Ranks by longest path from the sources; edges that close a cycle are ignored. */
@@ -112,7 +112,7 @@ export function tidy(dia: Diagram, dir: Direction = "LR"): Diagram {
   const span = (list: DNode[]) => list.reduce((a, n) => a + across(n) + GAP_NODE, -GAP_NODE)
   const placed = new Map<string, { x: number; y: number }>()
   const ORIGIN = 60
-  const TOP = 90 // room above for a lane's title
+  const TOP = 110 // room above for a lane's title
   let lanePos = ORIGIN
   for (const lane of laneIds) {
     const own = slots.filter((s) => laneOf((bySlot.get(s) ?? [])[0]) === lane)

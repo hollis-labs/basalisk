@@ -61,22 +61,24 @@ import {
 import type { ReactNode } from "react"
 import {
   boxOf,
+  CARD,
   type Change,
   type DEdge,
   type DGroup,
   type Diagram,
   type DNode,
   type EdgeStyle,
-  ITEM_H,
   type NodeKind,
   STYLE_LABEL,
   STYLES,
   type Tone,
+  titleBox,
 } from "./model"
 import { pathOf, type Route } from "./route"
+import { fit, MONO, measure, SANS, wrap } from "./text"
 import { CHANGE_COLOR, PALETTES, type Palette, SHADOW } from "./theme"
 
-export { PALETTES, type Palette }
+export { MONO, PALETTES, type Palette, SANS }
 
 /** Icons a node may name (lucide names). */
 export const ICONS: Record<string, LucideIcon> = {
@@ -158,9 +160,6 @@ const KIND_TONE: Record<NodeKind, Tone> = {
   note: "amber",
 }
 
-export const SANS = '-apple-system, "SF Pro Text", "Inter", "Helvetica Neue", Arial, sans-serif'
-export const MONO = '"SF Mono", "JetBrains Mono", "IBM Plex Mono", Menlo, monospace'
-
 /** a mixed into b by t (hex colours). */
 export function mix(a: string, b: string, t: number): string {
   const p = (h: string) => {
@@ -182,61 +181,28 @@ export function mix(a: string, b: string, t: number): string {
     .join("")}`
 }
 
-let ctx: CanvasRenderingContext2D | null = null
-/** The width of text in a font (for fitting labels). */
-export function measure(text: string, font: string): number {
-  if (typeof document === "undefined") return text.length * 7
-  ctx ??= document.createElement("canvas").getContext("2d")
-  if (!ctx) return text.length * 7
-  ctx.font = font
-  return ctx.measureText(text).width
-}
-function fit(text: string, max: number, font: string): string {
-  if (measure(text, font) <= max) return text
-  let t = text
-  while (t.length > 1 && measure(`${t}…`, font) > max) t = t.slice(0, -1)
-  return `${t}…`
-}
-function wrap(text: string, max: number, font: string, lines = 2): string[] {
-  const words = text.split(/\s+/)
-  const out: string[] = []
-  let cur = ""
-  for (const w of words) {
-    const next = cur ? `${cur} ${w}` : w
-    if (measure(next, font) <= max || !cur) cur = next
-    else {
-      out.push(cur)
-      cur = w
-    }
-  }
-  if (cur) out.push(cur)
-  if (out.length > lines) {
-    const kept = out.slice(0, lines)
-    kept[lines - 1] = fit(`${kept[lines - 1]} ${out.slice(lines).join(" ")}`, max, font)
-    return kept
-  }
-  return out
-}
-
 /** Colours of an edge style. */
 export function edgeLook(s: EdgeStyle | undefined, pal: Palette) {
   switch (s) {
     case "human":
-      return { color: pal.tones.amber, dash: "", width: 2 }
+      return { color: pal.tones.amber, dash: "", width: 2.4 }
     case "feedback":
-      return { color: pal.tones.blue, dash: "7 5", width: 1.8 }
+      return { color: pal.tones.blue, dash: "8 6", width: 2.1 }
     case "repair":
-      return { color: pal.tones.red, dash: "7 5", width: 1.8 }
+      return { color: pal.tones.red, dash: "8 6", width: 2.1 }
     case "async":
-      return { color: pal.muted, dash: "2 5", width: 1.8 }
+      return { color: pal.muted, dash: "2.5 6", width: 2.1 }
     case "data":
-      return { color: pal.tones.green, dash: "", width: 2 }
+      return { color: pal.tones.green, dash: "", width: 2.4 }
     case "muted":
-      return { color: pal.muted, dash: "", width: 1.3 }
+      return { color: pal.muted, dash: "", width: 1.5 }
     default:
-      return { color: pal.tones.blue, dash: "", width: 2 }
+      return { color: pal.tones.blue, dash: "", width: 2.4 }
   }
 }
+
+/** A lane's room around its nodes, and above them for its title and subtitle. */
+export const LANE = { pad: 34, top: 66, topSub: 92 }
 
 /** Lanes: each group's panel around its nodes. */
 export function laneBoxes(dia: Diagram) {
@@ -244,18 +210,28 @@ export function laneBoxes(dia: Diagram) {
     .map((g) => {
       const members = dia.nodes.filter((n) => n.group === g.id).map(boxOf)
       if (!members.length) return null
-      const top = g.subtitle ? 74 : 52
-      const x = Math.min(...members.map((b) => b.x)) - 26
+      const top = g.subtitle ? LANE.topSub : LANE.top
+      const x = Math.min(...members.map((b) => b.x)) - LANE.pad
       const y = Math.min(...members.map((b) => b.y)) - top
       return {
         g,
         x,
         y,
-        w: Math.max(...members.map((b) => b.x + b.w)) + 26 - x,
-        h: Math.max(...members.map((b) => b.y + b.h)) + 26 - y,
+        w: Math.max(...members.map((b) => b.x + b.w)) + LANE.pad - x,
+        h: Math.max(...members.map((b) => b.y + b.h)) + LANE.pad - y,
       }
     })
     .filter((l): l is { g: DGroup; x: number; y: number; w: number; h: number } => l !== null)
+}
+
+/** The title area of each lane, for the router to keep clear. */
+export function laneHeads(dia: Diagram) {
+  return laneBoxes(dia).map((l) => ({
+    x: l.x + 8,
+    y: l.y + 14,
+    w: l.w - 16,
+    h: (l.g.subtitle ? LANE.topSub : LANE.top) - 24,
+  }))
 }
 
 /** The extent of everything drawn (nodes and lanes), without the legend. */
@@ -282,7 +258,7 @@ export function legendOf(dia: Diagram): { style: EdgeStyle; label: string }[] {
     label: names[s] ?? STYLE_LABEL[s],
   }))
 }
-export const LEGEND_H = 64
+export const LEGEND_H = 80
 
 /** Markers and filters a drawing uses; ids are prefixed so two windows do not clash. */
 export function Defs({ uid, pal }: { uid: string; pal: Palette }) {
@@ -300,16 +276,16 @@ export function Defs({ uid, pal }: { uid: string; pal: Palette }) {
           viewBox="0 0 10 10"
           refX="9"
           refY="5"
-          markerWidth="7"
-          markerHeight="7"
+          markerWidth="11"
+          markerHeight="11"
           markerUnits="userSpaceOnUse"
           orient="auto-start-reverse"
         >
-          <path d="M0 1L10 5L0 9z" fill={c} />
+          <path d="M0 0.5L10 5L0 9.5L2.2 5z" fill={c} />
         </marker>
       ))}
-      <pattern id={`${uid}-grid`} width="22" height="22" patternUnits="userSpaceOnUse">
-        <circle cx="1" cy="1" r="1" fill={pal.grid} />
+      <pattern id={`${uid}-grid`} width="24" height="24" patternUnits="userSpaceOnUse">
+        <circle cx="1.2" cy="1.2" r="1.2" fill={pal.grid} />
       </pattern>
       {/* In user space: a straight line has no height, and a box-relative region would hide it. */}
       <filter
@@ -326,8 +302,21 @@ export function Defs({ uid, pal }: { uid: string; pal: Palette }) {
           <feMergeNode in="SourceGraphic" />
         </feMerge>
       </filter>
-      <filter id={`${uid}-shadow`} x="-20%" y="-20%" width="140%" height="160%">
-        <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor={SHADOW} floodOpacity="0.18" />
+      <filter id={`${uid}-shadow`} x="-20%" y="-20%" width="140%" height="170%">
+        <feDropShadow
+          dx="0"
+          dy="1"
+          stdDeviation="1"
+          floodColor={SHADOW}
+          floodOpacity={pal.shadow * 0.8}
+        />
+        <feDropShadow
+          dx="0"
+          dy="6"
+          stdDeviation="9"
+          floodColor={SHADOW}
+          floodOpacity={pal.shadow}
+        />
       </filter>
     </defs>
   )
@@ -383,25 +372,31 @@ export function Scene({
               y={l.y}
               width={l.w}
               height={l.h}
-              rx={16}
-              fill={tone ? mix(tone, pal.bg, 0.07) : pal.laneFill}
-              stroke={on ? pal.select : tone ? mix(tone, pal.bg, 0.4) : pal.laneStroke}
-              strokeWidth={on ? 2 : 1.2}
+              rx={20}
+              fill={tone ? mix(tone, pal.bg, pal.glow ? 0.08 : 0.06) : pal.laneFill}
+              stroke={on ? pal.select : tone ? mix(tone, pal.bg, 0.38) : pal.laneStroke}
+              strokeWidth={on ? 2 : 1.3}
             />
             <text
-              x={l.x + 24}
-              y={l.y + 30}
+              x={l.x + LANE.pad}
+              y={l.y + 40}
               fontFamily={MONO}
-              fontSize={11.5}
+              fontSize={12.5}
               fontWeight={600}
-              letterSpacing="0.2em"
+              letterSpacing="0.24em"
               fill={tone ?? pal.laneTitle}
             >
               {l.g.label.toUpperCase()}
             </text>
             {l.g.subtitle && (
-              <text x={l.x + 24} y={l.y + 52} fontFamily={SANS} fontSize={12.5} fill={pal.muted}>
-                {fit(l.g.subtitle, l.w - 48, `12.5px ${SANS}`)}
+              <text
+                x={l.x + LANE.pad}
+                y={l.y + 64}
+                fontFamily={SANS}
+                fontSize={13.5}
+                fill={pal.muted}
+              >
+                {fit(l.g.subtitle, l.w - LANE.pad * 2, `13.5px ${SANS}`)}
               </text>
             )}
           </g>
@@ -423,8 +418,9 @@ export function Scene({
         const d = pathOf(r.points)
         const n = marksOn?.("edge", e.id) ?? 0
         const label = `${e.label ?? ""}${n ? `  ●${n}` : ""}`.trim()
-        const chipFont = `600 9.5px ${MONO}`
-        const tw = label ? measure(label.toUpperCase(), chipFont) + label.length * 0.9 : 0
+        const chipFont = `600 10.5px ${MONO}`
+        const tw = label ? measure(label.toUpperCase(), chipFont) + label.length * 1.05 : 0
+        const chipFill = pal.glow ? pal.bg : pal.card
         return (
           <g
             key={`${change}:${e.id}`}
@@ -432,12 +428,12 @@ export function Scene({
             className="dia-edge"
             opacity={change === "removed" ? 0.75 : 1}
           >
-            <path d={d} fill="none" stroke="transparent" strokeWidth={14} className="dia-hit" />
+            <path d={d} fill="none" stroke="transparent" strokeWidth={16} className="dia-hit" />
             <path
               d={d}
               fill="none"
               stroke={color}
-              strokeWidth={on ? look.width + 0.8 : look.width}
+              strokeWidth={on ? look.width + 1 : look.width}
               strokeDasharray={change === "removed" ? "6 5" : look.dash || undefined}
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -449,30 +445,31 @@ export function Scene({
               <circle
                 cx={r.from.x}
                 cy={r.from.y}
-                r={3.6}
+                r={4.6}
                 fill={pal.bg}
                 stroke={color}
-                strokeWidth={1.6}
+                strokeWidth={2}
               />
             )}
             {label && (
               <g transform={`translate(${r.mid.x} ${r.mid.y})`}>
                 <rect
-                  x={-tw / 2 - 7}
-                  y={-9}
-                  width={tw + 14}
-                  height={18}
-                  rx={4}
-                  fill={pal.bg}
-                  stroke={pal.glow ? mix(color, pal.bg, 0.5) : "none"}
+                  x={-tw / 2 - 10}
+                  y={-11}
+                  width={tw + 20}
+                  height={22}
+                  rx={6}
+                  fill={chipFill}
+                  stroke={mix(color, pal.bg, pal.glow ? 0.55 : 0.22)}
+                  strokeWidth={1}
                 />
                 <text
                   textAnchor="middle"
-                  y={3.4}
+                  y={3.8}
                   fontFamily={MONO}
-                  fontSize={9.5}
+                  fontSize={10.5}
                   fontWeight={600}
-                  letterSpacing="0.09em"
+                  letterSpacing="0.1em"
                   fill={color}
                 >
                   {label.toUpperCase()}
@@ -497,51 +494,57 @@ export function Scene({
         />
       ))}
 
-      {legendItems.length > 0 && (
-        <g transform={`translate(${ext.x} ${ext.y + ext.h + 34})`} className="dia-legend-art">
-          <line
-            x1={0}
-            x2={Math.max(ext.w, 520)}
-            y1={0}
-            y2={0}
-            stroke={pal.laneStroke}
-            strokeWidth={1}
-          />
-          <text
-            x={0}
-            y={34}
-            fontFamily={MONO}
-            fontSize={11}
-            fontWeight={600}
-            letterSpacing="0.2em"
-            fill={pal.laneTitle}
-          >
-            FLOW
-          </text>
-          {legendItems.map((it, i) => {
-            const look = edgeLook(it.style, pal)
-            const x = 80 + i * 190
-            return (
-              <g key={it.style} transform={`translate(${x} 30)`}>
-                <line
-                  x1={0}
-                  x2={48}
-                  y1={0}
-                  y2={0}
-                  stroke={look.color}
-                  strokeWidth={look.width}
-                  strokeDasharray={look.dash || undefined}
-                  markerEnd={arrow(look.color)}
-                  filter={glow}
-                />
-                <text x={60} y={4} fontFamily={SANS} fontSize={12} fill={pal.text}>
-                  {it.label}
-                </text>
-              </g>
-            )
-          })}
-        </g>
-      )}
+      {legendItems.length > 0 &&
+        (() => {
+          let x = 110
+          return (
+            <g transform={`translate(${ext.x} ${ext.y + ext.h + 44})`} className="dia-legend-art">
+              <line
+                x1={0}
+                x2={Math.max(ext.w, 560)}
+                y1={0}
+                y2={0}
+                stroke={pal.laneStroke}
+                strokeWidth={1.2}
+              />
+              <text
+                x={0}
+                y={42}
+                fontFamily={MONO}
+                fontSize={12.5}
+                fontWeight={600}
+                letterSpacing="0.24em"
+                fill={pal.laneTitle}
+              >
+                FLOW
+              </text>
+              {legendItems.map((it) => {
+                const look = edgeLook(it.style, pal)
+                const at = x
+                x += 76 + measure(it.label, `14px ${SANS}`) + 56
+                return (
+                  <g key={it.style} transform={`translate(${at} 38)`}>
+                    <line
+                      x1={0}
+                      x2={60}
+                      y1={0}
+                      y2={0}
+                      stroke={look.color}
+                      strokeWidth={look.width}
+                      strokeDasharray={look.dash || undefined}
+                      strokeLinecap="round"
+                      markerEnd={arrow(look.color)}
+                      filter={glow}
+                    />
+                    <text x={76} y={5} fontFamily={SANS} fontSize={14} fill={pal.text}>
+                      {it.label}
+                    </text>
+                  </g>
+                )
+              })}
+            </g>
+          )
+        })()}
     </>
   )
 }
@@ -571,11 +574,11 @@ function NodeArt({
   const changed = change !== "same" && change !== "moved" ? CHANGE_COLOR[change] : undefined
   const glow = pal.glow ? `url(#${uid}-glow)` : undefined
   const shadow = pal.glow ? undefined : `url(#${uid}-shadow)`
-  const toned = !!n.tone || pal.glow || n.highlight
-  const stroke = changed ?? (n.highlight ? T : toned ? mix(T, pal.card, 0.6) : pal.cardStroke)
-  const strokeW = changed || n.highlight ? 2 : toned ? 1.5 : 1.2
+  const toned = !!n.tone || pal.glow || !!n.highlight
+  const stroke = changed ?? (n.highlight ? T : toned ? mix(T, pal.card, 0.55) : pal.cardStroke)
+  const strokeW = changed || n.highlight ? 2.2 : toned ? 1.5 : 1.2
   const fill = n.highlight
-    ? mix(T, pal.card, 0.1)
+    ? mix(T, pal.card, 0.09)
     : changed
       ? mix(changed, pal.card, 0.1)
       : pal.card
@@ -583,34 +586,36 @@ function NodeArt({
     change === "removed"
       ? "6 4"
       : kind === "external"
-        ? "5 4"
+        ? "6 4"
         : change === "moved"
           ? "2 3"
           : undefined
   const Icon = ICONS[n.icon ?? KIND_ICON[kind] ?? ""] as LucideIcon | undefined
-  const titleFont = `600 13.5px ${SANS}`
+  const P = CARD.pad
   let body: ReactNode
 
   if (kind === "decision") {
-    const lines = wrap(n.label, b.w * 0.62, `600 12.5px ${SANS}`, 3)
+    const font = `600 13.5px ${SANS}`
+    const lines = wrap(n.label, b.w * 0.6, font, 3)
     body = (
       <>
         <polygon
           points={`${b.w / 2},0 ${b.w},${b.h / 2} ${b.w / 2},${b.h} 0,${b.h / 2}`}
           fill={mix(T, pal.card, 0.12)}
           stroke={changed ?? T}
-          strokeWidth={1.8}
+          strokeWidth={2}
+          strokeLinejoin="round"
           strokeDasharray={dash}
-          filter={glow}
+          filter={glow ?? shadow}
         />
         {lines.map((l, i) => (
           <text
             key={l}
             x={b.w / 2}
-            y={b.h / 2 + 4 + (i - (lines.length - 1) / 2) * 15}
+            y={b.h / 2 + 5 + (i - (lines.length - 1) / 2) * 17}
             textAnchor="middle"
             fontFamily={SANS}
-            fontSize={12.5}
+            fontSize={13.5}
             fontWeight={600}
             fill={pal.text}
           >
@@ -626,92 +631,134 @@ function NodeArt({
           width={b.w}
           height={b.h}
           rx={b.h / 2}
-          fill={kind === "start" ? mix(T, pal.card, 0.16) : pal.card}
+          fill={kind === "start" ? mix(T, pal.card, 0.18) : pal.card}
           stroke={changed ?? T}
-          strokeWidth={1.6}
+          strokeWidth={1.8}
           strokeDasharray={dash}
           filter={glow ?? shadow}
         />
-        {Icon && <Icon x={16} y={b.h / 2 - 8} width={16} height={16} stroke={T} strokeWidth={2} />}
+        {Icon && (
+          <Icon x={20} y={b.h / 2 - 9} width={18} height={18} stroke={T} strokeWidth={2.2} />
+        )}
         <text
-          x={Icon ? 40 : b.w / 2}
-          y={b.h / 2 + 4.5}
+          x={Icon ? 48 : b.w / 2}
+          y={b.h / 2 + 5}
           textAnchor={Icon ? "start" : "middle"}
           fontFamily={SANS}
-          fontSize={13}
+          fontSize={14.5}
           fontWeight={600}
           fill={pal.text}
         >
-          {fit(n.label, b.w - (Icon ? 54 : 24), titleFont)}
+          {fit(n.label, b.w - (Icon ? 64 : 28), `600 14.5px ${SANS}`)}
         </text>
       </>
     )
   } else {
     const isNote = kind === "note"
-    const left = 14
-    const badge = n.step ? (
-      <g transform={`translate(${left + 12} ${n.subtitle ? 26 : 24})`}>
-        <circle r={12} fill={n.highlight || n.tone ? T : pal.card} stroke={T} strokeWidth={1.5} />
+    const titleFont = `600 15px ${SANS}`
+    const tb = titleBox(n, b.w)
+    const lines = wrap(n.label, tb.max, titleFont, 2)
+    const extra = (lines.length - 1) * CARD.line
+    // A tag is a pill on its own line above the title; the rest moves down under it.
+    const top = n.tag ? CARD.tag : 0
+    const headH = (n.subtitle ? CARD.headSub : CARD.head) + extra + top
+    // Baselines: the title's first line, the subtitle; the lead (badge or icon) sits centred on them.
+    const t0 = n.subtitle ? 34 + top : (headH + top) / 2 - extra / 2 + 5.5
+    const subY = t0 + extra + 19
+    const cy = n.subtitle ? (t0 - 11 + subY + 3) / 2 : (headH + top) / 2
+    const filled = !!n.highlight || !!n.tone
+    const lead = n.step ? (
+      <g transform={`translate(${P + 17} ${cy})`}>
+        <circle r={16} fill={filled ? T : pal.card} stroke={T} strokeWidth={2} />
         <text
           textAnchor="middle"
-          y={4.5}
+          y={5}
           fontFamily={SANS}
-          fontSize={12}
+          fontSize={14}
           fontWeight={700}
-          fill={n.highlight || n.tone ? pal.card : T}
+          fill={filled ? pal.onTone : T}
         >
           {n.step}
         </text>
       </g>
     ) : Icon && !isNote ? (
-      <g transform={`translate(${left} ${n.subtitle ? 13 : 11})`}>
-        <rect width={26} height={26} rx={7} fill={mix(T, pal.card, 0.16)} />
-        <Icon x={5.5} y={5.5} width={15} height={15} stroke={T} strokeWidth={2} />
+      <g transform={`translate(${P} ${cy - 17})`}>
+        <rect
+          width={34}
+          height={34}
+          rx={9}
+          fill={mix(T, pal.card, pal.glow ? 0.22 : 0.14)}
+          stroke={mix(T, pal.card, 0.3)}
+          strokeWidth={1}
+        />
+        <Icon x={8} y={8} width={18} height={18} stroke={T} strokeWidth={2} />
       </g>
     ) : null
-    const tx = badge ? left + 36 : left
-    const tagW = n.tag
-      ? measure(n.tag.toUpperCase(), `600 9px ${MONO}`) + n.tag.length * 0.8 + 14
-      : 0
-    const titleMax = b.w - tx - 12 - (n.tag ? tagW + 6 : 0)
-    const headH = n.subtitle ? 62 : 48
+    const tx = tb.x
+    const tagFont = `600 10px ${MONO}`
+    const tagW = n.tag ? measure(n.tag.toUpperCase(), tagFont) + n.tag.length * 1 + 16 : 0
     body = (
       <>
+        {n.highlight && !pal.glow && (
+          <rect
+            x={-5}
+            y={-5}
+            width={b.w + 10}
+            height={b.h + 10}
+            rx={19}
+            fill="none"
+            stroke={T}
+            strokeOpacity={0.18}
+            strokeWidth={6}
+          />
+        )}
         <rect
           width={b.w}
           height={b.h}
-          rx={isNote ? 4 : 11}
+          rx={isNote ? 6 : 14}
           fill={isNote ? pal.note : fill}
           stroke={isNote && !changed ? "none" : stroke}
           strokeWidth={strokeW}
           strokeDasharray={dash}
           filter={pal.glow && toned ? glow : shadow}
         />
-        {badge}
-        <text
-          x={tx}
-          y={n.subtitle ? 29 : 29}
-          fontFamily={SANS}
-          fontSize={13.5}
-          fontWeight={600}
-          fill={pal.text}
-        >
-          {fit(n.label, titleMax, titleFont)}
-        </text>
+        {!isNote && !pal.glow && (
+          <path
+            d={`M14 1.2 H${b.w - 14}`}
+            stroke={pal.sheen}
+            strokeWidth={1}
+            strokeLinecap="round"
+          />
+        )}
+        {lead}
+        {lines.map((l, i) => (
+          <text
+            // biome-ignore lint/suspicious/noArrayIndexKey: a title's lines, in order
+            key={`${i}:${l}`}
+            x={tx}
+            y={t0 + i * CARD.line}
+            fontFamily={SANS}
+            fontSize={15}
+            fontWeight={600}
+            fill={pal.text}
+          >
+            {l}
+          </text>
+        ))}
         {n.subtitle && (
-          <text x={tx} y={46} fontFamily={MONO} fontSize={10.5} fill={pal.muted}>
-            {fit(n.subtitle, b.w - tx - 12, `10.5px ${MONO}`)}
+          <text x={tx} y={subY} fontFamily={MONO} fontSize={11.5} fill={pal.muted}>
+            {fit(n.subtitle, b.w - tx - P, `11.5px ${MONO}`)}
           </text>
         )}
         {n.tag && (
-          <g transform={`translate(${b.w - 10 - tagW} 10)`}>
-            <rect width={tagW} height={17} rx={4} fill={mix(T, pal.card, 0.18)} />
+          <g transform={`translate(${tx} ${12})`}>
+            <rect width={tagW} height={20} rx={6} fill={mix(T, pal.card, 0.16)} />
             <text
               x={tagW / 2}
-              y={11.8}
+              y={13.8}
               textAnchor="middle"
               fontFamily={MONO}
-              fontSize={9}
+              fontSize={10}
               fontWeight={600}
               letterSpacing="0.08em"
               fill={T}
@@ -722,25 +769,26 @@ function NodeArt({
         )}
         {n.items?.map((it, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: rows may repeat; their order is what they are
-          <g key={`${i}:${it}`} transform={`translate(${left} ${headH + 4 + i * ITEM_H})`}>
+          <g key={`${i}:${it}`} transform={`translate(${P} ${headH + i * CARD.row})`}>
             <rect
-              width={b.w - left * 2}
-              height={ITEM_H - 6}
-              rx={4}
+              width={b.w - P * 2}
+              height={CARD.rowH}
+              rx={6}
               fill={pal.row}
               stroke={pal.cardStroke}
               strokeWidth={1}
             />
-            <rect x={8} y={(ITEM_H - 6) / 2 - 4} width={8} height={8} rx={1.5} fill={T} />
+            <rect x={10} y={CARD.rowH / 2 - 4.5} width={9} height={9} rx={2} fill={T} />
             <text
-              x={24}
-              y={(ITEM_H - 6) / 2 + 3.6}
+              x={28}
+              y={CARD.rowH / 2 + 4}
               fontFamily={MONO}
-              fontSize={10}
-              letterSpacing="0.06em"
+              fontSize={10.5}
+              fontWeight={500}
+              letterSpacing="0.08em"
               fill={pal.text}
             >
-              {fit(it.toUpperCase(), b.w - left * 2 - 32, `10px ${MONO}`)}
+              {fit(it.toUpperCase(), b.w - P * 2 - 38, `500 10.5px ${MONO}`)}
             </text>
           </g>
         ))}
@@ -757,11 +805,11 @@ function NodeArt({
     >
       {(on || active) && (
         <rect
-          x={-5}
-          y={-5}
-          width={b.w + 10}
-          height={b.h + 10}
-          rx={kind === "start" || kind === "end" ? (b.h + 10) / 2 : 14}
+          x={-7}
+          y={-7}
+          width={b.w + 14}
+          height={b.h + 14}
+          rx={kind === "start" || kind === "end" ? (b.h + 14) / 2 : 20}
           fill="none"
           stroke={pal.select}
           strokeWidth={on ? 2 : 1.5}
@@ -771,14 +819,14 @@ function NodeArt({
       {body}
       {marks > 0 && (
         <g transform={`translate(${b.w - 2} 2)`}>
-          <circle r={9} fill={pal.select} />
+          <circle r={10} fill={pal.select} />
           <text
             textAnchor="middle"
-            y={3.5}
+            y={4}
             fontFamily={SANS}
-            fontSize={10}
+            fontSize={11}
             fontWeight={700}
-            fill={pal.bg}
+            fill={pal.onTone}
           >
             {marks}
           </text>
@@ -789,10 +837,10 @@ function NodeArt({
           data-handle
           cx={b.w}
           cy={b.h / 2}
-          r={7}
+          r={8}
           fill={pal.select}
           stroke={pal.bg}
-          strokeWidth={2}
+          strokeWidth={2.5}
           className="dia-handle"
         />
       )}
