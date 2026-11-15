@@ -10,10 +10,12 @@ import {
 } from "lucide-react"
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react"
 import {
+  activeBrowserTabs,
   BROWSER_EVENT,
   type BrowserEvent,
   type BrowserState,
   browserData,
+  browserTabWindows,
   type Frame,
   hostOf,
   nativeBrowser,
@@ -32,6 +34,8 @@ import { FindBar } from "./find"
 const HOME = "https://duckduckgo.com/"
 /** The window's own shortcuts, which must work while the page has the keyboard. */
 const LOCAL_CHORDS = [
+  "cmd+t",
+  "cmd+w",
   "cmd+l",
   "cmd+[",
   "cmd+]",
@@ -75,7 +79,163 @@ export async function localFileURL(ref: FileRef): Promise<string> {
   return `file://${full.split("/").map(encodeURIComponent).join("/")}`
 }
 
+interface Tab {
+  id: string
+  url: string
+  title?: string
+  file?: FileRef
+}
+
 export function BrowserWindow({ winId, args }: { winId: string; args: Record<string, unknown> }) {
+  const desk = useDesk()
+  const [tabs, setTabs] = useState<Tab[]>(() => {
+    const saved = Array.isArray(args.tabs) ? (args.tabs as Tab[]) : []
+    return saved.length
+      ? saved.map((t, n) => ({ ...t, id: n === 0 ? winId : `${winId}-tab-${crypto.randomUUID()}` }))
+      : [
+          {
+            id: winId,
+            url: typeof args.url === "string" ? args.url : args.file ? "" : HOME,
+            file: args.file as FileRef | undefined,
+          },
+        ]
+  })
+  const [selected, setSelected] = useState(
+    () => tabs[typeof args.active_tab === "number" ? args.active_tab : 0]?.id ?? tabs[0].id,
+  )
+  const tabsRef = useRef(tabs)
+  tabsRef.current = tabs
+  const select = useCallback(
+    (id: string) => {
+      setSelected(id)
+      activeBrowserTabs.set(winId, id)
+      void nativeBrowser.send({ op: "focus", id }).catch(() => undefined)
+    },
+    [winId],
+  )
+  const add = useCallback(
+    (url = HOME, nativeID?: string) => {
+      const id = nativeID ?? `${winId}-tab-${crypto.randomUUID()}`
+      setTabs((old) => (old.some((t) => t.id === id) ? old : [...old, { id, url }]))
+      select(id)
+    },
+    [select, winId],
+  )
+  const close = useCallback(
+    (id: string) => {
+      const old = tabsRef.current
+      if (old.length === 1) {
+        desk.close(winId)
+        return
+      }
+      const next = old.filter((t) => t.id !== id)
+      setTabs(next)
+      setSelected((current) => {
+        const target =
+          current === id ? next[Math.max(0, old.findIndex((t) => t.id === id) - 1)].id : current
+        activeBrowserTabs.set(winId, target)
+        return target
+      })
+    },
+    [desk, winId],
+  )
+  const state = useCallback((s: BrowserState) => {
+    setTabs((old) => {
+      const t = old.find((t) => t.id === s.id)
+      if (!t || (t.url === (s.url || t.url) && t.title === s.title)) return old
+      return old.map((t) => (t.id === s.id ? { ...t, url: s.url || t.url, title: s.title } : t))
+    })
+  }, [])
+  useEffect(() => {
+    activeBrowserTabs.set(winId, selected)
+    return () => {
+      activeBrowserTabs.delete(winId)
+    }
+  }, [winId, selected])
+  useEffect(() => {
+    for (const tab of tabs) browserTabWindows.set(tab.id, winId)
+    return () => {
+      for (const tab of tabs) browserTabWindows.delete(tab.id)
+    }
+  }, [tabs, winId])
+  useEffect(() => {
+    const tab = tabs.find((t) => t.id === selected)
+    desk.setArgs(winId, {
+      url: tab?.url,
+      active_tab: tabs.findIndex((t) => t.id === selected),
+      tabs: tabs.map(({ url, title, file }) => ({ url, title, file })),
+    })
+    desk.setTitle(winId, tab?.title || hostOf(tab?.url ?? "") || "Browser")
+  }, [desk, winId, tabs, selected])
+  return (
+    <div className="browser-tabs-window">
+      <div className="browser-tabs" role="tablist" aria-label="Browser tabs">
+        {tabs.map((t) => (
+          <div className="browser-tab" key={t.id}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selected === t.id}
+              onClick={() => select(t.id)}
+            >
+              {t.title || hostOf(t.url) || "New tab"}
+            </button>
+            <button
+              type="button"
+              aria-label={`Close tab ${t.title || hostOf(t.url) || "New tab"}`}
+              onClick={() => close(t.id)}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="browser-new-tab"
+          aria-label="New tab"
+          onClick={() => add()}
+        >
+          +
+        </button>
+      </div>
+      {tabs.map((t) => (
+        <div
+          className="browser-tab-page"
+          key={t.id}
+          style={{ display: selected === t.id ? "flex" : "none" }}
+        >
+          <BrowserPage
+            winId={winId}
+            viewId={t.id}
+            args={{ url: t.url, file: t.file }}
+            active={selected === t.id}
+            onState={state}
+            onOpen={add}
+            onClose={close}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function BrowserPage({
+  winId,
+  viewId,
+  args,
+  active,
+  onState,
+  onOpen,
+  onClose,
+}: {
+  winId: string
+  viewId: string
+  args: Record<string, unknown>
+  active: boolean
+  onState: (s: BrowserState) => void
+  onOpen: (url: string, id?: string) => void
+  onClose: (id: string) => void
+}) {
   const desk = useDesk()
   const available = nativeBrowser.available()
   const fileRef = args.file as FileRef | undefined
@@ -87,7 +247,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   const slotRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [state, setState] = useState<BrowserState>({
-    id: winId,
+    id: viewId,
     url: start ?? "",
     title: "",
     loading: true,
@@ -117,8 +277,8 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   const keys = useDeskSettings().keys
 
   const send = useCallback(
-    (msg: Record<string, unknown>) => nativeBrowser.send({ id: winId, ...msg }),
-    [winId],
+    (msg: Record<string, unknown>) => nativeBrowser.send({ id: viewId, ...msg }),
+    [viewId],
   )
   const flash = useCallback((msg: string) => {
     setNotice(msg)
@@ -138,12 +298,17 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   // ---- The view lives as long as the window. ----
   useEffect(() => {
     if (!available || start === null) return
-    void send({ op: "open", url: start }).catch((e: Error) => setError(e.message))
+    void send({ op: "open", url: start })
+      .then((s) => {
+        setState(s as BrowserState)
+        onState(s as BrowserState)
+      })
+      .catch((e: Error) => setError(e.message))
     return () => {
       void send({ op: "close" }).catch(() => undefined)
     }
     // The view is created once; later navigation goes through "navigate".
-  }, [available, send, start])
+  }, [available, send, start, onState])
 
   // ---- Follow the slot: position, size and whether anything covers it, every frame. ----
   useEffect(() => {
@@ -199,10 +364,11 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   useEffect(() => {
     const on = (e: Event) => {
       const ev = (e as CustomEvent<BrowserEvent>).detail
-      if (!ev || ev.id !== winId) return
+      if (!ev || ev.id !== viewId) return
       switch (ev.kind) {
         case "state":
           setState(ev)
+          onState(ev)
           if (ev.loading) setError("")
           break
         case "error":
@@ -212,16 +378,16 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
           setError("This page stopped working.")
           break
         case "open":
-          if (ev.url) desk.open("browser", { args: { url: ev.url } })
+          onOpen(ev.url || "about:blank", ev.view_id)
           break
         case "close":
-          desk.close(winId)
+          onClose(viewId)
           break
         case "focus":
           desk.wm({ type: "focus", id: winId })
           break
         case "chord":
-          if (!runLocalRef.current(ev.chord))
+          if (active && !runLocalRef.current(ev.chord))
             // The desktop runs a chord it is told the native layer swallowed.
             window.dispatchEvent(
               new CustomEvent(SHELL_EVENT, { detail: { kind: "swallowed", detail: ev.chord } }),
@@ -240,7 +406,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     }
     window.addEventListener(BROWSER_EVENT, on)
     return () => window.removeEventListener(BROWSER_EVENT, on)
-  }, [desk, flash, winId])
+  }, [desk, flash, winId, viewId, active, onState, onOpen, onClose])
 
   // Each site keeps the zoom chosen for it.
   const host = hostOf(state.url)
@@ -321,46 +487,30 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     if (clipping) return
     setClipping(true)
     try {
-      setPendingClip(await clipPage(winId))
+      setPendingClip(await clipPage(viewId))
       desk.toggleOverlay("frag", true)
     } catch (e) {
       flash(e instanceof Error ? e.message : "Could not clip this page.")
     } finally {
       setClipping(false)
     }
-  }, [clipping, desk, flash, winId])
+  }, [clipping, desk, flash, viewId])
   useEffect(() => {
     const on = (e: Event) => {
-      if ((e as CustomEvent<string>).detail === winId) void clip()
+      if (active && (e as CustomEvent<string>).detail === winId) void clip()
     }
     window.addEventListener(CLIP_EVENT, on)
     return () => window.removeEventListener(CLIP_EVENT, on)
-  }, [clip, winId])
-
-  // The window's args follow the page, so a restored desktop reopens it where it was.
-  useEffect(() => {
-    if (!state.url || state.loading || state.url === args.url) return
-    desk.setArgs(winId, { url: state.url })
-  }, [desk, winId, state.url, state.loading, args.url])
+  }, [clip, winId, active])
 
   // The address field shows where the page is, unless the user is typing.
   useEffect(() => {
     if (!editing && state.url) setAddress(state.url)
   }, [editing, state.url])
 
-  useEffect(() => {
-    let host = ""
-    try {
-      host = new URL(state.url).host
-    } catch {
-      host = ""
-    }
-    desk.setTitle(winId, state.title || host || "Browser")
-  }, [desk, winId, state.title, state.url])
-
   // Focusing the window gives the keyboard to the page in it.
   useEffect(() => {
-    if (!available) return
+    if (!available || !active) return
     const win = slotRef.current?.closest<HTMLElement>("[data-win]")
     if (!win) return
     // Not at once: when the native view is told to let go (the agent panel, ⌘J), WebKit
@@ -381,7 +531,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
       window.clearTimeout(timer)
       win.removeEventListener("focus", onFocus)
     }
-  }, [available, send])
+  }, [available, send, active])
 
   const navigate = (input: string) => {
     const url = toURL(input)
@@ -433,6 +583,12 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
 
   runLocalRef.current = (chord: string) => {
     switch (chord) {
+      case "cmd+t":
+        onOpen(HOME)
+        return true
+      case "cmd+w":
+        onClose(viewId)
+        return true
       case "cmd+l":
         focusField(inputRef)
         return true

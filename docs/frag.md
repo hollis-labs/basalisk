@@ -219,3 +219,19 @@ GET  /api/frag/captures   -> {items: [status + content, tags, context]}, newest 
 - **YouTube markup.** The transcript route depends on YouTube's panel markup
   (`ytd-video-description-transcript-section-renderer`, `transcript-segment-view-model`).
   When YouTube changes it, the transcript is missing and the clip is otherwise as before.
+
+
+## System capture shortcut
+
+The macOS shell can summon the built-in Frag from any application. Its default global
+shortcut is Option-Shift-F. The app's macOS preferences `fragHotkeyKeyCode` and
+`fragHotkeyModifiers` override it using Carbon key codes/modifiers (read at app startup).
+This lets an owner migrate the standalone Frag chord without depending on that app.
+The shortcut brings Basalisk forward and opens its existing capture overlay; queued
+captures and credentials continue through Basalisk's normal capture path.
+
+When migrating, stop the old managed Frag through its supervisor and disable its launchd
+startup before restarting Basalisk to register the same chord. Keep the old app, drafts,
+settings and outbox intact. The Chrome extension remains a separate Chrome capture client;
+Basalisk already reuses its extraction bundle, but the native overlay alone cannot inspect
+a Chrome tab. Leave the extension installed when Chrome is still used for browsing.

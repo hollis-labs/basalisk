@@ -6,7 +6,7 @@
  */
 
 import { registerAgentTools } from "../../agent/tools"
-import { openLink } from "../../api/browser"
+import { activeBrowserTabs, browserTabWindows, openLink } from "../../api/browser"
 import { type ResultCard, registerResultCards, desk as theDesk } from "../../cite/cards"
 
 const STOPPED = "The run was stopped; nothing was changed."
@@ -71,16 +71,17 @@ export async function browserWindow(
   const browsers = st.wins.filter((w) => w.app === "browser")
   const named = typeof input.window_id === "string" ? input.window_id : ""
   if (named) {
-    const w = st.wins.find((x) => x.id === named)
+    const parent = browserTabWindows.get(named)
+    const w = st.wins.find((x) => x.id === (parent ?? named))
     if (!w) throw new Error(`There is no window ${named}. desktop_windows lists them.`)
     if (w.app !== "browser") throw new Error(`Window ${named} is ${w.app}, not a Browser window.`)
-    return named
+    return parent ? named : (activeBrowserTabs.get(named) ?? named)
   }
   const focused = browsers.find((w) => w.id === st.focus)
-  if (focused) return focused.id
+  if (focused) return activeBrowserTabs.get(focused.id) ?? focused.id
   const front = [...browsers].sort((a, b) => b.z - a.z)[0]
   if (!front) throw new Error("No Browser window is open. Open one with browser_navigate.")
-  return front.id
+  return activeBrowserTabs.get(front.id) ?? front.id
 }
 
 const state = (id: string) => command<BrowserState>(id, "state")

@@ -1,6 +1,6 @@
 # Browser
 
-Real web pages in a desktop window. In the desktop app each Browser window is backed by a
+Real web pages in a desktop window. In the desktop app each Browser tab is backed by a
 native `WKWebView` that `internal/macshell` (browser_darwin.m) places over the window's body;
 in a plain browser the window says the browser runs in the desktop app.
 
@@ -34,7 +34,7 @@ await window.webkit.messageHandlers.basaliskBrowser.postMessage({ op, id, ...fie
 
 The views answer with `basalisk:browser` DOM events: `state` (on any change of url, title,
 loading, progress or history), `error`, `crashed`, `open` (window.open, target=_blank,
-⌘-click or middle-click: the desktop opens another Browser window), `close`, `focus` (a click in the view, so
+⌘-click or middle-click: the desktop opens another tab), `close`, `focus` (a click in the view, so
 the desktop focuses that window), `chord` (below) and `download` (into ~/Downloads, never over a file).
 
 The views share one persistent website data store of their own, so sites keep their logins and
@@ -121,7 +121,7 @@ history" forgets everything, after a confirm.
 
 ## Links and the way out
 
-⌘-click and middle-click on a link open it in a new Browser window, and so does WebKit's own
+⌘-click and middle-click on a link open it in a new Browser tab, and so does WebKit's own
 link menu ("Open Link in New Window", beside "Copy Link"), since it goes through the same
 new-window path as window.open. The ↗ button in the chrome opens the current page in the
 default browser, for a site that needs extensions or DRM.
@@ -139,3 +139,20 @@ In the desktop app the Browser is the file handler for `.html`, `.htm`, `.xhtml`
 `.svg`: opening one in Files (a local root) shows it here as a `file://` URL, loaded with read
 access to its own folder only. Files on a remote root keep Files' preview. HTTP basic and digest
 sign-in use a sheet; credentials last for the session.
+
+
+## Tabs and login popups
+
+Each Browser window keeps a tab strip. New-window links, command-click, middle-click and
+script popups become tabs in that window. Command-T opens a tab and Command-W closes the
+current tab while the page or address bar has focus. Tabs retain their live native views
+while hidden; switching does not reload them. The desktop restores their URLs and selected
+tab after a restart. Closing the final tab closes the Browser window.
+
+A script popup returns a native view created with WebKit's supplied configuration. WebKit
+loads the request itself, retaining POST bodies, the opener and callback messaging; the
+frontend adopts that view without replaying its URL. `window.close()` closes only its tab.
+This fixes the former URL-only popup recreation. It does not bypass a site's embedded-browser
+restrictions or grant the passkey entitlement described in `browser-passkeys.md`.
+Agent browser calls and Frag clipping target the selected tab of the named desktop window;
+an explicit tab id returned by a browser tool can also be addressed.

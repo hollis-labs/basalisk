@@ -180,16 +180,7 @@ static double num(NSDictionary *m, NSString *k) {
 	return [v isKindOfClass:[NSNumber class]] ? [v doubleValue] : 0;
 }
 
-static BSLWebView *create(NSString *viewID) {
-	WKWebViewConfiguration *cfg = [[WKWebViewConfiguration alloc] init];
-	if (@available(macOS 14.0, *)) {
-		cfg.websiteDataStore = [WKWebsiteDataStore dataStoreForIdentifier:[[NSUUID alloc] initWithUUIDString:kStoreID]];
-	} else {
-		cfg.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
-	}
-	// Sites that sniff for Safari get Safari.
-	cfg.applicationNameForUserAgent = @"Version/18.0 Safari/605.1.15";
-	if (@available(macOS 12.3, *)) cfg.preferences.elementFullscreenEnabled = YES;
+static BSLWebView *createConfigured(NSString *viewID, WKWebViewConfiguration *cfg) {
 	BSLWebView *w = [[BSLWebView alloc] initWithFrame:NSZeroRect configuration:cfg];
 	w.bslID = viewID;
 	w.navigationDelegate = bHandler;
@@ -203,6 +194,19 @@ static BSLWebView *create(NSString *viewID) {
 	[page.superview addSubview:w positioned:NSWindowAbove relativeTo:page];
 	bViews[viewID] = w;
 	return w;
+}
+
+static BSLWebView *create(NSString *viewID) {
+	WKWebViewConfiguration *cfg = [[WKWebViewConfiguration alloc] init];
+	if (@available(macOS 14.0, *)) {
+		cfg.websiteDataStore = [WKWebsiteDataStore dataStoreForIdentifier:[[NSUUID alloc] initWithUUIDString:kStoreID]];
+	} else {
+		cfg.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
+	}
+	// Sites that sniff for Safari get Safari.
+	cfg.applicationNameForUserAgent = @"Version/18.0 Safari/605.1.15";
+	if (@available(macOS 12.3, *)) cfg.preferences.elementFullscreenEnabled = YES;
+	return createConfigured(viewID, cfg);
 }
 
 static void destroy(BSLWebView *w) {
@@ -540,9 +544,13 @@ static void failed(WKWebView *webView, NSError *error) {
 	createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
 	           forNavigationAction:(WKNavigationAction *)action
 	                windowFeatures:(WKWindowFeatures *)features {
-	// window.open and target=_blank: the desktop opens another Browser window.
-	emit(@{@"kind" : @"open", @"id" : ((BSLWebView *)webView).bslID, @"url" : action.request.URL.absoluteString ?: @""});
-	return nil;
+	// Return the actual popup using WebKit's configuration, retaining its opener and
+	// pending navigation (including POST and about:blank followed by script navigation).
+	NSString *childID = [@"tab-" stringByAppendingString:NSUUID.UUID.UUIDString];
+	BSLWebView *child = createConfigured(childID, configuration);
+	emit(@{@"kind" : @"open", @"id" : ((BSLWebView *)webView).bslID,
+	       @"view_id" : childID, @"url" : action.request.URL.absoluteString ?: @"about:blank"});
+	return child;
 }
 
 - (void)webViewDidClose:(WKWebView *)webView {

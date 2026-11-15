@@ -101,6 +101,11 @@ func (s *Shell) pump() {
 			if err := s.SetMenuBar(visible); err != nil {
 				s.log.add("error", err.Error())
 			}
+		case C.BSL_EV_CAPTURE:
+			s.log.add("hotkey", "Frag capture summoned")
+			if _, err := s.Eval(`window.dispatchEvent(new CustomEvent("basalisk:frag-summon")); true`); err != nil {
+				s.log.add("error", "capture: "+err.Error())
+			}
 		case C.BSL_EV_SUMMON:
 			s.log.add("hotkey", SummonChord+": summoned")
 			// The page opens the agent's panel; a page that is not up yet just misses it.

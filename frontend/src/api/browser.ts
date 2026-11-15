@@ -20,7 +20,7 @@ export type BrowserEvent =
   | ({ kind: "state" } & BrowserState)
   | { kind: "error"; id: string; message: string; url: string }
   | { kind: "crashed"; id: string }
-  | { kind: "open"; id: string; url: string }
+  | { kind: "open"; id: string; url: string; view_id?: string }
   | { kind: "close"; id: string }
   | { kind: "focus"; id: string }
   | { kind: "chord"; id: string; chord: string }
@@ -133,3 +133,8 @@ export function toURL(input: string): string {
     return `https://${s}`
   return SEARCH + encodeURIComponent(s)
 }
+
+/** Native view selected by each desktop Browser window. */
+export const activeBrowserTabs = new Map<string, string>()
+
+export const browserTabWindows = new Map<string, string>()

@@ -153,6 +153,11 @@ static OSStatus hotKeyHandler(EventHandlerCallRef next, EventRef event, void *us
 	case 3:
 		bslGoEvent(BSL_EV_TOGGLE_MENUBAR, 0, 0);
 		break;
+	case 5:
+		[NSApp activateIgnoringOtherApps:YES];
+		if (gWin) [gWin makeKeyAndOrderFront:nil];
+		bslGoEvent(BSL_EV_CAPTURE, 0, 0);
+		break;
 	case 4:
 		// Summon: bring the app forward from wherever the owner is, then tell the page.
 		[NSApp activateIgnoringOtherApps:YES];
@@ -175,6 +180,16 @@ static void installHotKeys(void) {
 		EventHotKeyRef ref = NULL;
 		RegisterEventHotKey(keys[i], mods, hk, GetApplicationEventTarget(), 0, &ref);
 	}
+	NSUserDefaults *prefs = NSUserDefaults.standardUserDefaults;
+	NSNumber *key = [prefs objectForKey:@"fragHotkeyKeyCode"];
+	NSNumber *flags = [prefs objectForKey:@"fragHotkeyModifiers"];
+	EventHotKeyID capture = {.signature = 'bslk', .id = 5};
+	EventHotKeyRef captureRef = NULL;
+	OSStatus result = RegisterEventHotKey(key ? key.unsignedIntValue : kVK_ANSI_F,
+		flags ? flags.unsignedIntValue : (optionKey | shiftKey), capture,
+		GetApplicationEventTarget(), 0, &captureRef);
+	if (result != noErr) NSLog(@"Basalisk: Frag hotkey registration failed (%d)", (int)result);
+
 }
 
 // ---- Init ----

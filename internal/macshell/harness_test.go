@@ -108,11 +108,45 @@ func TestBrowserViews(t *testing.T) {
 		t.Errorf("the page moved: %+v", v)
 	}
 
-	// window.open becomes an "open" event, not a window.
-	_, _ = DefaultBrowser().Command(map[string]any{"op": "eval", "id": "w1", "js": "window.open('/site2'); 1"})
-	waitFor(t, "open event", func() bool {
-		return strings.Contains(HxEvalPage(`return window.__ev.filter(e=>e.kind==='open').map(e=>e.url)`), "/site2")
+	// A popup retains its actual WebKit view and opener, rather than replaying its URL.
+	_, _ = DefaultBrowser().Command(map[string]any{"op": "eval", "id": "w1", "js": "window.popup = window.open('/site2'); !!window.popup"})
+	var popupID string
+	waitFor(t, "popup view", func() bool {
+		views, _ := DefaultBrowser().List()
+		for _, v := range views {
+			if v.ID != "w1" && v.Title == "Site Two" {
+				popupID = v.ID
+				return true
+			}
+		}
+		return false
 	})
+	result, err := DefaultBrowser().Command(map[string]any{"op": "eval", "id": popupID, "js": "window.opener.document.title = 'Callback received'; !!window.opener"})
+	if err != nil || string(result) != "true" {
+		t.Fatalf("popup opener: %s %v", result, err)
+	}
+	waitFor(t, "opener callback", func() bool {
+		views, _ := DefaultBrowser().List()
+		for _, v := range views {
+			if v.ID == "w1" {
+				return v.Title == "Callback received"
+			}
+		}
+		return false
+	})
+	// Adopting the view must not replay the request or destroy its JS state.
+	_, _ = DefaultBrowser().Command(map[string]any{"op": "eval", "id": popupID, "js": "window.retained = 42"})
+	_, _ = DefaultBrowser().Command(map[string]any{"op": "open", "id": popupID, "url": hxBase + "/site"})
+	result, err = DefaultBrowser().Command(map[string]any{"op": "eval", "id": popupID, "js": "window.retained"})
+	if err != nil || string(result) != "42" {
+		t.Fatalf("popup adoption: %s %v", result, err)
+	}
+	_, _ = DefaultBrowser().Command(map[string]any{"op": "eval", "id": popupID, "js": "window.close(); 1"})
+	waitFor(t, "popup close event", func() bool {
+		return strings.Contains(HxEvalPage(`return window.__ev.filter(e=>e.kind==='close').map(e=>e.id)`), popupID)
+	})
+	_, _ = DefaultBrowser().Command(map[string]any{"op": "close", "id": popupID})
+	_, _ = DefaultBrowser().Command(map[string]any{"op": "eval", "id": "w1", "js": "document.title = 'Site One'"})
 	// Agent commands are logged where the desktop shows them.
 	var logged bool
 	for _, e := range shell.Events(0) {

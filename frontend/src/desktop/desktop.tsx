@@ -375,6 +375,12 @@ export function Desktop() {
     if (settings.layout !== state.layout) updateSettings({ layout: state.layout })
   }, [state.layout, settings.layout])
 
+  useEffect(() => {
+    const capture = () => desk.toggleOverlay("frag")
+    window.addEventListener("basalisk:frag-summon", capture)
+    return () => window.removeEventListener("basalisk:frag-summon", capture)
+  }, [desk])
+
   // Shortcuts: a chord runs the command it is bound to. Chords arrive from the page, and,
   // in the desktop app with key swallowing on, from the native event tap, which takes the
   // ones the system would otherwise keep (Cmd-Space, Cmd-Tab) and reports them here.
