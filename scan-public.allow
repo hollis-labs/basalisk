@@ -19,3 +19,9 @@ agent-box-host deploy.yaml fleet inventory alias required by fleet-deploy/v1, no
 token-store-file frontend/.npmrc contains only install-links=true (for a file: dependency since removed); no token
 secret-assignment frontend/src/App.tsx HTML autocomplete attribute value "new-password", not a credential
 credentials-in-url internal/account/http_test.go test input: an integration URL carrying invented credentials must be rejected
+#
+# Owner-reviewed 2026-11-15: narrow exceptions for already-published desktop history.
+# Pins apply only to the original historical findings; current files remain scanned.
+home-path-macos (commit-message)@0950199a6298 literal home-directory placeholder in a command-completion example, not a personal path
+agent-box-host (commit-message)@eeca5be6dec9 SSH inventory alias in a test report, not an address or credential
+agent-box-host frontend/src/terminal/agent.ts@e9f95520f630 historical SSH alias examples, not addresses or credentials; removed from current source
