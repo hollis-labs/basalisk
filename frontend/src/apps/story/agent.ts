@@ -55,6 +55,7 @@ registerAgentTools([
           status: x.status,
           duration_s: x.duration_s,
         })),
+        unused: r.script.unused,
         script: scriptMarkdown(r.script),
         draft_notes: r.drafts.map((n) => ({
           id: n.id,
@@ -215,6 +216,69 @@ registerAgentTools([
     run: async (i, _d, { signal }) => {
       signal.throwIfAborted()
       return story.cut(String(i.key), String(i.id))
+    },
+  },
+])
+
+registerAgentTools([
+  {
+    name: "story_scene_restore",
+    level: "write",
+    description: "Restore a cut scene from story_get's unused list.",
+    input_schema: object({ key: KEY, id: str("Cut scene ID") }, ["key", "id"]),
+    run: async (i, _d, { signal }) => {
+      signal.throwIfAborted()
+      return story.restore(String(i.key), String(i.id))
+    },
+  },
+  {
+    name: "story_scene_order",
+    level: "write",
+    description:
+      "Reorder the script's scenes. Supply each active scene ID exactly once; this cannot cut scenes.",
+    input_schema: object({ key: KEY, scenes: { type: "array", items: { type: "string" } } }, [
+      "key",
+      "scenes",
+    ]),
+    run: async (i, _d, { signal }) => {
+      const current = (await story.script(String(i.key))).script.scene_list.map((s) => s.id)
+      const ids = i.scenes
+      if (
+        !Array.isArray(ids) ||
+        ids.length !== current.length ||
+        new Set(ids).size !== ids.length ||
+        !ids.every((id) => typeof id === "string" && current.includes(id))
+      )
+        throw new Error("Supply every active scene ID exactly once.")
+      signal.throwIfAborted()
+      return story.order(String(i.key), ids)
+    },
+  },
+  {
+    name: "story_note_update",
+    level: "write",
+    description:
+      "Edit a draft review note's text or proposed replacement. Does not send the round.",
+    input_schema: object(
+      { key: KEY, id: str("Draft note ID"), text: str("Text"), replace: str("Replacement") },
+      ["key", "id"],
+    ),
+    run: async (i, _d, { signal }) => {
+      signal.throwIfAborted()
+      return story.editNote(String(i.key), String(i.id), {
+        text: i.text as string | undefined,
+        replace: i.replace as string | undefined,
+      })
+    },
+  },
+  {
+    name: "story_note_delete",
+    level: "confirm",
+    description: "Delete a draft review note. Always asks.",
+    input_schema: object({ key: KEY, id: str("Draft note ID") }, ["key", "id"]),
+    run: async (i, _d, { signal }) => {
+      signal.throwIfAborted()
+      return story.dropNote(String(i.key), String(i.id))
     },
   },
 ])

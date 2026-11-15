@@ -128,6 +128,8 @@ export type ReaderFilter = Partial<
   >
 >
 
+const enc = encodeURIComponent
+
 const nonce = () =>
   globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
@@ -147,19 +149,19 @@ export const reader = {
     for (const [k, v] of Object.entries(f)) if (v) q.set(k, v)
     return request<ReaderPage>(`reader/items?${q.toString()}`)
   },
-  item: (id: string) => request<ReaderItem>(`reader/items/${id}`),
+  item: (id: string) => request<ReaderItem>(`reader/items/${enc(id)}`),
   content: (it: ReaderItem) =>
     request<{ markdown: string }>(
-      `reader/items/${it.fragment_id}/content?revision_id=${it.fragment_revision_id}`,
+      `reader/items/${enc(it.fragment_id)}/content?revision_id=${enc(it.fragment_revision_id)}`,
     ),
   /** Run one reader command and answer the item as it is afterwards. */
   async command(it: ReaderItem, command: string, extra: Record<string, unknown> = {}) {
     const id = nonce()
-    await request<unknown>(`reader/items/${it.fragment_id}/commands`, "POST", {
+    await request<unknown>(`reader/items/${enc(it.fragment_id)}/commands`, "POST", {
       schema_version: "fe.reader.command.v1",
       command,
-      command_id: `basalisk-${id}`,
-      idempotency_key: `basalisk-${id}`,
+      command_id: `basalisk-${enc(id)}`,
+      idempotency_key: `basalisk-${enc(id)}`,
       expected_revision: STATE_COMMANDS.has(command) ? it.reading_state.revision : it.revision,
       ...extra,
     })
@@ -175,41 +177,41 @@ export const reader = {
     c: ReaderCollection,
     patch: { name?: string; description?: string; kind?: string },
   ) =>
-    request<ReaderCollection>(`reader/collections/${c.collection_id}`, "PUT", {
+    request<ReaderCollection>(`reader/collections/${enc(c.collection_id)}`, "PUT", {
       expected_revision: c.revision,
       ...patch,
     }),
   deleteCollection: (c: ReaderCollection) =>
     request<void>(
-      `reader/collections/${c.collection_id}?expected_revision=${c.revision}`,
+      `reader/collections/${enc(c.collection_id)}?expected_revision=${c.revision}`,
       "DELETE",
     ),
   collectionItems: (id: string, cursor = "") =>
     request<{ collection: ReaderCollection; items: ReaderItem[]; next_cursor?: string }>(
-      `reader/collections/${id}/items${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+      `reader/collections/${enc(id)}/items${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
     ),
   /** Add an item at the end. Accepted from any revision at or behind the current one. */
   addToCollection: (c: ReaderCollection, fragmentId: string) =>
-    request<ReaderCollection>(`reader/collections/${c.collection_id}/items`, "POST", {
+    request<ReaderCollection>(`reader/collections/${enc(c.collection_id)}/items`, "POST", {
       expected_revision: c.revision,
       fragment_id: fragmentId,
     }),
   removeFromCollection: (c: ReaderCollection, fragmentId: string) =>
     request<ReaderCollection>(
-      `reader/collections/${c.collection_id}/items/${fragmentId}?expected_revision=${c.revision}`,
+      `reader/collections/${enc(c.collection_id)}/items/${enc(fragmentId)}?expected_revision=${c.revision}`,
       "DELETE",
     ),
   /** Replace the order: every member's id, each once. */
   orderCollection: (c: ReaderCollection, fragmentIds: string[]) =>
-    request<ReaderCollection>(`reader/collections/${c.collection_id}/order`, "PUT", {
+    request<ReaderCollection>(`reader/collections/${enc(c.collection_id)}/order`, "PUT", {
       expected_revision: c.revision,
       fragment_ids: fragmentIds,
     }),
   feeds: () => request<{ feeds: Feed[]; refreshing: boolean }>("reader/feeds"),
   addFeed: (url: string, folder = "") => request<Feed>("reader/feeds", "POST", { url, folder }),
   updateFeed: (id: string, patch: { title?: string; folder?: string }) =>
-    request<void>(`reader/feeds/${id}`, "PUT", patch),
-  removeFeed: (id: string) => request<void>(`reader/feeds/${id}`, "DELETE"),
+    request<void>(`reader/feeds/${enc(id)}`, "PUT", patch),
+  removeFeed: (id: string) => request<void>(`reader/feeds/${enc(id)}`, "DELETE"),
   refreshFeeds: (feed = "") => request<void>("reader/feeds/refresh", "POST", { feed }),
   readAll: (feed = "") => request<void>("reader/feeds/read", "POST", { feed }),
   entries: (f: {
@@ -227,14 +229,14 @@ export const reader = {
     if (f.before) q.set("before", f.before)
     return request<{ entries: FeedEntry[] }>(`reader/entries?${q.toString()}`)
   },
-  entry: (id: string) => request<FeedEntry>(`reader/entries/${id}`),
+  entry: (id: string) => request<FeedEntry>(`reader/entries/${enc(id)}`),
   markEntry: (id: string, patch: { read?: boolean; starred?: boolean; saved?: boolean }) =>
-    request<void>(`reader/entries/${id}`, "PUT", patch),
+    request<void>(`reader/entries/${enc(id)}`, "PUT", patch),
 }
 
 /** The address of an FE-held file, through this Basalisk. */
 export const mediaURL = (it: ReaderItem, m: ReaderMedia, v: ReaderVariant) =>
-  `/api/reader/media/${v.asset_variant_id}?fragment_id=${it.fragment_id}&revision_id=${m.attachment.fragment_revision_id}`
+  `/api/reader/media/${v.asset_variant_id}?fragment_id=${enc(it.fragment_id)}&revision_id=${m.attachment.fragment_revision_id}`
 
 /** The best held image of a media asset (a poster for a video), or undefined. */
 export function imageOf(

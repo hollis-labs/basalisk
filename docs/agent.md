@@ -412,9 +412,32 @@ agent's instructions, projects and roster.
 Deliberate boundaries: sending review rounds, approving/signing off and publishing remain
 owner actions. Startup model/gateway settings, credentials and standing grants stay in
 operator configuration or the owner's settings UI. Notes renames do not rewrite backlinks;
-the agent can propose separate note edits. Files/Browser/Terminal retain their existing
-access; no general filesystem-write or shell bypass was added. Reader feed/subscription
-management, account administration, host controls and external mail/Torque/Tesseract
-mutations are outside this app-data pass. Collab's list reads each document's latest
+the agent can propose separate note edits. Browser/Terminal retain their existing access; no shell bypass was added. Account
+administration, host controls and external mail/Torque/Tesseract mutations remain outside
+this app-data pass.
+
+The follow-up content sweep adds:
+
+- Reader/Watch: library listing and full text; revision-checked reading state, tags and
+  annotations; collection create/edit/delete, membership and order; feed subscriptions,
+  folders, refresh, entry read/star state and mark-all-read. Reads never prompt, writes
+  use approval cards, and tag removal, collection removal/deletion and unsubscribe always ask.
+  Reader windows refresh after successful agent writes. Source article text remains upstream
+  content; capture an annotation or a separate note rather than overwriting the source.
+- Work: cut-item discovery/restoration, draft-note edit/delete, saved-view settings and
+  revision history. Story: cut-scene discovery/restoration, scene ordering and draft-note
+  edit/delete. These do not send review rounds or sign off.
+- Files: create folders and copy/move/delete individual regular files in existing places.
+  Credential-looking paths and symlink traversal are refused. Move/delete always ask;
+  dirty Notes editors block operations and open editors follow renames. Destinations cannot
+  overwrite existing files. Recursive folder operations and adding/removing remote places
+  remain owner actions because they can affect credentials or host access. Note text uses
+  the existing Notes write/edit tools and their revision checks.
+
+Reader OPML bulk import/export and automated playback/progress controls have no new agent
+wrapper; subscriptions can be managed individually and read/unread state is writable.
+Work canvas positions/stacks and ownership routing remain desktop controls; saved views
+and item data are writable. These are the remaining UI-operation gaps, not read-only
+content stores. Collab's list reads each document's latest
 metadata to hide removed entries; a failed metadata read reports an error rather than
 silently showing an incomplete list.

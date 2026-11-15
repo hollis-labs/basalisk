@@ -8,9 +8,11 @@ import { ApiError, request } from "../../api/account"
 import { type FileEntry, type FileRoot, files } from "../../api/files"
 import { bytes, chars, fileCard, fileRow, registerResultCards, shortWhen } from "../../cite/cards"
 import type { DeskAPI } from "../../desktop/registry"
+import { noteWindows } from "../notes/open"
 import { loadRoots } from "./browser"
 import { credentialReason } from "./credentials"
 import { filesLocations } from "./model"
+import { changed, touched } from "./ops"
 
 const READ_CHUNK = 60_000
 const READ_MAX_BYTES = 5 << 20
@@ -351,3 +353,88 @@ function entryList(
     rows,
   }
 }
+
+// Mutations are restricted to individual non-secret files and explicit root-relative paths.
+async function mutableFile(rootID: unknown, pathValue: unknown, existing: boolean) {
+  if (
+    typeof rootID !== "string" ||
+    typeof pathValue !== "string" ||
+    !pathValue ||
+    pathValue.startsWith("/") ||
+    pathValue.split("/").some((p) => !p || p === "." || p === "..")
+  )
+    throw new Error("Give a place ID and a normalized path inside it.")
+  const root = await place(rootID)
+  const reason = credentialReason(pathValue, root.path)
+  if (reason) throw refused(rootID, pathValue, reason)
+  // Refuse symlink traversal even when it stays inside the configured root.
+  const parts = pathValue.split("/")
+  for (let n = 1; n <= parts.length; n++) {
+    if (n === parts.length && !existing) break
+    const e = await files.stat(rootID, parts.slice(0, n).join("/"))
+    if (e.symlink || (n === parts.length && e.dir))
+      throw new Error(
+        "Use a regular file, without symlinks. Recursive folder mutations remain owner actions.",
+      )
+  }
+  return { root: rootID, path: pathValue }
+}
+registerAgentTools([
+  {
+    name: "files_mkdir",
+    level: "write",
+    description:
+      "Create a folder inside an existing Files place. Does not add places or change host access.",
+    input_schema: object(WHERE, ["root", "path"]),
+    run: async (i, _d, { signal }) => {
+      const f = await mutableFile(i.root, i.path, false)
+      signal.throwIfAborted()
+      const out = await files.mkdir(f.root, f.path)
+      changed(f.root, touched(out))
+      return out
+    },
+  },
+  ...(["copy", "move"] as const).map((action) => ({
+    name: `files_${action}`,
+    level: action === "move" ? ("confirm" as const) : ("write" as const),
+    description: `${action === "copy" ? "Copy" : "Move or rename"} one regular file between existing places. Refuses credentials, symlinks, existing destinations and unsaved edits. Move always asks.`,
+    input_schema: object(
+      { ...WHERE, to_root: str("Destination place ID"), to_path: str("New destination path") },
+      ["root", "path", "to_root", "to_path"],
+    ),
+    run: async (i: Record<string, unknown>, desk: DeskAPI, { signal }: { signal: AbortSignal }) => {
+      const from = await mutableFile(i.root, i.path, true)
+      const to = await mutableFile(i.to_root, i.to_path, false)
+      const showing = noteWindows.showing(from)
+      if (showing.some(([, n]) => n.dirty())) throw new Error("Save the open file's edits first.")
+      signal.throwIfAborted()
+      const out = await files[action](from, to)
+      changed(to.root, touched(out))
+      if (action === "move") {
+        changed(from.root, touched(from))
+        for (const [id] of showing) {
+          desk.setArgs(id, { file: to })
+          desk.setTitle(id, out.name)
+        }
+      }
+      return out
+    },
+  })),
+  {
+    name: "files_delete",
+    level: "confirm",
+    description:
+      "Delete one regular file, never a folder or credential. Local files go to Trash; remote files are permanently deleted. Refuses unsaved edits and always asks.",
+    input_schema: object(WHERE, ["root", "path"]),
+    run: async (i, desk, { signal }) => {
+      const f = await mutableFile(i.root, i.path, true)
+      const showing = noteWindows.showing(f)
+      if (showing.some(([, n]) => n.dirty())) throw new Error("Save the open file's edits first.")
+      signal.throwIfAborted()
+      const out = await files.remove(f.root, f.path)
+      changed(f.root, touched(f))
+      for (const [id] of showing) desk.close(id)
+      return out
+    },
+  },
+])

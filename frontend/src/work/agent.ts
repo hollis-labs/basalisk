@@ -27,6 +27,7 @@ registerAgentTools([
       app: { type: "string", enum: ["content", "planner", "writer"] },
       kind: str("Only items of this kind (video, chapter, task…)."),
       stage: str("Only items at this stage."),
+      include_cut: { type: "boolean", description: "Include cut items for restoration" },
     }),
     run: async (input) => {
       if (typeof input.workspace !== "string" || !input.workspace) {
@@ -52,13 +53,14 @@ registerAgentTools([
           sections: k.sections,
           children: k.children,
         })),
-        views: r.space.views.map((v) => ({ id: v.id, view: v.view, title: v.title })),
+        views: r.space.views,
         items: r.space.items
-          .filter((c) => !c.cut)
+          .filter((c) => input.include_cut || !c.cut)
           .filter((c) => !input.kind || c.kind === input.kind)
           .filter((c) => !input.stage || c.stage === input.stage)
           .map((c) => ({
             id: c.id,
+            cut: c.cut,
             kind: c.kind,
             title: c.title,
             stage: c.stage,
@@ -88,6 +90,7 @@ registerAgentTools([
       return {
         id: d.id,
         ref: d.ref,
+        name: `i.${d.id}`,
         kind: d.kind,
         title: d.title,
         stage: d.stage,
@@ -348,6 +351,94 @@ registerAgentTools([
     run: async (i, _desk, { signal }) => {
       check(signal)
       return work.deleteSpace(String(i.workspace))
+    },
+  },
+])
+
+registerAgentTools([
+  {
+    name: "work_item_restore",
+    level: "write",
+    description: "Restore a cut item. Use work_list with include_cut to find it.",
+    input_schema: object({ workspace: WS, id: ID }, ["workspace", "id"]),
+    run: async (i, _d, { signal }) => {
+      signal.throwIfAborted()
+      return work.restore(String(i.workspace), String(i.id))
+    },
+  },
+  {
+    name: "work_note_update",
+    level: "write",
+    description: "Edit a draft review note's text or replacement; never sends the round.",
+    input_schema: object(
+      { workspace: WS, id: str("Draft note ID"), text: str("Text"), replace: str("Replacement") },
+      ["workspace", "id"],
+    ),
+    run: async (i, _d, { signal }) => {
+      signal.throwIfAborted()
+      return work.editNote(String(i.workspace), String(i.id), {
+        text: i.text as string | undefined,
+        replace: i.replace as string | undefined,
+      })
+    },
+  },
+  {
+    name: "work_note_delete",
+    level: "confirm",
+    description: "Delete a draft review note. Always asks.",
+    input_schema: object({ workspace: WS, id: str("Draft note ID") }, ["workspace", "id"]),
+    run: async (i, _d, { signal }) => {
+      signal.throwIfAborted()
+      return work.dropNote(String(i.workspace), String(i.id))
+    },
+  },
+  {
+    name: "work_history",
+    level: "read",
+    description:
+      "Read a Work item's revision history or a specific historical revision. name is its Caster name from work_get.",
+    input_schema: object(
+      { workspace: WS, name: str("Caster item name"), rev: { type: "integer", minimum: 1 } },
+      ["workspace", "name"],
+    ),
+    run: async (i) =>
+      i.rev === undefined
+        ? work.log(String(i.workspace), String(i.name))
+        : work.at(String(i.workspace), String(i.name), Number(i.rev)),
+  },
+])
+
+registerAgentTools([
+  {
+    name: "work_view_save",
+    level: "write",
+    description:
+      "Create or edit a saved Work view (board, calendar, outline, canvas or flow). Omit id to create. Only supplied settings change; layout content is revisioned in Caster.",
+    input_schema: object(
+      {
+        workspace: WS,
+        id: str("Existing view ID, omitted for a new view"),
+        view: { type: "string", enum: ["board", "calendar", "outline", "canvas", "flow"] },
+        title: str("Title"),
+        kinds: { type: "array", items: { type: "string" } },
+        group_by: str("Grouping field"),
+        date_field: str("Date field"),
+        root: str("Outline root item"),
+        rel: { type: "array", items: { type: "string" } },
+        filter: { type: "object" },
+      },
+      ["workspace"],
+    ),
+    run: async (i, _d, { signal }) => {
+      const patch = Object.fromEntries(
+        ["view", "title", "kinds", "group_by", "date_field", "root", "rel", "filter"]
+          .filter((k) => i[k] !== undefined)
+          .map((k) => [k, i[k]]),
+      )
+      signal.throwIfAborted()
+      return i.id
+        ? work.saveView(String(i.workspace), String(i.id), patch)
+        : work.newView(String(i.workspace), patch)
     },
   },
 ])

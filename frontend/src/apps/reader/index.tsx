@@ -2,6 +2,7 @@
  * Reader: a read-it-later library and video player over Fragments Engine, plus RSS and Atom
  * feeds (docs/reader.md). Watch is the same window opened on the videos.
  */
+import "./agent"
 import { BookOpen, MonitorPlay } from "lucide-react"
 import { registerApp } from "../../desktop/registry"
 import { ReaderWindow } from "./window"

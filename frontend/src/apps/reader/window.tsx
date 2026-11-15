@@ -215,6 +215,16 @@ export function ReaderWindow({ start }: { start: string }) {
     void load()
   }, [load])
 
+  useEffect(() => {
+    const refresh = () => {
+      void load()
+      void loadFeeds()
+      void loadCollections()
+    }
+    window.addEventListener("basalisk:reader-changed", refresh)
+    return () => window.removeEventListener("basalisk:reader-changed", refresh)
+  }, [load, loadFeeds, loadCollections])
+
   // The search box narrows the view shortly after typing stops.
   useEffect(() => {
     const timer = window.setTimeout(() => setQuery(typed.trim()), 350)
