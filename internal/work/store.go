@@ -811,8 +811,13 @@ func (s *Store) MakeItem(ctx context.Context, ws string, in NewItem) (string, er
 	for _, sec := range k.Sections {
 		b.Put(sec, in.Sections[sec], k.Sections)
 	}
-	for sec, text := range in.Sections {
-		b.Put(sec, text, k.Sections)
+	extraSections := make([]string, 0, len(in.Sections))
+	for sec := range in.Sections {
+		extraSections = append(extraSections, sec)
+	}
+	sort.Strings(extraSections)
+	for _, sec := range extraSections {
+		b.Put(sec, in.Sections[sec], k.Sections)
 	}
 	d.Body = b.String()
 	if _, err := s.write(ctx, ns, ItemName(id), d.String(), title); err != nil {

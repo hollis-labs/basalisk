@@ -4,7 +4,7 @@
  * signs off or publishes.
  */
 import { registerAgentTools } from "../agent/tools"
-import { work } from "../api/work"
+import { type WorkEdit, type WorkLink, work } from "../api/work"
 
 const object = (properties: Record<string, unknown>, required: string[] = []) => ({
   type: "object",
@@ -36,6 +36,7 @@ registerAgentTools([
           app: w.app,
           title: w.title,
           items: w.items,
+          archived: w.archived,
         }))
       }
       const r = await work.open(input.workspace)
@@ -43,7 +44,15 @@ registerAgentTools([
         workspace: r.space.workspace.slug,
         title: r.space.workspace.title,
         app: r.space.workspace.app,
-        kinds: r.space.kinds.map((k) => ({ kind: k.kind, label: k.label, stages: k.stages })),
+        kinds: r.space.kinds.map((k) => ({
+          kind: k.kind,
+          label: k.label,
+          stages: k.stages,
+          fields: k.fields,
+          sections: k.sections,
+          children: k.children,
+        })),
+        views: r.space.views.map((v) => ({ id: v.id, view: v.view, title: v.title })),
         items: r.space.items
           .filter((c) => !c.cut)
           .filter((c) => !input.kind || c.kind === input.kind)
@@ -152,64 +161,193 @@ registerAgentTools([
 
 const strings = { type: "array", items: str("Value") }
 const fields = { type: "object", additionalProperties: true }
-const sections = { type: "object", additionalProperties: { type: "string" }, description: "Text by section heading; omitted sections stay unchanged." }
-const links = { type: "array", items: object({ rel: str("Relation, e.g. relates or depends-on (contains uses parent instead)."), to: str("Item id, torque://task/CW-…, tesseract://item/<id>, caster://…, or http(s) URL.") }, ["rel", "to"]) }
-const change = {
- title: str("Item title"), fields, sections, tags: strings, links,
+const sections = {
+  type: "object",
+  additionalProperties: { type: "string" },
+  description: "Text by section heading; omitted sections stay unchanged.",
 }
-const check = (signal: AbortSignal) => { if (signal.aborted) throw new Error("The run stopped.") }
+const links = {
+  type: "array",
+  items: object(
+    {
+      rel: str("Relation, e.g. relates or depends-on (contains uses parent instead)."),
+      to: str("Item id, torque://task/CW-…, tesseract://item/<id>, caster://…, or http(s) URL."),
+    },
+    ["rel", "to"],
+  ),
+}
+const change = {
+  title: str("Item title"),
+  fields,
+  sections,
+  tags: strings,
+  links,
+}
+const check = (signal: AbortSignal) => {
+  if (signal.aborted) throw new Error("The run stopped.")
+}
 registerAgentTools([
- {
-  name: "work_space_create", level: "write",
-  description: "Create a Work workspace. Use app planner to organize plans and child items; content for publication drafts; writer for manuscripts. Does not send, sign off or publish.",
-  input_schema: object({app: {type: "string", enum: ["planner", "content", "writer"]}, slug: str("Unique lowercase letters, digits and hyphens."), title: str("Workspace title"), about: str("Workspace description")}, ["app", "slug", "title"]),
-  describe: i => `Create ${String(i.app)} workspace “${String(i.title)}”`,
-  run: async (i, _desk, {signal}) => { check(signal); return work.create(String(i.slug), String(i.title), String(i.app), String(i.about ?? "")) },
- },
- {
-  name: "work_item_create", level: "write",
-  description: "Create a Work item, optionally inside a parent, with text by section, fields, tags and links. Read work_list for kinds and stages. Publishing is reserved for the owner.",
-  input_schema: object({workspace: WS, kind: str("Kind from work_list"), ...change, parent: ID, stage: str("Stage from work_list")}, ["workspace", "kind", "title"]),
-  describe: i => `Create ${String(i.kind)} “${String(i.title)}” in ${String(i.workspace)}`,
-  run: async (i, _desk, {signal}) => {
-   if (i.stage === "published") throw new Error("Publishing is the owner's action.")
-   check(signal)
-   return work.make(String(i.workspace), {kind: String(i.kind), title: String(i.title), parent: i.parent as string | undefined, stage: i.stage as string | undefined, fields: i.fields as Record<string, unknown> | undefined, sections: i.sections as Record<string,string> | undefined, links: i.links as import("../api/work").WorkLink[] | undefined, tags: i.tags as string[] | undefined})
+  {
+    name: "work_space_create",
+    level: "write",
+    description:
+      "Create a Work workspace. Use app planner to organize plans and child items; content for publication drafts; writer for manuscripts. Does not send, sign off or publish.",
+    input_schema: object(
+      {
+        app: { type: "string", enum: ["planner", "content", "writer"] },
+        slug: str("Unique lowercase letters, digits and hyphens."),
+        title: str("Workspace title"),
+        about: str("Workspace description"),
+      },
+      ["app", "slug", "title"],
+    ),
+    describe: (i) => `Create ${String(i.app)} workspace “${String(i.title)}”`,
+    run: async (i, _desk, { signal }) => {
+      check(signal)
+      return work.create(String(i.slug), String(i.title), String(i.app), String(i.about ?? ""))
+    },
   },
- },
- {
-  name: "work_item_update", level: "write",
-  description: "Edit a Work item's title, text by section, fields, tags or links. Give base_rev from work_get: a concurrent change becomes suggestions rather than being overwritten. tags and links replace their full lists. Use work_item_place for parent and order.",
-  input_schema: object({workspace: WS, id: ID, base_rev: {type:"integer", minimum:1}, ...change}, ["workspace", "id", "base_rev"]),
-  describe: i => `Edit ${String(i.workspace)}/${String(i.id)}`,
-  run: async (i, _desk, {signal}) => { check(signal); const {workspace, id, ...edit} = i; return work.edit(String(workspace), String(id), edit as unknown as import("../api/work").WorkEdit) },
- },
- {
-  name: "work_item_place", level: "write", description: "Change a Work item's parent and sibling order. Empty parent means top level; empty before means last. Give the outline view id to persist top-level order.",
-  input_schema: object({workspace: WS, id: ID, parent: str("Parent id or empty for top level"), before: str("Sibling id or empty for last"), view: str("Outline view id")}, ["workspace", "id", "parent"]),
-  describe: i => `Move ${String(i.id)} under ${String(i.parent || "the workspace")}`,
-  run: async (i, _desk, {signal}) => { check(signal); return work.place(String(i.workspace), String(i.id), String(i.parent), String(i.before ?? ""), String(i.view ?? "")) },
- },
- {
-  name: "work_item_stage", level: "write", description: "Move a Work item between its kind's stages. Cannot publish; that remains the owner's action.",
-  input_schema: object({workspace: WS, id: ID, stage: str("Stage from work_list")}, ["workspace", "id", "stage"]),
-  describe: i => `Move ${String(i.id)} to ${String(i.stage)}`,
-  run: async (i, _desk, {signal}) => { if (i.stage === "published") throw new Error("Publishing is the owner's action."); check(signal); return work.move(String(i.workspace), String(i.id), "stage", String(i.stage)) },
- },
- {
-  name: "work_item_delete", level: "confirm", description: "Remove a Work item from views (recoverable cut, keeps Caster history). Always asks the owner.",
-  input_schema: object({workspace: WS, id: ID}, ["workspace", "id"]),
-  describe: i => `Remove ${String(i.workspace)}/${String(i.id)} from Work`,
-  run: async (i, _desk, {signal}) => {check(signal); return work.cut(String(i.workspace), String(i.id))},
- },
+  {
+    name: "work_item_create",
+    level: "write",
+    description:
+      "Create a Work item, optionally inside a parent, with text by section, fields, tags and links. Read work_list for kinds and stages. Publishing is reserved for the owner.",
+    input_schema: object(
+      {
+        workspace: WS,
+        kind: str("Kind from work_list"),
+        ...change,
+        parent: ID,
+        stage: str("Stage from work_list"),
+      },
+      ["workspace", "kind", "title"],
+    ),
+    describe: (i) => `Create ${String(i.kind)} “${String(i.title)}” in ${String(i.workspace)}`,
+    run: async (i, _desk, { signal }) => {
+      if (i.stage === "published") throw new Error("Publishing is the owner's action.")
+      check(signal)
+      return work.make(String(i.workspace), {
+        kind: String(i.kind),
+        title: String(i.title),
+        parent: i.parent as string | undefined,
+        stage: i.stage as string | undefined,
+        fields: i.fields as Record<string, unknown> | undefined,
+        sections: i.sections as Record<string, string> | undefined,
+        links: i.links as WorkLink[] | undefined,
+        tags: i.tags as string[] | undefined,
+      })
+    },
+  },
+  {
+    name: "work_item_update",
+    level: "write",
+    description:
+      "Edit a Work item's title, text by section, fields, tags or links. Give base_rev from work_get: a concurrent change becomes suggestions rather than being overwritten. tags and links replace their full lists. Use work_item_place for parent and order.",
+    input_schema: object(
+      { workspace: WS, id: ID, base_rev: { type: "integer", minimum: 1 }, ...change },
+      ["workspace", "id", "base_rev"],
+    ),
+    describe: (i) => `Edit ${String(i.workspace)}/${String(i.id)}`,
+    run: async (i, _desk, { signal }) => {
+      check(signal)
+      const edit: WorkEdit = {
+        base_rev: Number(i.base_rev),
+        title: i.title as string | undefined,
+        fields: i.fields as Record<string, unknown> | undefined,
+        sections: i.sections as Record<string, string> | undefined,
+        tags: i.tags as string[] | undefined,
+        links: i.links as WorkLink[] | undefined,
+      }
+      return work.edit(String(i.workspace), String(i.id), edit)
+    },
+  },
+  {
+    name: "work_item_place",
+    level: "write",
+    description:
+      "Change a Work item's parent and sibling order. Empty parent means top level; empty before means last. Give the outline view id to persist top-level order.",
+    input_schema: object(
+      {
+        workspace: WS,
+        id: ID,
+        parent: str("Parent id or empty for top level"),
+        before: str("Sibling id or empty for last"),
+        view: str("Outline view id"),
+      },
+      ["workspace", "id", "parent"],
+    ),
+    describe: (i) => `Move ${String(i.id)} under ${String(i.parent || "the workspace")}`,
+    run: async (i, _desk, { signal }) => {
+      check(signal)
+      return work.place(
+        String(i.workspace),
+        String(i.id),
+        String(i.parent),
+        String(i.before ?? ""),
+        String(i.view ?? ""),
+      )
+    },
+  },
+  {
+    name: "work_item_stage",
+    level: "write",
+    description:
+      "Move a Work item between its kind's stages. Cannot publish; that remains the owner's action.",
+    input_schema: object({ workspace: WS, id: ID, stage: str("Stage from work_list") }, [
+      "workspace",
+      "id",
+      "stage",
+    ]),
+    describe: (i) => `Move ${String(i.id)} to ${String(i.stage)}`,
+    run: async (i, _desk, { signal }) => {
+      if (i.stage === "published") throw new Error("Publishing is the owner's action.")
+      check(signal)
+      return work.move(String(i.workspace), String(i.id), "stage", String(i.stage))
+    },
+  },
+  {
+    name: "work_item_delete",
+    level: "confirm",
+    description:
+      "Remove a Work item from views (recoverable cut, keeps Caster history). Always asks the owner.",
+    input_schema: object({ workspace: WS, id: ID }, ["workspace", "id"]),
+    describe: (i) => `Remove ${String(i.workspace)}/${String(i.id)} from Work`,
+    run: async (i, _desk, { signal }) => {
+      check(signal)
+      return work.cut(String(i.workspace), String(i.id))
+    },
+  },
 ])
 
 registerAgentTools([
- {name: "work_space_update", level: "write", description: "Rename a workspace's title or mark it archived (or unarchive it). Its slug and references stay stable.",
- input_schema: object({workspace: WS, title: str("New title"), archived: {type:"boolean"}}, ["workspace"]),
- describe: i => `Update workspace ${String(i.workspace)}`,
- run: async (i, _desk, {signal}) => {check(signal); return work.updateSpace(String(i.workspace), {title: i.title as string | undefined, archived: i.archived as boolean | undefined})}},
- {name: "work_space_delete", level: "confirm", description: "Remove a workspace from the workspace list, retaining its Caster data and history. Always asks.",
- input_schema: object({workspace: WS}, ["workspace"]), describe: i => `Remove workspace ${String(i.workspace)}`,
- run: async (i, _desk, {signal}) => {check(signal); return work.deleteSpace(String(i.workspace))}},
+  {
+    name: "work_space_update",
+    level: "write",
+    description:
+      "Rename a workspace's title or mark it archived (or unarchive it). Its slug and references stay stable.",
+    input_schema: object(
+      { workspace: WS, title: str("New title"), archived: { type: "boolean" } },
+      ["workspace"],
+    ),
+    describe: (i) => `Update workspace ${String(i.workspace)}`,
+    run: async (i, _desk, { signal }) => {
+      check(signal)
+      return work.updateSpace(String(i.workspace), {
+        title: i.title as string | undefined,
+        archived: i.archived as boolean | undefined,
+      })
+    },
+  },
+  {
+    name: "work_space_delete",
+    level: "confirm",
+    description:
+      "Remove a workspace from the workspace list, retaining its Caster data and history. Always asks.",
+    input_schema: object({ workspace: WS }, ["workspace"]),
+    describe: (i) => `Remove workspace ${String(i.workspace)}`,
+    run: async (i, _desk, { signal }) => {
+      check(signal)
+      return work.deleteSpace(String(i.workspace))
+    },
+  },
 ])

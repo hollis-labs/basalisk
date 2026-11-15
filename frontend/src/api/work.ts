@@ -160,6 +160,8 @@ export interface WorkSignOff {
 }
 
 export interface Workspace {
+  archived: boolean
+  deleted: boolean
   slug: string
   title: string
   app: string
@@ -214,7 +216,8 @@ export interface WorkEdit {
 const enc = encodeURIComponent
 
 export const work = {
-  updateSpace: (ws: string, change: {title?: string; archived?: boolean}) => request(`work/${enc(ws)}`, "PUT", change),
+  updateSpace: (ws: string, change: { title?: string; archived?: boolean }) =>
+    request(`work/${enc(ws)}`, "PUT", change),
   deleteSpace: (ws: string) => request(`work/${enc(ws)}`, "DELETE"),
   list: (app: string, refresh = false) =>
     request<{ workspaces: Workspace[]; presets: WorkPreset[]; problem?: string }>(
