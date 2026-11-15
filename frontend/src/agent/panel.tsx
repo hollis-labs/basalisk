@@ -1,4 +1,5 @@
 /** The agent's panel: the running thread, what it is doing, and a box to talk to it. */
+
 import { ArrowUp, ChevronRight, Plus, Square, X } from "lucide-react"
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { cardFor, ResultCardView } from "../cite/cards"
@@ -6,6 +7,7 @@ import { Markdown } from "../cite/ui"
 import { useDesk } from "../desktop/context"
 import { SlashMenu } from "../slash/menu"
 import type { DeskSnapshot, TaskInfo } from "./api"
+import { seenNews } from "./attention"
 import { ContextChip } from "./contexts-chip"
 import { NeedsStrip } from "./needs"
 import { type AgentSession, type Approval, type Item, mainSession, taskSession } from "./session"
@@ -164,6 +166,7 @@ function Conversation({
 
   useEffect(() => {
     void start(desk)
+    seenNews() // what the assistant said unasked is in front of the owner now
   }, [desk, start])
 
   // Take the keyboard when summoned.
@@ -372,6 +375,7 @@ function StepsFold({ tools }: { tools: ToolItem[] }) {
 function ItemView({ item }: { item: Item }) {
   switch (item.kind) {
     case "user":
+      if (item.auto) return <div className="agent-auto">{item.auto}</div>
       return (
         <div className="agent-user">
           {item.context?.focused && <WhereChip context={item.context} />}

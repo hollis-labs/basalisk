@@ -18,7 +18,7 @@ import {
 import { routeHints, runTool, snapshot, toolSpecs } from "./tools"
 
 export type Item =
-  | { kind: "user"; id: string; text: string; context?: DeskSnapshot | null }
+  | { kind: "user"; id: string; text: string; context?: DeskSnapshot | null; auto?: string }
   | { kind: "text"; id: string; text: string }
   | {
       kind: "tool"
@@ -105,7 +105,10 @@ function fromStored(messages: StoredMessage[], skipRun: string): Item[] {
   const tools = new Map<string, Extract<Item, { kind: "tool" }>>()
   for (const m of messages) {
     if (m.role === "user" && typeof m.meta?.text === "string") {
-      items.push({ kind: "user", id: m.id, text: m.meta.text, context: m.meta.context })
+      // A message Basalisk wrote (an answer came): shown as one line, not as the owner's words.
+      if (typeof m.meta.auto === "string" && m.meta.auto)
+        items.push({ kind: "user", id: m.id, text: "", auto: m.meta.auto })
+      else items.push({ kind: "user", id: m.id, text: m.meta.text, context: m.meta.context })
       continue
     }
     // The run still going is rebuilt from its event stream, not from what is stored so far.

@@ -421,6 +421,28 @@ func seatAddress(ctx context.Context, link interface {
 	return "", fmt.Errorf("no seat named %q was found in the registry", handle)
 }
 
+// OwnWaiting is the answers waiting unread at the assistant's own address to what it asked
+// as itself. It marks nothing: OwnAnswers tells them, once, with the next message.
+func OwnWaiting(ctx context.Context, own *inbox.Inbox, watch *assist.Watcher) (ids []string, answers []Arrived) {
+	items, _ := own.List(ctx, inbox.Filter{UnreadOnly: true, Limit: 40})
+	for _, it := range items {
+		if it.InReplyTo == "" {
+			continue
+		}
+		about, ok := watch.Asked(ctx, it.InReplyTo)
+		if !ok {
+			continue
+		}
+		name := it.FromName
+		if name == "" {
+			name = it.From
+		}
+		ids = append(ids, it.ID)
+		answers = append(answers, Arrived{From: name, About: about})
+	}
+	return ids, answers
+}
+
 // OwnAnswers is an ambient source: replies that came to the assistant's own address to what
 // it asked as itself (consult). Each is told once and marked read; it stays in the mailbox.
 func OwnAnswers(own *inbox.Inbox, watch *assist.Watcher) AmbientSource {

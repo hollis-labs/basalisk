@@ -671,3 +671,49 @@ type dumpLink []tetherlink.ToolInfo
 func (d dumpLink) Configured() bool                                             { return true }
 func (d dumpLink) Tools(context.Context) ([]tetherlink.ToolInfo, error)         { return d, nil }
 func (d dumpLink) Call(context.Context, string, map[string]any) ([]byte, error) { return nil, nil }
+
+func TestANudgeRunsOnTheOwnersThreadUnasked(t *testing.T) {
+	s := newStandIn(t, textReply("Hello."), textReply("Archie says it is ready."))
+	rt := newRuntime(t, s)
+	if _, err := rt.Nudge(t.Context(), "", "x", "y"); err == nil {
+		t.Fatal("a nudge with no owner seen should not start")
+	}
+	id, err := rt.Start(t.Context(), StartInput{Owner: "u1", Text: "ask Archie", ClientID: "c1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	follow(t, rt, id, nil)
+	_, before := rt.MainMark(t.Context(), "u1")
+	label, text := ArrivedNudge([]Arrived{{From: "Archie", About: "is it ready", Account: "a", ID: "m1"}})
+	id, err = rt.Nudge(t.Context(), "u1", label, text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run, _ := rt.MainMark(t.Context(), "u1"); run != id {
+		t.Errorf("the mark's run = %q, want %q", run, id)
+	}
+	if got := textOf(follow(t, rt, id, nil)); got != "Archie says it is ready." {
+		t.Fatalf("text = %q", got)
+	}
+	thread, _ := rt.Store().MainThread(t.Context(), "u1")
+	msgs, _ := rt.Store().Messages(t.Context(), thread)
+	var auto string
+	for _, m := range msgs {
+		var meta struct {
+			Auto string `json:"auto"`
+		}
+		_ = json.Unmarshal(m.Meta, &meta)
+		if meta.Auto != "" {
+			auto = meta.Auto
+			if !ownerTurn(m) {
+				t.Error("a nudge should start a turn, like a message of the owner's")
+			}
+		}
+	}
+	if auto != "An answer came from Archie" {
+		t.Errorf("auto = %q", auto)
+	}
+	if _, after := rt.MainMark(t.Context(), "u1"); after <= before {
+		t.Errorf("the mark did not move: %d then %d", before, after)
+	}
+}

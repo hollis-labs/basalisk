@@ -104,6 +104,9 @@ type Watcher struct {
 	// Hand starts the assistant on a batch of mail that asks for something (class bas). It
 	// may be nil: such mail is then shown to the owner like any that needs them.
 	Hand func(ctx context.Context, batch []Mail)
+	// Answer is told of answers that have just come to what the assistant asked in the
+	// owner's name, so the assistant can tell the owner without being asked. May be nil.
+	Answer func(ctx context.Context, batch []Mail)
 
 	mu       sync.Mutex
 	lastHand time.Time
@@ -209,7 +212,7 @@ func (w *Watcher) Sweep(ctx context.Context) (int, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	unread := map[string]bool{}
 	rules, _ := w.Rules(ctx)
-	var hand []Mail
+	var hand, answered []Mail
 	added := 0
 	for _, it := range items {
 		unread[it.ID] = true
@@ -266,6 +269,9 @@ func (w *Watcher) Sweep(ctx context.Context) (int, error) {
 			if class == ClassBas {
 				hand = append(hand, m)
 			}
+			if class == ClassAnswer {
+				answered = append(answered, m)
+			}
 		}
 	}
 	// What was waiting and is no longer unread has been dealt with, here or elsewhere.
@@ -282,6 +288,9 @@ func (w *Watcher) Sweep(ctx context.Context) (int, error) {
 		for _, id := range gone {
 			_, _ = db.ExecContext(ctx, `UPDATE mail SET state='done' WHERE id=?`, id)
 		}
+	}
+	if len(answered) > 0 && w.Answer != nil {
+		w.Answer(ctx, answered)
 	}
 	if len(hand) > 0 && w.Hand != nil {
 		w.mu.Lock()

@@ -87,3 +87,15 @@ func TestOwnerWiderTools(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+func TestArrivedNudge(t *testing.T) {
+	label, text := ArrivedNudge([]Arrived{{From: "Archie", About: "Is it ready?", Account: "msg://a", ID: "m1"}, {From: "Archie", About: "And the other?"}})
+	if label != "An answer came from Archie" {
+		t.Errorf("label = %q", label)
+	}
+	for _, want := range []string{"<arrived>", "id m1", "your own address", "Do not tell them an answer has arrived", "</arrived>"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the nudge lacks %q", want)
+		}
+	}
+}

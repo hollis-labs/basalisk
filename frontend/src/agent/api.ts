@@ -40,7 +40,7 @@ export interface StoredMessage {
   role: "user" | "assistant"
   blocks: Block[]
   /** On a message the owner wrote: their words, and what they were looking at. */
-  meta: { text?: string; context?: DeskSnapshot | null }
+  meta: { text?: string; context?: DeskSnapshot | null; auto?: string }
   run_id?: string
   created_at: string
 }

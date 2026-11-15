@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -167,6 +169,19 @@ func (b *basalisk) serve(ctx context.Context) error {
 						slog.Warn("assist: the assistant was not started on new mail", "err", err)
 					}
 				}
+				// An answer to what the assistant asked for the owner: it tells them, unasked.
+				watch.Answer = func(ctx context.Context, batch []assist.Mail) {
+					var answers []agent.Arrived
+					for _, m := range batch {
+						name := m.FromName
+						if name == "" {
+							name = m.From
+						}
+						answers = append(answers, agent.Arrived{From: name, About: strings.TrimPrefix(m.Why, "an answer to: "), Account: m.Account, ID: m.ID})
+					}
+					label, text := agent.ArrivedNudge(answers)
+					go agentRT.NudgeWhenFree(context.WithoutCancel(ctx), a.AssistOwner, label, text)
+				}
 				if err := watch.Init(ctx); err != nil {
 					slog.Warn("assist: new mail is not sorted: the watcher's tables could not be made", "err", err)
 					watch = nil
@@ -179,6 +194,31 @@ func (b *basalisk) serve(ctx context.Context) error {
 				if urn := agentRT.Config().URN; urn != "" && watch != nil {
 					own = inbox.New(&inbox.Tether{Link: link, Addresses: []string{urn}})
 					agentRT.AddAmbient(agent.OwnAnswers(own, watch))
+					// Answers to what it asked as itself: looked for each minute, told once.
+					go func() {
+						told := map[string]bool{}
+						for {
+							select {
+							case <-ctx.Done():
+								return
+							case <-time.After(time.Minute):
+							}
+							c, cancel := context.WithTimeout(ctx, 30*time.Second)
+							ids, answers := agent.OwnWaiting(c, own, watch)
+							cancel()
+							var fresh []agent.Arrived
+							for i, id := range ids {
+								if !told[id] {
+									told[id] = true
+									fresh = append(fresh, answers[i])
+								}
+							}
+							if len(fresh) > 0 {
+								label, text := agent.ArrivedNudge(fresh)
+								go agentRT.NudgeWhenFree(ctx, a.AssistOwner, label, text)
+							}
+						}
+					}()
 				}
 				deps := agent.OwnerDeps{Watch: watch, Link: link, Own: own, DevAddress: cfg.DevAddress, Seats: agentRT.Store().Roster,
 					Plans: func(ctx context.Context) any { return planOverview(ctx, workStore) },

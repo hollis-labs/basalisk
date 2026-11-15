@@ -95,7 +95,12 @@ func (a *API) assistNeeds(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "The sorted mail could not be read.")
 		return
 	}
-	reply(w, 200, map[string]any{"needs": needs, "held": held, "with_assistant": with, "answers": answers})
+	out := map[string]any{"needs": needs, "held": held, "with_assistant": with, "answers": answers}
+	if a.agent != nil {
+		// Where the running thread stands, so the page shows what the assistant said unasked.
+		out["active_run"], out["thread_last"] = a.agent.MainMark(r.Context(), owner)
+	}
+	reply(w, 200, out)
 }
 
 // assistMail is the owner saying what to do with a sorted message: not now, done, or where

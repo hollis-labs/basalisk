@@ -650,3 +650,14 @@
   text-align: left;
   color: var(--desk-accent);
 }
+
+/* A message Basalisk wrote to the assistant (an answer came): one quiet line. */
+.agent-auto {
+  align-self: center;
+  margin: 6px 0 2px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--desk-fg-soft);
+  border: 1px solid var(--desk-border);
+}

@@ -98,6 +98,9 @@ type StartInput struct {
 	Hints Hints
 	// Thread is the task thread the message is for; "" is the owner's running thread.
 	Thread string
+	// Auto is set when Basalisk wrote the message, not the owner (nudge.go): a short line
+	// the interface shows in place of the text.
+	Auto string
 }
 
 // Errors a caller can tell apart.
@@ -324,7 +327,7 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 		waiting: map[string]*pending{}, approvals: map[string]chan string{}}
 	// The rules first, for the running thread (a task's brief is for its agent, whatever it
 	// says). A rule that names a tool this message did not come with is no route.
-	if !isTask {
+	if !isTask && in.Auto == "" {
 		if route := rt.Router().Route(ctx, text, in.Context, in.Hints); route != nil && (route.Tool == "" || tools[route.Tool].Name != "") {
 			r.route = route
 		}
@@ -396,7 +399,7 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: text})
 	// The reflexes, for a message the router did not take: a reminder goes to the model
 	// with the message; a halt answers it here.
-	if r.route == nil && !isTask {
+	if r.route == nil && !isTask && in.Auto == "" {
 		for _, f := range rt.Reflexes().Evaluate(ctx, reflexState(thread, text, in.Context, prior, rt.store.lastPrefix(ctx, thread))) {
 			r.fired = append(r.fired, f.Name)
 			if f.Prompt != "" {
@@ -416,7 +419,11 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	if r.route != nil {
 		rt.store.setRoute(ctx, r.id, r.route.Rule)
 	}
-	meta, _ := json.Marshal(map[string]any{"text": text, "context": in.Context, "reflexes": r.fired, "slot": r.slot})
+	metaOf := map[string]any{"text": text, "context": in.Context, "reflexes": r.fired, "slot": r.slot}
+	if in.Auto != "" {
+		metaOf["auto"] = in.Auto
+	}
+	meta, _ := json.Marshal(metaOf)
 	if _, err := rt.store.Append(ctx, thread, r.id, "user", blocks, meta); err != nil {
 		rt.store.finishRun(ctx, r.id, "error", err.Error(), 0, 0)
 		release()

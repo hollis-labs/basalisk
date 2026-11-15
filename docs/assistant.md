@@ -261,6 +261,26 @@ knows who to message, so it should say what goes to the seat and what does not.
 - The owner's seats are theirs, not the repository's: a starting list is read once from
   `~/.config/basalisk/roster.json` (`{"seats": [...]}`) when the roster is empty.
 
+## Answers are told, unasked (built)
+
+When the owner has the assistant ask a seat something, what they want back is the answer,
+in the chat. Until this, an answer was only put in the `<around>` block of the owner's next
+message, so it sat in their inbox until they typed.
+
+- The watcher's `Answer` hook fires when a new message is sorted as the answer to something
+  the assistant sent in the owner's name. Answers to what it asked as itself (`consult`) are
+  looked for each minute at its own address.
+- Either starts a **nudge** (`internal/agent/nudge.go`): a run on the owner's running thread
+  with a message Basalisk wrote, an `<arrived>` block naming who answered what. It tells the
+  assistant to read the answer whole and give the owner its substance, not where to find it,
+  then settle it. If the assistant is busy the nudge waits (up to 15 minutes; after that the
+  `<around>` block still carries it).
+- The message is kept with `meta.auto`; the panel shows it as one quiet line ("An answer
+  came from Archie"), not as the owner's words. The router and the reflexes skip it.
+- The page learns of it from `assist/needs` (`active_run`, `thread_last`), read every 10
+  seconds: it reloads the thread and follows the run. With the panel shut, the bar chip
+  says "from Bas" until the panel is opened.
+
 ## The pilot (built)
 
 The assistant is told it is in a pilot with the owner: the two are working out how each
