@@ -80,6 +80,7 @@
   color: var(--desk-fg-soft);
 }
 .ctx input,
+.ctx select,
 .ctx textarea {
   padding: 5px 8px;
   border: 1px solid var(--desk-border);

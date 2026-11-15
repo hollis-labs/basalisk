@@ -237,6 +237,30 @@ Tether (health, sessions, seat status, message trace) to look, at once;
 - **`mail_rules`**, **`mail_rule_add`**, **`mail_rule_remove`**: the assistant reads the
   owner's sorting rules, and changes them when told to (asks first).
 
+## The roster (built)
+
+The assistant writes to a small number of seats, and they fan out to their own teams from
+there. The roster is that list (`internal/agent/roster.go`): for each seat a key, a name,
+its address, whether it runs as a local session or as a seat on the agent system, and
+what it is managing, responsible for or leading now. That last part is how the assistant
+knows who to message, so it should say what goes to the seat and what does not.
+
+- The assistant is told the roster in a `<roster>` block beside the `<context>` block: when
+  the context changes and whenever the roster itself has changed. The block carries keys
+  and descriptions, not addresses.
+- `consult`, `owner_send`, `owner_status_ask` and `chief_delegate` take a seat by its key
+  (or its name); the roster is looked in before the registry, so a name with several
+  registry entries means the one the owner chose.
+- The prompt tells it to write to the roster seat whose part it is, not to an agent beneath
+  one unless the owner names that agent, and to ask the owner when no seat fits.
+- `roster_list` reads it with addresses; `roster_set` and `roster_remove` change it and ask
+  first. The owner edits it in the Contexts window, under Roster.
+- A seat may name a roster other than the standard one (a workspace: personal,
+  hollis-labs). Today every roster is told, grouped by name; choosing one by workspace is
+  later.
+- The owner's seats are theirs, not the repository's: a starting list is read once from
+  `~/.config/basalisk/roster.json` (`{"seats": [...]}`) when the roster is empty.
+
 ## Planned, in order
 
 1. Sends through Tether's typed messages (`tether_message_post`) once the address aliases

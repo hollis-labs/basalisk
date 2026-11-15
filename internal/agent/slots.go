@@ -157,6 +157,8 @@ func (rt *Runtime) slotBlock(ctx context.Context, thread string, pageContext jso
 	if project != nil {
 		stamp += "/" + project.Name + "@" + project.NoteAt + "#" + fmt.Sprint(len(project.Instructions))
 	}
+	roster, rosterStamp := rosterLines(rt.store.Roster(ctx))
+	stamp += "|" + rosterStamp
 	slotState.Lock()
 	same := slotState.told[thread] == stamp
 	slotState.told[thread] = stamp
@@ -193,6 +195,9 @@ func (rt *Runtime) slotBlock(ctx context.Context, thread string, pageContext jso
 		fmt.Fprintf(&b, "You have just come from the %s context. If something there is worth carrying and your note for it does not have it yet, write it now with context_note (context: %q) before you go on; say nothing of this to the owner.\n", left, left)
 	}
 	b.WriteString("</context>")
+	if roster != "" {
+		b.WriteString("\n" + roster)
+	}
 	return b.String()
 }
 

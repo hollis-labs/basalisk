@@ -56,6 +56,14 @@ func enableAgent(ctx context.Context, a *api.API, cfg agent.Config, dbPath strin
 			slog.Info("agent: projects read from the starting list", "count", n)
 		}
 	}
+	// The owner's roster (the seats the assistant writes to), from a starting list likewise.
+	if home != "" {
+		if n, err := rt.ImportRoster(ctx, filepath.Join(home, ".config", "basalisk", "roster.json")); err != nil {
+			slog.Warn("agent: the starting roster was not read", "err", err)
+		} else if n > 0 {
+			slog.Info("agent: roster read from the starting list", "count", n)
+		}
+	}
 	// The router's rules: the ones that ship, and the owner's own from this file if it exists.
 	rules := os.Getenv("BASALISK_AGENT_RULES_FILE")
 	if rules == "" && home != "" {

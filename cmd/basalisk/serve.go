@@ -180,7 +180,7 @@ func (b *basalisk) serve(ctx context.Context) error {
 					own = inbox.New(&inbox.Tether{Link: link, Addresses: []string{urn}})
 					agentRT.AddAmbient(agent.OwnAnswers(own, watch))
 				}
-				deps := agent.OwnerDeps{Watch: watch, Link: link, Own: own, DevAddress: cfg.DevAddress,
+				deps := agent.OwnerDeps{Watch: watch, Link: link, Own: own, DevAddress: cfg.DevAddress, Seats: agentRT.Store().Roster,
 					Plans: func(ctx context.Context) any { return planOverview(ctx, workStore) },
 					Tasks: func(ctx context.Context) []agent.Task { return agentRT.TasksOf(ctx, a.AssistOwner()) }}
 				agentRT.AddTools(agent.OwnerTools(ownerMail, log, deps))
@@ -251,6 +251,7 @@ func (b *basalisk) serve(ctx context.Context) error {
 		}
 		// Its own notes for each kind of work the owner moves between (internal/agent/slots.go).
 		agentRT.AddTools(agentRT.SlotTools())
+		agentRT.AddTools(agentRT.RosterTools())
 		// Ask the gateway for them now, not at the first message: a message sent before they
 		// arrive goes out without them, and their arrival then changes the prompt's prefix,
 		// which the provider has to cache again in full.

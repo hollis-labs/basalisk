@@ -40,6 +40,8 @@ func (a *API) agentRoutes() []route {
 		route{"PUT", "/api/agent/contexts/{name}/instructions", w, a.agentContextInstructions},
 		route{"PUT", "/api/agent/projects/{name}", w, a.agentSaveProject},
 		route{"DELETE", "/api/agent/projects/{name}", w, a.agentDropProject},
+		route{"PUT", "/api/agent/roster/{key}", w, a.agentSaveSeat},
+		route{"DELETE", "/api/agent/roster/{key}", w, a.agentDropSeat},
 		route{"GET", "/api/agent/tasks", r, a.agentTasks},
 		route{"POST", "/api/agent/tasks", w, a.agentTaskStart},
 		route{"DELETE", "/api/agent/tasks/{id}", w, a.agentTaskClose},
@@ -403,7 +405,7 @@ func (a *API) agentContexts(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "Please sign in.")
 		return
 	}
-	out := map[string]any{"contexts": a.agent.SlotList(r.Context()), "projects": a.agent.Store().Projects(r.Context()), "project": a.agent.ProjectNow()}
+	out := map[string]any{"contexts": a.agent.SlotList(r.Context()), "projects": a.agent.Store().Projects(r.Context()), "project": a.agent.ProjectNow(), "roster": a.agent.Store().Roster(r.Context())}
 	if name := r.URL.Query().Get("note"); name != "" {
 		note, when := a.agent.SlotNote(r.Context(), name)
 		out["note"], out["written"] = note, when
@@ -436,7 +438,7 @@ func (a *API) agentPickContext(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	reply(w, 200, map[string]any{"contexts": a.agent.SlotList(r.Context()), "projects": a.agent.Store().Projects(r.Context()), "project": a.agent.ProjectNow()})
+	reply(w, 200, map[string]any{"contexts": a.agent.SlotList(r.Context()), "projects": a.agent.Store().Projects(r.Context()), "project": a.agent.ProjectNow(), "roster": a.agent.Store().Roster(r.Context())})
 }
 
 func (a *API) agentContextInstructions(w http.ResponseWriter, r *http.Request) {
@@ -469,6 +471,36 @@ func (a *API) agentSaveProject(w http.ResponseWriter, r *http.Request) {
 	p.Name = r.PathValue("name")
 	if err := a.agent.Store().SaveProject(r.Context(), p); err != nil {
 		fail(w, 400, err.Error())
+		return
+	}
+	w.WriteHeader(204)
+}
+
+// agentSaveSeat adds a seat to the owner's roster or replaces it.
+func (a *API) agentSaveSeat(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var seat agent.Seat
+	if !decodeLimit(w, r, &seat, 16<<10) {
+		return
+	}
+	seat.Key = r.PathValue("key")
+	if err := a.agent.Store().SaveSeat(r.Context(), seat); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (a *API) agentDropSeat(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.ownerID(r); err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	if err := a.agent.Store().DropSeat(r.Context(), r.PathValue("key")); err != nil {
+		fail(w, 404, err.Error())
 		return
 	}
 	w.WriteHeader(204)

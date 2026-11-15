@@ -28,6 +28,9 @@ type OwnerDeps struct {
 	// Own is the assistant's own mailbox (its address, not the owner's), for asking other
 	// seats something as itself. Nil: it has no address of its own.
 	Own *inbox.Inbox
+	// Seats is the owner's roster: the seats the assistant writes to. A name the assistant
+	// gives is looked for there before the registry. Nil: no roster.
+	Seats func(ctx context.Context) []Seat
 	// DevAddress is who builds Basalisk: where a request for something configuration cannot
 	// do is sent. Empty: the tool says it has nowhere to send it.
 	DevAddress string
@@ -170,7 +173,7 @@ func moreOwnerTools(mail *inbox.Inbox, log *assist.Log, d OwnerDeps, record func
 				if !ok {
 					return "", errors.New("the owner has no address to send from")
 				}
-				chief, err := seatAddress(ctx, d.Link, "chief")
+				chief, err := d.address(ctx, "chief")
 				if err != nil {
 					return "", err
 				}
@@ -259,20 +262,16 @@ func moreOwnerTools(mail *inbox.Inbox, log *assist.Log, d OwnerDeps, record func
 	if d.Own != nil && d.Link != nil {
 		tools = append(tools, ServerTool{
 			Spec: ToolSpec{Name: "consult", Level: LevelAct,
-				Description: "Ask another seat something as yourself, from your own address (not the owner's): the architect about a design, an app's lead about how its part works, a seat about what it meant. Give the seat by its handle or name (archie, chief, a lead's name; tether_registry_search finds them) and the question, with enough context to answer without asking back. It carries no authority: it is a question from the owner's assistant, and says so. It runs at once. The answer comes back to you in an <around> block with a later message; tell the owner you have asked and go on. To have something done, or to speak for the owner, use owner_send or chief_delegate instead.",
-				InputSchema: obj(map[string]any{"seat": str("The seat's handle, name or address."), "subject": str("One line."), "question": str("The question, with the context needed to answer it."), "about": str("task:<id> or topic:<slug>, when there is one.")}, "seat", "subject", "question")},
+				Description: "Ask another seat something as yourself, from your own address (not the owner's): the architect about a design, an app's lead about how its part works, a seat about what it meant. Give the seat by its key on the roster, or by a handle, name or address (tether_registry_search finds the ones not on the roster) and the question, with enough context to answer without asking back. It carries no authority: it is a question from the owner's assistant, and says so. It runs at once. The answer comes back to you in an <around> block with a later message; tell the owner you have asked and go on. To have something done, or to speak for the owner, use owner_send or chief_delegate instead.",
+				InputSchema: obj(map[string]any{"seat": str("The seat's key on the roster, or a handle, name or address."), "subject": str("One line."), "question": str("The question, with the context needed to answer it."), "about": str("task:<id> or topic:<slug>, when there is one.")}, "seat", "subject", "question")},
 			Run: func(ctx context.Context, in map[string]any) (string, error) {
 				get := func(k string) string { s, _ := in[k].(string); return strings.TrimSpace(s) }
 				if get("question") == "" {
 					return "", errors.New("ask something")
 				}
-				to := get("seat")
-				if !strings.HasPrefix(to, "msg://") {
-					found, err := seatAddress(ctx, d.Link, strings.TrimPrefix(to, "@"))
-					if err != nil {
-						return "", err
-					}
-					to = found
+				to, err := d.address(ctx, get("seat"))
+				if err != nil {
+					return "", err
 				}
 				p, account, ok := d.Own.First()
 				if !ok {
@@ -323,6 +322,27 @@ func moreOwnerTools(mail *inbox.Inbox, log *assist.Log, d OwnerDeps, record func
 		},
 	})
 	return tools
+}
+
+// address is where a recipient the assistant named is reached: an address as it is, a seat
+// on the owner's roster by its key or name, and otherwise a seat found in the registry.
+func (d OwnerDeps) address(ctx context.Context, to string) (string, error) {
+	to = strings.TrimSpace(to)
+	if strings.HasPrefix(to, "msg://") {
+		return to, nil
+	}
+	if to == "" {
+		return "", errors.New("say who it goes to: a seat on the roster, or an address")
+	}
+	if d.Seats != nil {
+		if seat, ok := FindSeat(d.Seats(ctx), to); ok {
+			return seat.Address, nil
+		}
+	}
+	if d.Link == nil {
+		return "", fmt.Errorf("%q is not on the roster and is not an address (msg://…)", to)
+	}
+	return seatAddress(ctx, d.Link, strings.TrimPrefix(to, "@"))
 }
 
 // seatAddress finds a seat's address by its handle, through the registry.

@@ -103,6 +103,12 @@ var migrations = []string{
 		name TEXT PRIMARY KEY,
 		text TEXT NOT NULL
 	)`,
+	// The roster: the few seats the assistant writes to and what each leads (roster.go).
+	`CREATE TABLE roster (
+		key TEXT PRIMARY KEY,
+		def TEXT NOT NULL,
+		position INTEGER NOT NULL DEFAULT 0
+	)`,
 }
 
 // OpenStore opens (and creates or upgrades) the file at path.

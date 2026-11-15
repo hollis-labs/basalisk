@@ -194,10 +194,13 @@ func OwnerTools(mail *inbox.Inbox, log *assist.Log, deps ...OwnerDeps) ToolSourc
 		},
 		{
 			Spec: ToolSpec{Name: "owner_status_ask", Level: LevelAct,
-				Description: "Ask an agent, in the owner's name, where a piece of work stands. The words are fixed (what is done, what is left, what is blocked, in a few lines); you give who to ask and what about (a task id, a thread or a short topic). Find the address with tether_registry_search. The answer comes to the owner's inbox.",
-				InputSchema: obj(map[string]any{"to": str("The agent's address (msg://…)."), "about": str("A task id (CW-…), or a few words naming the work.")}, "to", "about")},
+				Description: "Ask an agent, in the owner's name, where a piece of work stands. The words are fixed (what is done, what is left, what is blocked, in a few lines); you give who to ask (a seat on the roster by its key, or an address) and what about (a task id, a thread or a short topic). The answer comes to the owner's inbox.",
+				InputSchema: obj(map[string]any{"to": str("A seat on the roster by its key, or an address (msg://…)."), "about": str("A task id (CW-…), or a few words naming the work.")}, "to", "about")},
 			Run: func(ctx context.Context, in map[string]any) (string, error) {
-				to, _ := in["to"].(string)
+				to, err := d.address(ctx, fmt.Sprint(in["to"]))
+				if err != nil {
+					return "", err
+				}
 				about := strings.TrimSpace(fmt.Sprint(in["about"]))
 				if len(about) > 160 || strings.ContainsAny(about, "\n\r") || about == "" {
 					return "", errors.New("about is a task id or a few words on one line")
@@ -261,9 +264,9 @@ func OwnerTools(mail *inbox.Inbox, log *assist.Log, deps ...OwnerDeps) ToolSourc
 		},
 		{
 			Spec: ToolSpec{Name: "owner_send", Level: LevelWrite,
-				Description: "Send a new message in the owner's name: a request to an agent, a delegation of work, something passed on from one agent to another (pass_on is the id of a message of the owner's to quote whole under your text; give its account too). kind is request (it asks for work or an answer), notice (it tells) or handoff. The receiving agent takes it as the owner speaking: say what is wanted, what done looks like, and what not to touch; for host or command-line work, send to the seat that does it (@chief). Find addresses with tether_registry_search. The owner is asked before it goes unless they chose Always.",
+				Description: "Send a new message in the owner's name: a request to an agent, a delegation of work, something passed on from one agent to another (pass_on is the id of a message of the owner's to quote whole under your text; give its account too). kind is request (it asks for work or an answer), notice (it tells) or handoff. The receiving agent takes it as the owner speaking: say what is wanted, what done looks like, and what not to touch; for host or command-line work, send to the seat that does it (chief). Send to the seat on the roster whose part it is; tether_registry_search finds an address only when no seat on the roster fits. The owner is asked before it goes unless they chose Always.",
 				InputSchema: obj(map[string]any{
-					"to":      str("The recipient's address (msg://…)."),
+					"to":      str("A seat on the roster by its key, or an address (msg://…)."),
 					"kind":    map[string]any{"type": "string", "enum": []string{"request", "notice", "handoff"}},
 					"subject": str("One line."),
 					"body":    str("The message."),
@@ -272,7 +275,10 @@ func OwnerTools(mail *inbox.Inbox, log *assist.Log, deps ...OwnerDeps) ToolSourc
 					"account": str("The account of the message being passed on."),
 				}, "to", "kind", "subject", "body")},
 			Run: func(ctx context.Context, in map[string]any) (string, error) {
-				to, _ := in["to"].(string)
+				to, err := d.address(ctx, fmt.Sprint(in["to"]))
+				if err != nil {
+					return "", err
+				}
 				kind, _ := in["kind"].(string)
 				subject := strings.TrimSpace(fmt.Sprint(in["subject"]))
 				body, _ := in["body"].(string)
