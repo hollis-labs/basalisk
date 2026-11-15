@@ -421,7 +421,7 @@ The follow-up content sweep adds:
 - Reader/Watch: library listing and full text; revision-checked reading state, tags and
   annotations; collection create/edit/delete, membership and order; feed subscriptions,
   folders, refresh, entry read/star state and mark-all-read. Reads never prompt, writes
-  use approval cards, and tag removal, collection removal/deletion and unsubscribe always ask.
+  use approval cards, and tag removal, collection removal/deletion, unsubscribe and mark-all-read always ask.
   Reader windows refresh after successful agent writes. Source article text remains upstream
   content; capture an annotation or a separate note rather than overwriting the source.
 - Work: cut-item discovery/restoration, draft-note edit/delete, saved-view settings and

@@ -230,8 +230,8 @@ registerAgentTools([
   ),
   tool(
     "reader_feed_read_all",
-    "write",
-    "Mark all entries read in one feed, or all feeds when omitted.",
+    "confirm",
+    "Mark all entries read in one feed, or all feeds when omitted. Always asks because the prior mix of read states cannot be restored in one step.",
     { feed: id },
     [],
     (i, _d, { signal }) => {
