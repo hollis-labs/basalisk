@@ -267,7 +267,7 @@ When the owner has the assistant ask a seat something, what they want back is th
 in the chat. Until this, an answer was only put in the `<around>` block of the owner's next
 message, so it sat in their inbox until they typed.
 
-- The watcher's `Answer` hook fires when a new message is sorted as the answer to something
+- The watcher's `Answer` hook fires for a message sorted as the answer (once per start, so one that came while Basalisk was not running is told at startup) to something
   the assistant sent in the owner's name. Answers to what it asked as itself (`consult`) are
   looked for each minute at its own address.
 - Either starts a **nudge** (`internal/agent/nudge.go`): a run on the owner's running thread

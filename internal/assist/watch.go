@@ -110,6 +110,7 @@ type Watcher struct {
 
 	mu       sync.Mutex
 	lastHand time.Time
+	told     map[string]bool // answers Answer has been given since Basalisk started
 }
 
 // Init makes the watcher's tables. Call once before Run.
@@ -212,7 +213,7 @@ func (w *Watcher) Sweep(ctx context.Context) (int, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	unread := map[string]bool{}
 	rules, _ := w.Rules(ctx)
-	var hand, answered []Mail
+	var hand []Mail
 	added := 0
 	for _, it := range items {
 		unread[it.ID] = true
@@ -269,9 +270,6 @@ func (w *Watcher) Sweep(ctx context.Context) (int, error) {
 			if class == ClassBas {
 				hand = append(hand, m)
 			}
-			if class == ClassAnswer {
-				answered = append(answered, m)
-			}
 		}
 	}
 	// What was waiting and is no longer unread has been dealt with, here or elsewhere.
@@ -289,8 +287,25 @@ func (w *Watcher) Sweep(ctx context.Context) (int, error) {
 			_, _ = db.ExecContext(ctx, `UPDATE mail SET state='done' WHERE id=?`, id)
 		}
 	}
-	if len(answered) > 0 && w.Answer != nil {
-		w.Answer(ctx, answered)
+	// Answers still waiting that the assistant has not been started on since Basalisk
+	// started: the new ones, and any that came while it was not running.
+	if w.Answer != nil {
+		open, _ := w.Open(ctx, ClassAnswer)
+		var fresh []Mail
+		w.mu.Lock()
+		if w.told == nil {
+			w.told = map[string]bool{}
+		}
+		for _, m := range open {
+			if !w.told[m.ID] {
+				w.told[m.ID] = true
+				fresh = append(fresh, m)
+			}
+		}
+		w.mu.Unlock()
+		if len(fresh) > 0 {
+			w.Answer(ctx, fresh)
+		}
 	}
 	if len(hand) > 0 && w.Hand != nil {
 		w.mu.Lock()

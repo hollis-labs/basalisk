@@ -97,4 +97,28 @@ func TestWatcher(t *testing.T) {
 	if needs, _ = w.Open(ctx, ClassNeeds); len(needs) != 1 || needs[0].ID != "e1" {
 		t.Fatalf("mail that is no longer unread is closed: %+v", needs)
 	}
+
+	// An answer to what the assistant asked is given to Answer once, and again by a watcher
+	// started later (Basalisk restarted with the answer still waiting).
+	var told []Mail
+	w.Answer = func(_ context.Context, batch []Mail) { told = append(told, batch...) }
+	w.Sent(ctx, "s1", "status_ask", "is it ready", "msg://a/x/9")
+	ans := msg("a1", "response", "msg://a/x/9", "Re: is it ready", false)
+	ans.InReplyTo = "s1"
+	b.items = append(b.items, ans)
+	for range 2 {
+		if _, err := w.Sweep(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(told) != 1 || told[0].ID != "a1" || told[0].Why != "an answer to: is it ready" {
+		t.Fatalf("the answer is told once: %+v", told)
+	}
+	again := &Watcher{Mail: w.Mail, Log: log, Answer: w.Answer}
+	if _, err := again.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(told) != 2 {
+		t.Fatalf("an answer still waiting after a restart is told again: %d", len(told))
+	}
 }
