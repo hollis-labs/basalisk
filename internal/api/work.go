@@ -26,6 +26,8 @@ func (a *API) workRoutes() []route {
 		{"GET", "/api/work", r, a.workList},
 		{"POST", "/api/work", w, a.workNew},
 		{"GET", "/api/work/{ws}", r, a.workOpen},
+		{"PUT", "/api/work/{ws}", w, a.workWorkspaceEdit},
+		{"DELETE", "/api/work/{ws}", w, a.workWorkspaceDelete},
 		{"GET", "/api/work/{ws}/log", r, a.workLog},
 		{"GET", "/api/work/{ws}/at", r, a.workAt},
 		{"POST", "/api/work/{ws}/items", w, a.workMake},
@@ -540,4 +542,33 @@ func (a *API) workOwners(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, 200, map[string]any{"ok": true})
+}
+
+func (a *API) workWorkspaceEdit(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	var in struct {
+		Title    *string `json:"title"`
+		Archived *bool   `json:"archived"`
+	}
+	if !decodeLimit(w, r, &in, 32<<10) {
+		return
+	}
+	if err := a.work.UpdateWorkspace(r.Context(), r.PathValue("ws"), in.Title, in.Archived, nil); err != nil {
+		workFail(w, err)
+		return
+	}
+	reply(w, 200, map[string]bool{"updated": true})
+}
+func (a *API) workWorkspaceDelete(w http.ResponseWriter, r *http.Request) {
+	if !a.workOwner(w, r) {
+		return
+	}
+	deleted := true
+	if err := a.work.UpdateWorkspace(r.Context(), r.PathValue("ws"), nil, nil, &deleted); err != nil {
+		workFail(w, err)
+		return
+	}
+	reply(w, 200, map[string]bool{"deleted": true})
 }

@@ -671,3 +671,52 @@ func TestPlannerTemplateAndTorque(t *testing.T) {
 		t.Error("an unknown template was taken")
 	}
 }
+
+func TestPlannerPortfolioExternalLinks(t *testing.T) {
+	s, _ := open(t)
+	ctx := context.Background()
+	if _, err := s.NewWorkspace(ctx, "portfolio", "Portfolio", "planner", ""); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := s.MakeItem(ctx, "portfolio", NewItem{Kind: "plan", Title: "Access"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs := []Link{{Rel: "relates", To: "torque://task/CW-20261114-0029"}, {Rel: "relates", To: "tesseract://item/example"}, {Rel: "uses", To: "caster://work/brief"}, {Rel: "relates", To: "https://example.com/plan"}}
+	id, err := s.MakeItem(ctx, "portfolio", NewItem{Kind: "task", Title: "Write tools", Parent: plan, Links: refs, Sections: map[string]string{"Summary": "Initial text"}, Tags: []string{"access"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, ok, err := s.Detail(ctx, "portfolio", id)
+	if err != nil || !ok || d.Parent != plan || len(d.Links) != 4 || d.Sections["Summary"] != "Initial text" {
+		t.Fatalf("detail: %+v, %v", d, err)
+	}
+	_, err = s.EditItem(ctx, "portfolio", id, Edit{BaseRev: d.Rev, Sections: map[string]string{"Summary": "Revised"}, Links: &refs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateWorkspace(ctx, "portfolio", ptrTitle("Our portfolio"), nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	removed := true
+	if err := s.UpdateWorkspace(ctx, "portfolio", nil, nil, &removed); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.Workspaces(ctx, "planner")
+	if err != nil || len(list) != 0 {
+		t.Fatalf("removed workspace still listed: %+v %v", list, err)
+	}
+	if _, ok, err := s.Detail(ctx, "portfolio", id); err != nil || !ok {
+		t.Fatalf("removal lost item history: %v", err)
+	}
+}
+func ptrTitle(s string) *string { return &s }
+
+func TestExternalLinksRejectUnsafeTargets(t *testing.T) {
+	for _, target := range []string{"javascript:alert(1)", "file:///etc/passwd", "https://example.com/\nother", "torque://"} {
+		links := []Link{{Rel: "relates", To: target}}
+		if err := (Edit{Links: &links}).check(); err == nil {
+			t.Fatalf("accepted %q", target)
+		}
+	}
+}

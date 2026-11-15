@@ -343,3 +343,23 @@ value takes a date out),
 `DELETE …/items/{id}/signoff`, `PUT /api/work/{ws}/owners` `{owners}`,
 `POST /api/work/{ws}/views` and `PUT …/views/{id}` (the keys sent are set, null takes one
 out), `PUT …/views/{id}/layout` (a canvas patch), `GET /api/work/{ws}/log?name=`, `GET /api/work/{ws}/at?name=&rev=`.
+
+
+### Agent writes
+
+The agent can create Work workspaces (`work_space_create`), rename their title or mark
+archived (`work_space_update`), and create, edit, place and stage items
+(`work_item_create`, `work_item_update`, `work_item_place`, `work_item_stage`). These use
+write approval cards, including the owner's Always setting. Item edits require the
+`base_rev` returned by `work_get`; concurrent edits keep the existing conflict behavior.
+Text is supplied by section heading; fields merge by key, while tags and links replace
+those lists. Parent and sibling order use `work_item_place`.
+
+Links accept local item IDs, `torque://task/CW-…`, `tesseract://item/<id>`, `caster://…`,
+and HTTP(S) URLs. Planning and writing context slots include these tools.
+
+`work_item_delete` always asks (confirm) and cuts the item from views, retaining its
+history. `work_space_delete` also always asks and removes its index entry from lists
+with a retained tombstone; it does not erase Caster data. Workspace title changes keep
+the slug stable. Archived workspaces remain listed and carry `archived: true`.
+Rounds, sign-off and publishing remain owner actions; no tools send rounds or publish.

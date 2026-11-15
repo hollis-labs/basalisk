@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -216,18 +217,20 @@ func (s *Store) copyOf(ctx context.Context, ns, name string) (row, bool) {
 
 // Workspace is one body of work, from its index item.
 type Workspace struct {
-	Slug    string   `json:"slug"`
-	Title   string   `json:"title"`
-	App     string   `json:"app"`
-	Preset  string   `json:"preset"`
-	NS      string   `json:"ns"`
-	Owners  []string `json:"owners"`
-	Created string   `json:"created,omitempty"`
-	Body    string   `json:"body"`
-	Items   int      `json:"items"`
-	Rev     int      `json:"rev"`
-	Updated string   `json:"updated"`
-	Problem string   `json:"problem,omitempty"`
+	Archived bool     `json:"archived"`
+	Deleted  bool     `json:"deleted"`
+	Slug     string   `json:"slug"`
+	Title    string   `json:"title"`
+	App      string   `json:"app"`
+	Preset   string   `json:"preset"`
+	NS       string   `json:"ns"`
+	Owners   []string `json:"owners"`
+	Created  string   `json:"created,omitempty"`
+	Body     string   `json:"body"`
+	Items    int      `json:"items"`
+	Rev      int      `json:"rev"`
+	Updated  string   `json:"updated"`
+	Problem  string   `json:"problem,omitempty"`
 }
 
 func workspaceOf(r row) Workspace {
@@ -240,6 +243,8 @@ func workspaceOf(r row) Workspace {
 	if t := strings.TrimSpace(d.Str("title")); t != "" {
 		w.Title = t
 	}
+	_ = d.Decode("archived", &w.Archived)
+	_ = d.Decode("deleted", &w.Deleted)
 	w.App, w.Preset, w.Created, w.Body = d.Str("app"), d.Str("preset"), d.Str("created"), d.Body
 	if ns := d.Str("ns"); ns != "" {
 		w.NS = ns
@@ -262,7 +267,7 @@ func (s *Store) Workspaces(ctx context.Context, app string) ([]Workspace, error)
 			continue
 		}
 		w := workspaceOf(r)
-		if app != "" && w.App != app {
+		if w.Deleted || (app != "" && w.App != app) {
 			continue
 		}
 		_ = s.db.QueryRowContext(ctx, `SELECT count(*) FROM items WHERE ns=? AND substr(name,1,2)='i.'`, w.NS).Scan(&w.Items)
@@ -721,16 +726,22 @@ func viewYAML(v View) string {
 
 // NewItem is what the owner asks to make.
 type NewItem struct {
-	Kind   string         `json:"kind"`
-	Title  string         `json:"title"`
-	Stage  string         `json:"stage"`
-	Parent string         `json:"parent"`
-	Fields map[string]any `json:"fields"`
+	Kind     string            `json:"kind"`
+	Title    string            `json:"title"`
+	Stage    string            `json:"stage"`
+	Parent   string            `json:"parent"`
+	Fields   map[string]any    `json:"fields"`
+	Tags     []string          `json:"tags"`
+	Links    []Link            `json:"links"`
+	Sections map[string]string `json:"sections"`
 }
 
 // MakeItem makes an item of a kind the workspace has, at the stage given (or the kind's
 // first), and puts it at the end of its parent's children when it has one.
 func (s *Store) MakeItem(ctx context.Context, ws string, in NewItem) (string, error) {
+	if err := (Edit{Links: &in.Links}).check(); err != nil {
+		return "", err
+	}
 	if s.caster == nil {
 		return "", ErrNoCaster
 	}
@@ -792,13 +803,16 @@ func (s *Store) MakeItem(ctx context.Context, ws string, in NewItem) (string, er
 		k string
 		v any
 	}{{"work", "v1"}, {"id", id}, {"kind", in.Kind}, {"title", title}, {"stage", in.Stage}, {"fields", fields},
-		{"parent", in.Parent}, {"children", []string{}}, {"links", []Link{}}, {"material", []Material{}},
-		{"published", []Published{}}, {"tags", []string{}}} {
+		{"parent", in.Parent}, {"children", []string{}}, {"links", in.Links}, {"material", []Material{}},
+		{"published", []Published{}}, {"tags", in.Tags}} {
 		_ = d.Set(kv.k, kv.v)
 	}
 	var b Body
 	for _, sec := range k.Sections {
-		b.Put(sec, "", k.Sections)
+		b.Put(sec, in.Sections[sec], k.Sections)
+	}
+	for sec, text := range in.Sections {
+		b.Put(sec, text, k.Sections)
 	}
 	d.Body = b.String()
 	if _, err := s.write(ctx, ns, ItemName(id), d.String(), title); err != nil {
@@ -1176,8 +1190,8 @@ func (e Edit) check() error {
 			if !relRe.MatchString(l.Rel) || l.Rel == "contains" {
 				return fmt.Errorf("link %d: %q is not a relation an item can carry (contains is the outline)", i+1, l.Rel)
 			}
-			if !ValidID(l.To) {
-				return fmt.Errorf("link %d: %q is not an item id", i+1, l.To)
+			if !validLinkTarget(l.To) {
+				return fmt.Errorf("link %d: %q is not an item id or supported reference", i+1, l.To)
 			}
 		}
 	}
@@ -1534,5 +1548,61 @@ func (s *Store) Notes(ctx context.Context, ws, item string) ([]Note, error) {
 // DropNote takes a note out.
 func (s *Store) DropNote(ctx context.Context, ws, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM notes WHERE ws=? AND id=? AND round=0`, ws, id)
+	return err
+}
+
+// validLinkTarget accepts local item IDs and references to other data homes.
+func validLinkTarget(ref string) bool {
+	if ValidID(ref) {
+		return true
+	}
+	if len(ref) > maxRefLen || strings.ContainsAny(ref, " \t\r\n") {
+		return false
+	}
+	u, err := url.Parse(ref)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	switch u.Scheme {
+	case "torque", "tesseract", "caster", "https", "http":
+		return true
+	}
+	return false
+}
+
+// UpdateWorkspace retains the index and Caster history even when removed from the list.
+func (s *Store) UpdateWorkspace(ctx context.Context, ws string, title *string, archived, deleted *bool) error {
+	if s.caster == nil {
+		return ErrNoCaster
+	}
+	if !ValidSlug(ws) {
+		return ErrNotFound
+	}
+	if title != nil && strings.TrimSpace(*title) == "" {
+		return errors.New("a workspace title cannot be empty")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	it, ok, err := s.fresh(ctx, IndexNS, ws)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotFound
+	}
+	d, err := ParseDoc(it.Content)
+	if err != nil {
+		return err
+	}
+	if title != nil {
+		_ = d.Set("title", strings.TrimSpace(*title))
+	}
+	if archived != nil {
+		_ = d.Set("archived", *archived)
+	}
+	if deleted != nil {
+		_ = d.Set("deleted", *deleted)
+	}
+	_, err = s.write(ctx, IndexNS, ws, d.String(), d.Str("title"))
 	return err
 }

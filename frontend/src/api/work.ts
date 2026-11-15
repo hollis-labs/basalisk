@@ -214,6 +214,8 @@ export interface WorkEdit {
 const enc = encodeURIComponent
 
 export const work = {
+  updateSpace: (ws: string, change: {title?: string; archived?: boolean}) => request(`work/${enc(ws)}`, "PUT", change),
+  deleteSpace: (ws: string) => request(`work/${enc(ws)}`, "DELETE"),
   list: (app: string, refresh = false) =>
     request<{ workspaces: Workspace[]; presets: WorkPreset[]; problem?: string }>(
       `work?app=${enc(app)}${refresh ? "&refresh=1" : ""}`,
@@ -246,6 +248,9 @@ export const work = {
       stage?: string
       parent?: string
       fields?: Record<string, unknown>
+      tags?: string[]
+      links?: WorkLink[]
+      sections?: Record<string, string>
     },
   ) => request<{ id: string }>(`work/${enc(ws)}/items`, "POST", item),
   edit: (ws: string, id: string, edit: WorkEdit) =>
