@@ -295,6 +295,39 @@ func moreOwnerTools(mail *inbox.Inbox, log *assist.Log, d OwnerDeps, record func
 	}
 
 	tools = append(tools, ServerTool{
+		Spec: ToolSpec{Name: "friction_log", Level: LevelAct,
+			Description: "Write down process friction while it is fresh: something in how the work is done that got in the way (a step with no defined way to do it, a tool that was missing or answered oddly, a rule that did not fit, a seat that could not be reached, the same question needed twice). One entry per thing. It only records it, in the owner's Done for you list, for the two of you to go over later; nothing is sent. Minor friction: log it and go on. A dead end, an error you cannot get past, something you have no access to, or friction that changes the outcome: log it as major and also tell the owner now.",
+			InputSchema: obj(map[string]any{
+				"what":     str("What got in the way, in a line or two, with the specifics (the tool, the seat, the message)."),
+				"doing":    str("What you were doing for the owner at the time."),
+				"severity": map[string]any{"type": "string", "enum": []string{"minor", "major"}},
+				"idea":     str("How it might be handled from now on, if you have one."),
+			}, "what", "severity")},
+		Run: func(ctx context.Context, in map[string]any) (string, error) {
+			get := func(k string) string { s, _ := in[k].(string); return strings.TrimSpace(s) }
+			what, severity := get("what"), get("severity")
+			if what == "" {
+				return "", errors.New("say what got in the way")
+			}
+			if severity != "major" {
+				severity = "minor"
+			}
+			detail := map[string]any{"body": clip(what, 2000), "severity": severity}
+			if v := get("doing"); v != "" {
+				detail["about"] = clip(v, 400)
+			}
+			if v := get("idea"); v != "" {
+				detail["idea"] = clip(v, 1000)
+			}
+			if err := record(ctx, assist.Entry{Kind: "friction", Summary: fmt.Sprintf("Friction (%s): %s", severity, clip(what, 140)), Detail: detail}); err != nil {
+				return "", err
+			}
+			if severity == "major" {
+				return "logged. It is major: tell the owner now, plainly, and ask how they want it handled.", nil
+			}
+			return "logged for later", nil
+		},
+	}, ServerTool{
 		Spec: ToolSpec{Name: "dev_request", Level: LevelWrite,
 			Description: "Ask whoever builds Basalisk for something you cannot do with your tools, your notes or the owner's rules: a new tool, a new kind of rule or filter, a fix to how you or an app behaves. Use it when the owner asks for a change to Basalisk itself, or when you keep being unable to do something they want. Say what is wanted, what happens today, and what done would look like. It is sent in the owner's name and recorded; the owner is asked first unless they chose Always.",
 			InputSchema: obj(map[string]any{"title": str("One line."), "what": str("What is wanted, what happens today, what done looks like.")}, "title", "what")},

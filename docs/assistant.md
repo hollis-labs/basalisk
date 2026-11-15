@@ -261,6 +261,16 @@ knows who to message, so it should say what goes to the seat and what does not.
 - The owner's seats are theirs, not the repository's: a starting list is read once from
   `~/.config/basalisk/roster.json` (`{"seats": [...]}`) when the roster is empty.
 
+## The pilot (built)
+
+The assistant is told it is in a pilot with the owner: the two are working out how each
+kind of thing should be done and refining it as they learn. It asks a short question when
+something is new, undefined or unclear, and keeps the answer where it will be used next
+time. A dead end, an error it cannot get past, missing access or major friction it brings
+to the owner at once; minor friction it logs and carries on. `friction_log` (runs at once,
+sends nothing) writes an entry of kind `friction` to the activity log, minor or major,
+with what it was doing and an idea for handling it; the entries are in Done for you.
+
 ## Planned, in order
 
 1. Sends through Tether's typed messages (`tether_message_post`) once the address aliases

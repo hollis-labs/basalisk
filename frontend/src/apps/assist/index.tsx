@@ -15,12 +15,28 @@ import "./assist.css"
 interface Entry {
   id: number
   at: string
-  kind: "ack" | "route" | "status_ask" | "reply" | "send" | "settle" | "consult" | "command"
+  kind:
+    | "ack"
+    | "route"
+    | "status_ask"
+    | "reply"
+    | "send"
+    | "settle"
+    | "consult"
+    | "command"
+    | "friction"
   summary: string
   with?: string
   ref?: string
   asked: boolean
-  detail?: { body?: string; subject?: string; receipt?: string; about?: string; choice?: string }
+  detail?: {
+    body?: string
+    subject?: string
+    receipt?: string
+    about?: string
+    choice?: string
+    idea?: string
+  }
 }
 
 const KIND: Record<string, string> = {
@@ -32,6 +48,7 @@ const KIND: Record<string, string> = {
   route: "passed on",
   consult: "asked",
   command: "command",
+  friction: "friction",
 }
 
 interface MailRule {
@@ -262,6 +279,8 @@ function AssistWindow() {
                   )}
                   {e.detail?.subject && <p className="assist-subject">{e.detail.subject}</p>}
                   {e.detail?.body && <pre>{e.detail.body}</pre>}
+                  {e.kind === "friction" && e.detail?.about && <p>While: {e.detail.about}</p>}
+                  {e.detail?.idea && <p>Idea: {e.detail.idea}</p>}
                   {e.detail?.choice && <p>Chose option “{e.detail.choice}”.</p>}
                   {e.ref && <p className="assist-ref">message {e.ref}</p>}
                 </div>
