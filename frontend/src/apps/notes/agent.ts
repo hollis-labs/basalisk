@@ -12,7 +12,7 @@ import type { DeskAPI, FileRef } from "../../desktop/registry"
 import { loadRoots } from "../files/browser"
 import { credentialReason } from "../files/credentials"
 import { changed } from "../files/ops"
-import { inFolder, noteName, notesFolder } from "./notefiles"
+import { inFolder, noteName, notesFolder, renameNote } from "./notefiles"
 import { noteWindows } from "./open"
 
 const TEXT = /\.(md|markdown|mdx|txt|text|log|rst|org)$/i
@@ -381,3 +381,66 @@ registerResultCards({
     }
   },
 })
+
+registerAgentTools([
+  {
+    name: "notes_rename",
+    level: "confirm",
+    description:
+      "Rename a note in its current folder. Refuses unsaved edits and existing destinations. Always asks. Links in other notes are not rewritten.",
+    input_schema: object({ ...WHICH, name: str("New filename, without directory separators") }, [
+      "name",
+    ]),
+    describe: (i) => `Rename ${noteLabel(i)} to ${String(i.name)}`,
+    run: async (i, desk, ctx) => {
+      const { file } = await which(i)
+      if (!TEXT.test(file.path)) throw new Error("This is not a text note.")
+      const name = String(i.name ?? "").trim()
+      if (!name || /[/\\]/.test(name) || name === "." || name === "..")
+        throw new Error("Give a filename only.")
+      const roots = await loadRoots()
+      const reason = credentialReason(file.path, roots.find((r) => r.id === file.root)?.path ?? "")
+      if (reason) throw new Error(reason)
+      if ((await files.stat(file.root, file.path)).dir)
+        throw new Error("A Notes tool cannot rename a directory.")
+      const showing = guard(file)
+      stopIfAborted(ctx)
+      const destination = [...file.path.split("/").slice(0, -1), noteName(name)].join("/")
+      const targetReason = credentialReason(
+        destination,
+        roots.find((r) => r.id === file.root)?.path ?? "",
+      )
+      if (targetReason || !TEXT.test(destination))
+        throw new Error("The new name must be a text note, not a credential file.")
+      const next = await renameNote(file, name)
+      for (const [id] of showing) {
+        desk.setArgs(id, { file: next })
+        desk.setTitle(id, next.path.split("/").pop() ?? name)
+      }
+      return { renamed: next, note: "Links in other notes were not rewritten." }
+    },
+  },
+  {
+    name: "notes_delete",
+    level: "confirm",
+    description:
+      "Delete a note. Local files go to Trash; remote files are permanently deleted. Refuses unsaved edits. Always asks.",
+    input_schema: object(WHICH),
+    describe: (i) => `Delete ${noteLabel(i)}`,
+    run: async (i, desk, ctx) => {
+      const { file } = await which(i)
+      if (!TEXT.test(file.path)) throw new Error("This is not a text note.")
+      const roots = await loadRoots()
+      const reason = credentialReason(file.path, roots.find((r) => r.id === file.root)?.path ?? "")
+      if (reason) throw new Error(reason)
+      if ((await files.stat(file.root, file.path)).dir)
+        throw new Error("A Notes tool cannot delete a directory.")
+      const showing = guard(file)
+      stopIfAborted(ctx)
+      const out = await files.remove(file.root, file.path)
+      changed(file.root, [file.path.split("/").slice(0, -1).join("/")])
+      for (const [id] of showing) desk.close(id)
+      return { ...out, deleted: file }
+    },
+  },
+])

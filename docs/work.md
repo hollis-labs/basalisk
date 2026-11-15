@@ -363,3 +363,6 @@ history. `work_space_delete` also always asks and removes its index entry from l
 with a retained tombstone; it does not erase Caster data. Workspace title changes keep
 the slug stable. Archived workspaces remain listed and carry `archived: true`.
 Rounds, sign-off and publishing remain owner actions; no tools send rounds or publish.
+
+External links in an item's detail use Cite, so a Torque, Tesseract, Caster or web reference
+opens its own viewer rather than being mistaken for a local Work item id.

@@ -1,10 +1,10 @@
 /**
  * The agent's tools for Frag: the recent captures, and capturing a note through the same
  * durable queue as the capture box (it is queued in Basalisk first and delivered behind it).
- * A capture the agent makes says so: a closing line in the note, and a tag. No delete or retry.
+ * A capture the agent makes says so: a closing line in the note, and a tag. Retry and discard use the same outbox endpoints as the owner.
  */
 import { registerAgentTools } from "../../agent/tools"
-import { ApiError } from "../../api/account"
+import { ApiError, request } from "../../api/account"
 import { type FragCapture, frag } from "../../api/frag"
 import { registerResultCards, shortWhen, desk as theDesk, toneOf } from "../../cite/cards"
 import { FRAGMENT_KIND } from "../../cite/fragment"
@@ -66,6 +66,7 @@ registerAgentTools([
         total: sorted.length,
         captures: sorted.slice(0, max).map((c) => ({
           id: c.captureID,
+          sequence: c.sequence,
           title: firstLine(c.content),
           when: c.createdAt,
           ...stateOf(c),
@@ -198,3 +199,46 @@ function openCapture(fragment: unknown) {
     openCite({ kind: FRAGMENT_KIND, canonical: fragment })
   else theDesk()?.toggleOverlay("frag", true)
 }
+
+registerAgentTools([
+  {
+    name: "frag_get",
+    level: "read",
+    description:
+      "Read a capture from Frag's outbox by its capture id, including its text and delivery state.",
+    input_schema: object({ id: str("Capture id from frag_recent") }, ["id"]),
+    run: async (i) => {
+      const c = (await frag.list()).find((c) => c.captureID === i.id)
+      if (!c) throw new Error("Capture not found.")
+      return c
+    },
+  },
+  {
+    name: "frag_retry",
+    level: "write",
+    description:
+      "Retry a failed Frag delivery. Uses its existing capture identity; cannot retry saved or discarded captures.",
+    input_schema: object({ id: str("Capture id from frag_recent") }, ["id"]),
+    describe: (i) => `Retry capture ${String(i.id)}`,
+    run: async (i, _d, { signal }) => {
+      const c = (await frag.list()).find((c) => c.captureID === i.id)
+      if (!c) throw new Error("Capture not found.")
+      signal.throwIfAborted()
+      return request(`fragment-submissions/${c.sequence}/retry`, "POST", {})
+    },
+  },
+  {
+    name: "frag_discard",
+    level: "confirm",
+    description:
+      "Discard an undelivered Frag capture and erase its queued content. Cannot undo; always asks. Does not delete anything already delivered to Fragments Engine.",
+    input_schema: object({ id: str("Capture id from frag_recent") }, ["id"]),
+    describe: (i) => `Discard queued capture ${String(i.id)} permanently`,
+    run: async (i, _d, { signal }) => {
+      const c = (await frag.list()).find((c) => c.captureID === i.id)
+      if (!c) throw new Error("Capture not found.")
+      signal.throwIfAborted()
+      return request(`fragment-submissions/${c.sequence}`, "DELETE")
+    },
+  },
+])

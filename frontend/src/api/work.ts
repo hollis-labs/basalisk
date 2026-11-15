@@ -1,4 +1,11 @@
-import { request } from "./account"
+import { request as apiRequest } from "./account"
+
+export const WORK_CHANGED = "basalisk:work-changed"
+async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const result = await apiRequest<T>(path, method, body)
+  if (method !== "GET") window.dispatchEvent(new Event(WORK_CHANGED))
+  return result
+}
 
 /** The Work engine (internal/work, docs/work.md): workspaces of typed items in Caster. */
 

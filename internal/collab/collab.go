@@ -36,9 +36,10 @@ func ValidName(name string) bool { return nameRe.MatchString(name) }
 
 // Doc is one document at a revision.
 type Doc struct {
-	Name  string `json:"name"`
-	Kind  string `json:"kind"`
-	Title string `json:"title"`
+	Deleted bool   `json:"deleted,omitempty"`
+	Name    string `json:"name"`
+	Kind    string `json:"kind"`
+	Title   string `json:"title"`
 	// Lang is what a draft is written in (markdown, go, typescript, text…).
 	Lang    string `json:"lang,omitempty"`
 	Project string `json:"project,omitempty"`
@@ -113,6 +114,7 @@ func (c *Conflict) Error() string { return fmt.Sprintf("the document is now at r
 const maxDoc = 4 << 20
 
 type front struct {
+	Deleted bool   `yaml:"deleted,omitempty"`
 	Collab  string `yaml:"collab"`
 	Kind    string `yaml:"kind"`
 	Title   string `yaml:"title"`
@@ -123,7 +125,7 @@ type front struct {
 }
 
 func encode(d Doc) string {
-	head, _ := yaml.Marshal(front{Collab: "v1", Kind: d.Kind, Title: d.Title, Lang: d.Lang, Project: d.Project, Ref: d.Ref, Created: d.Created})
+	head, _ := yaml.Marshal(front{Deleted: d.Deleted, Collab: "v1", Kind: d.Kind, Title: d.Title, Lang: d.Lang, Project: d.Project, Ref: d.Ref, Created: d.Created})
 	return "---\n" + string(head) + "---\n" + d.Body
 }
 
@@ -141,6 +143,7 @@ func decode(name, content string) Doc {
 	if yaml.Unmarshal([]byte(head), &f) != nil {
 		return d
 	}
+	d.Deleted = f.Deleted
 	d.Title, d.Lang, d.Project, d.Ref, d.Created, d.Body = f.Title, f.Lang, f.Project, f.Ref, f.Created, body
 	return d
 }
@@ -225,6 +228,13 @@ func (s *Store) List(ctx context.Context, kind string) ([]Doc, error) {
 		}
 		k := strings.SplitN(name, ".", 2)[0]
 		if kind != "" && k != kind {
+			continue
+		}
+		doc, err := s.Get(ctx, name, 0)
+		if err != nil {
+			return nil, err
+		}
+		if doc.Deleted {
 			continue
 		}
 		docs = append(docs, Doc{Name: name, Kind: k, Title: it.Title, Rev: it.Rev, Updated: it.Updated})
@@ -428,4 +438,25 @@ func (s *Store) MarkOp(ctx context.Context, name, op string, m Mark) ([]Mark, er
 		return nil, err
 	}
 	return marks, nil
+}
+
+// SetDeleted hides or restores a document without erasing revisions or marks.
+func (s *Store) SetDeleted(ctx context.Context, name string, base int, deleted bool) (Doc, error) {
+	if base < 1 {
+		return Doc{}, errors.New("base_rev is required")
+	}
+	d, err := s.Get(ctx, name, 0)
+	if err != nil {
+		return Doc{}, err
+	}
+	if d.Rev != base {
+		return d, &Conflict{Rev: d.Rev}
+	}
+	d.Deleted = deleted
+	rev, err := s.put(ctx, name, encode(d), d.Title, "text/markdown", "agent")
+	if err != nil {
+		return Doc{}, err
+	}
+	d.Rev = rev
+	return d, nil
 }

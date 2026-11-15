@@ -24,6 +24,8 @@ func (a *API) collabRoutes() []route {
 		{"POST", "/api/collab", w, a.collabCreate},
 		{"GET", "/api/collab/{name}", r, a.collabGet},
 		{"PUT", "/api/collab/{name}", w, a.collabSave},
+		{"DELETE", "/api/collab/{name}", w, a.collabDelete},
+		{"POST", "/api/collab/{name}/restore", w, a.collabRestore},
 		{"GET", "/api/collab/{name}/log", r, a.collabLog},
 		{"POST", "/api/collab/{name}/marks", w, a.collabMark},
 	}
@@ -158,4 +160,24 @@ func (a *API) collabMark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, 200, map[string]any{"marks": marks})
+}
+
+func (a *API) collabDelete(w http.ResponseWriter, r *http.Request)  { a.collabSetDeleted(w, r, true) }
+func (a *API) collabRestore(w http.ResponseWriter, r *http.Request) { a.collabSetDeleted(w, r, false) }
+func (a *API) collabSetDeleted(w http.ResponseWriter, r *http.Request, deleted bool) {
+	if !a.collabOwner(w, r) {
+		return
+	}
+	var in struct {
+		BaseRev int `json:"base_rev"`
+	}
+	if !decodeLimit(w, r, &in, 4096) {
+		return
+	}
+	d, err := a.collab.SetDeleted(r.Context(), r.PathValue("name"), in.BaseRev, deleted)
+	if err != nil {
+		collabFail(w, err)
+		return
+	}
+	reply(w, 200, map[string]any{"doc": d})
 }

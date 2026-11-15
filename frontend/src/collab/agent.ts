@@ -97,6 +97,7 @@ registerAgentTools([
         lang: doc.lang,
         points_at: doc.ref,
         revision: doc.rev,
+        deleted: !!doc.deleted,
         text: doc.kind === "draft" ? numbered(body) : body,
         marks: marks.map(brief),
       }
@@ -292,6 +293,41 @@ registerAgentTools([
         title: doc.title,
       })
       return { name: doc.name, revision: doc.rev, opened: true }
+    },
+  },
+])
+
+registerAgentTools([
+  {
+    name: "collab_delete",
+    level: "confirm",
+    description:
+      "Remove a Collab draft, artifact or diagram from listings, preserving its body, revisions and marks. Give base_rev from collab_read. Always asks.",
+    input_schema: object({ name: NAME, base_rev: { type: "integer", minimum: 1 } }, [
+      "name",
+      "base_rev",
+    ]),
+    describe: (i) => `Remove ${String(i.name)} from Collab`,
+    run: async (i, desk, { signal }) => {
+      signal.throwIfAborted()
+      const busy = desk.wmState().wins.some((w) => w.dirty && collabOpen.get(w.id)?.name === i.name)
+      if (busy) throw new Error("The owner has unsaved edits to this document.")
+      return collab.remove(String(i.name), Number(i.base_rev))
+    },
+  },
+  {
+    name: "collab_restore",
+    level: "write",
+    description:
+      "Restore a removed Collab document to listings. Read it by name first for its latest revision.",
+    input_schema: object({ name: NAME, base_rev: { type: "integer", minimum: 1 } }, [
+      "name",
+      "base_rev",
+    ]),
+    describe: (i) => `Restore ${String(i.name)}`,
+    run: async (i, _d, { signal }) => {
+      signal.throwIfAborted()
+      return collab.restore(String(i.name), Number(i.base_rev))
     },
   },
 ])

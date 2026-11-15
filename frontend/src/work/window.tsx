@@ -5,7 +5,7 @@
  */
 import { ArrowLeft, Plus } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { type WorkPreset, type WorkSpace, type Workspace, work } from "../api/work"
+import { WORK_CHANGED, type WorkPreset, type WorkSpace, type Workspace, work } from "../api/work"
 import { Board } from "./board"
 import { Calendar } from "./calendar"
 import { Canvas } from "./canvas"
@@ -62,7 +62,12 @@ function Workspaces({
   useEffect(() => {
     void load(true)
     const t = window.setInterval(() => void load(), 25_000)
-    return () => window.clearInterval(t)
+    const onChanged = () => void load()
+    window.addEventListener(WORK_CHANGED, onChanged)
+    return () => {
+      window.clearInterval(t)
+      window.removeEventListener(WORK_CHANGED, onChanged)
+    }
   }, [load])
 
   return (
@@ -261,7 +266,14 @@ function SpaceView({ ws, back }: { ws: string; back: () => void }) {
     const t = window.setInterval(() => {
       if (!editing.current) void load()
     }, 20_000)
-    return () => window.clearInterval(t)
+    const onChanged = () => {
+      if (!editing.current) void load()
+    }
+    window.addEventListener(WORK_CHANGED, onChanged)
+    return () => {
+      window.clearInterval(t)
+      window.removeEventListener(WORK_CHANGED, onChanged)
+    }
   }, [load])
 
   const kinds = useMemo(() => new Map((sp?.kinds ?? []).map((k) => [k.kind, k])), [sp])

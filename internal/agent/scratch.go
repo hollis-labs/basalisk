@@ -112,6 +112,76 @@ func ScratchTools(store *scratch.Store, kick func(), auto func(ctx context.Conte
 			},
 		},
 	}
+
+	tools = append(tools, ServerTool{
+		Spec: ToolSpec{Name: "scratch_edit", Level: LevelWrite, Description: "Edit one scratch item's text by id. Keeps its identity and reparses markers and links; use scratch_list to read first.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"id": str("Item id"), "text": str("Replacement text for one item")}, "required": []string{"id", "text"}, "additionalProperties": false}},
+		Run: func(ctx context.Context, in map[string]any) (string, error) {
+			r := runOf(ctx)
+			if r == nil {
+				return "", errors.New("no run")
+			}
+			id, _ := in["id"].(string)
+			text, ok := in["text"].(string)
+			if !ok {
+				return "", errors.New("text is required")
+			}
+			item, err := store.Update(ctx, r.owner, id, scratch.Change{Text: &text}, time.Now())
+			if err != nil {
+				return "", err
+			}
+			kick()
+			return scratchJSON([]scratch.Item{item}), nil
+		},
+	}, ServerTool{
+		Spec: ToolSpec{Name: "scratch_delete", Level: LevelConfirm, Description: "Put a scratch item away (archive it), preserving its text and Caster record. Always asks.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"id": str("Item id")}, "required": []string{"id"}, "additionalProperties": false}},
+		Run: func(ctx context.Context, in map[string]any) (string, error) {
+			r := runOf(ctx)
+			if r == nil {
+				return "", errors.New("no run")
+			}
+			id, _ := in["id"].(string)
+			archived := true
+			item, err := store.Update(ctx, r.owner, id, scratch.Change{Archived: &archived}, time.Now())
+			if err != nil {
+				return "", err
+			}
+			kick()
+			return scratchJSON([]scratch.Item{item}), nil
+		},
+	})
+
+	tools = append(tools, ServerTool{
+		Spec: ToolSpec{Name: "scratch_get", Level: LevelRead, Description: "Read the full text and metadata of one scratch item, including a put-away item, before editing it.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"id": str("Item id")}, "required": []string{"id"}, "additionalProperties": false}},
+		Run: func(ctx context.Context, in map[string]any) (string, error) {
+			r := runOf(ctx)
+			if r == nil {
+				return "", errors.New("no run")
+			}
+			id, _ := in["id"].(string)
+			item, ok := store.Get(ctx, r.owner, id)
+			if !ok {
+				return "", errors.New("no such scratch item")
+			}
+			raw, err := json.Marshal(item)
+			return string(raw), err
+		},
+	}, ServerTool{
+		Spec: ToolSpec{Name: "scratch_restore", Level: LevelWrite, Description: "Restore a put-away scratch item by id.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"id": str("Item id")}, "required": []string{"id"}, "additionalProperties": false}},
+		Run: func(ctx context.Context, in map[string]any) (string, error) {
+			r := runOf(ctx)
+			if r == nil {
+				return "", errors.New("no run")
+			}
+			id, _ := in["id"].(string)
+			archived := false
+			item, err := store.Update(ctx, r.owner, id, scratch.Change{Archived: &archived}, time.Now())
+			if err != nil {
+				return "", err
+			}
+			kick()
+			return scratchJSON([]scratch.Item{item}), nil
+		},
+	})
 	return func(context.Context) []ServerTool { return tools }
 }
 

@@ -4,6 +4,7 @@ export type CollabKind = "draft" | "artifact" | "diagram"
 
 /** A document the owner and the agent work on together (internal/collab Doc). */
 export interface CollabDoc {
+  deleted?: boolean
   name: string
   kind: CollabKind
   title: string
@@ -61,6 +62,16 @@ const changed = (name: string) =>
 const at = (name: string) => `collab/${encodeURIComponent(name)}`
 
 export const collab = {
+  remove: (name: string, baseRev: number) =>
+    request(`${at(name)}`, "DELETE", { base_rev: baseRev }).then((r) => {
+      changed(name)
+      return r
+    }),
+  restore: (name: string, baseRev: number) =>
+    request(`${at(name)}/restore`, "POST", { base_rev: baseRev }).then((r) => {
+      changed(name)
+      return r
+    }),
   list: (kind?: CollabKind) =>
     request<{ docs: CollabDoc[] }>(`collab${kind ? `?kind=${kind}` : ""}`).then((r) => r.docs),
   get: (name: string, rev = 0) =>

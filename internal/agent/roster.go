@@ -258,8 +258,8 @@ func (rt *Runtime) RosterTools() ToolSource {
 			},
 		},
 		{
-			Spec: ToolSpec{Name: "roster_remove", Level: LevelWrite,
-				Description: "Take a seat off the owner's roster when they say you should no longer go to it. Nothing about the seat itself changes. The owner is asked first unless they chose Always.",
+			Spec: ToolSpec{Name: "roster_remove", Level: LevelConfirm,
+				Description: "Take a seat off the owner's roster when they say you should no longer go to it. Nothing about the seat itself changes. Always asks the owner.",
 				InputSchema: map[string]any{"type": "object", "properties": map[string]any{"key": str("The seat's key.")}, "required": []string{"key"}, "additionalProperties": false}},
 			Run: func(ctx context.Context, in map[string]any) (string, error) {
 				key, _ := in["key"].(string)

@@ -384,3 +384,37 @@ never logged. Without a gateway and a model the panel opens and says what to set
 - If the page is reloaded while it is running a tool call, the call is given up on after
   45 seconds and the model is told the desktop did not answer.
 - The panel has a fixed width, and a floating window can sit partly under it.
+
+### App data access
+
+Bas uses the same application APIs and approval cards as the desktop. Reads run at once;
+ordinary writes use `write`, including standing Always answers. Removal tools use
+`confirm`, so a standing write grant never approves a delete.
+
+| Surface | Added access | Removal behavior |
+| --- | --- | --- |
+| Work (Planner, Content, Writer) | Workspace create/title/archive; item create/edit/stage/parent/order; external links | Items are cut; workspaces hidden from listings; Caster history retained |
+| Story | Create scripts and scenes; edit scene text/title/duration; drafting stages | Scene cut, retaining its content |
+| Scratch | Full item read, text edit, restore | Put away, retaining text and Caster record |
+| Notes | Rename and delete; existing read/write/edit retained | Local Trash; remote deletion is permanent; both always ask |
+| Collab | Delete and restore; existing drafts, diagrams, marks retained | Revisioned tombstone; body, marks and old revisions retained |
+| Frag | Full capture read, retry failed delivery, discard queued capture | Discard erases queued content and always asks; delivered FE records are untouched |
+| Desktop | Tile/float layout and close window | Existing unsaved-work confirmation remains |
+| Agent | Settings/context/roster/rules read; validated owner router/reflex edits | Rule replacement and roster removal always ask |
+
+`agent_rules_get` returns the owner's JSON, its revision and the built-in examples.
+`agent_rules_write` accepts only the configured owner router/reflex file, validates it,
+refuses a stale revision and keeps the previous contents in a timestamped backup beside
+it. The next evaluation reloads the file. It cannot change standing tool approvals.
+Existing `context_instruct`, `project_define`, `roster_set` and `roster_list` cover the
+agent's instructions, projects and roster.
+
+Deliberate boundaries: sending review rounds, approving/signing off and publishing remain
+owner actions. Startup model/gateway settings, credentials and standing grants stay in
+operator configuration or the owner's settings UI. Notes renames do not rewrite backlinks;
+the agent can propose separate note edits. Files/Browser/Terminal retain their existing
+access; no general filesystem-write or shell bypass was added. Reader feed/subscription
+management, account administration, host controls and external mail/Torque/Tesseract
+mutations are outside this app-data pass. Collab's list reads each document's latest
+metadata to hide removed entries; a failed metadata read reports an error rather than
+silently showing an incomplete list.

@@ -91,3 +91,35 @@ func TestDocs(t *testing.T) {
 		t.Fatal("a name that is not a document's is refused")
 	}
 }
+
+func TestRemovalRetainsRevisionAndRejectsStaleDelete(t *testing.T) {
+	ctx := context.Background()
+	s := &Store{Link: &fake{items: map[string][]string{}}}
+	d, err := s.Create(ctx, Doc{Kind: KindDraft, Title: "Keep history", Body: "original"}, "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer, err := s.Save(ctx, d.Name, d.Rev, nil, "revised", "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.SetDeleted(ctx, d.Name, d.Rev, true); err == nil {
+		t.Fatal("stale removal accepted")
+	}
+	removed, err := s.SetDeleted(ctx, d.Name, newer.Rev, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.List(ctx, "")
+	if err != nil || len(list) != 0 {
+		t.Fatalf("removed document listed: %+v %v", list, err)
+	}
+	old, err := s.Get(ctx, d.Name, d.Rev)
+	if err != nil || old.Body != "original" {
+		t.Fatalf("history lost: %+v %v", old, err)
+	}
+	restored, err := s.SetDeleted(ctx, d.Name, removed.Rev, false)
+	if err != nil || restored.Body != "revised" || restored.Deleted {
+		t.Fatalf("restore: %+v %v", restored, err)
+	}
+}

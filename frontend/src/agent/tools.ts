@@ -256,3 +256,45 @@ registerAgentTools([
     },
   },
 ])
+
+registerAgentTools([
+  {
+    name: "desktop_close",
+    level: "act",
+    description: "Close a desktop window. Existing unsaved-work confirmation remains in effect.",
+    input_schema: object({ window_id: str("Window id from desktop_windows") }, ["window_id"]),
+    run: (i, desk, { signal }) => {
+      signal.throwIfAborted()
+      const id = String(i.window_id)
+      if (!desk.wmState().wins.some((w) => w.id === id)) throw new Error("No such window.")
+      desk.close(id)
+      return "Close requested; unsaved work still requires the owner's answer."
+    },
+  },
+  {
+    name: "desktop_layout",
+    level: "act",
+    description:
+      "Arrange the desktop in tiled or floating layout; optionally set the tiled master-width ratio.",
+    input_schema: object(
+      {
+        layout: { type: "string", enum: ["tile", "float"] },
+        ratio: { type: "number", minimum: 0.2, maximum: 0.8 },
+      },
+      ["layout"],
+    ),
+    run: (i, desk, { signal }) => {
+      if (i.layout !== "tile" && i.layout !== "float")
+        throw new Error("Layout must be tile or float.")
+      if (
+        i.ratio !== undefined &&
+        (typeof i.ratio !== "number" || !Number.isFinite(i.ratio) || i.ratio < 0.2 || i.ratio > 0.8)
+      )
+        throw new Error("Ratio must be between 0.2 and 0.8.")
+      signal.throwIfAborted()
+      desk.wm({ type: "layout", layout: i.layout })
+      if (typeof i.ratio === "number") desk.wm({ type: "ratio", value: i.ratio })
+      return "Layout updated."
+    },
+  },
+])

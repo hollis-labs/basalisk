@@ -288,7 +288,7 @@ func (s *Store) List(ctx context.Context, owner string, q Query) ([]Item, error)
 	if limit <= 0 || limit > 1000 {
 		limit = 500
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+itemColumns+` FROM items WHERE `+strings.Join(where, " AND ")+` ORDER BY created_at DESC LIMIT ?`, append(args, limit)...)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+itemColumns+` FROM items WHERE `+strings.Join(where, " AND ")+` ORDER BY created_at DESC, id ASC LIMIT ?`, append(args, limit)...) //nolint:gosec // Only fixed SQL fragments are joined; all user values are bound parameters.
 	if err != nil {
 		return nil, err
 	}

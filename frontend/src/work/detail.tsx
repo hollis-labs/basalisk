@@ -857,11 +857,14 @@ function Links({
 }) {
   const [rel, setRel] = useState(RELS[0])
   const byId = new Map(items.map((x) => [x.id, x]))
-  const go = (id: string) => (
-    <button type="button" className="work-link" onClick={() => open(id)} title={id}>
-      {byId.get(id)?.title ?? id}
-    </button>
-  )
+  const go = (id: string) =>
+    id.includes("://") ? (
+      <CiteText text={id} />
+    ) : (
+      <button type="button" className="work-link" onClick={() => open(id)} title={id}>
+        {byId.get(id)?.title ?? id}
+      </button>
+    )
   // What points at this item: links from others, and their ref and refs fields.
   const incoming: { from: string; how: string }[] = []
   for (const x of items) {
