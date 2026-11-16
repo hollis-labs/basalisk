@@ -25,4 +25,10 @@ from the ADE repository with `npm pack`.
 Checked in a browser against a stand-in Caster: the tools are offered; the agent sees the
 diagram's parts and the owner's selection; its highlight sits on the node it names; the
 guide bar shows; a guide step that waits for a selection moves on when the owner makes it;
-an action on a part that is not there is refused. Not yet run with the model in Basalisk.
+an action on a part that is not there is refused.
+
+Run once with the model, in a throwaway instance: with a node selected and "what does this
+connect to, point at them, then walk me through the diagram", the agent looked, named the
+selected node and its three neighbours, outlined them on the canvas and started a six-step
+guide. Known gap: the diagram's own inspector opens over the right of the canvas when a node
+is selected, and can cover a node the agent is pointing at.
