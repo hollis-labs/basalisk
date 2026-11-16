@@ -122,6 +122,7 @@ overridden in a YAML file named by `SUBSTRATE_CONFIG`, which is deep-merged over
 | `auth.mode` | `enforce` | Leave it. |
 | `identity.key_file` | `<data>/identity-signing.key` | Token signing key. Relative: joined onto `<data>`; absolute: kept. |
 | `identity.session_ttl` | `12h` | Sign-in lifetime. |
+| `identity.setup` | `http` | Basalisk explicitly preserves browser first-owner setup; set `offline` to use identity's administrative bootstrap instead. Setup closes after the owner exists. |
 | `identity.trusted_proxy` | `false` | Believe `X-Forwarded-Proto` from the local TLS proxy (for the Secure cookie). |
 | `identity.allowed_origins` | none | Extra origins whose cookie-authenticated writes are accepted. |
 | `identity.secure_cookies` | `auto` | `auto`, `always` or `never`. |
