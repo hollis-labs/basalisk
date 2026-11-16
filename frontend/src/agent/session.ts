@@ -170,8 +170,16 @@ function createSession(thread: string | null) {
   /** Calls this session is running now, so they can be told the run stopped waiting. */
   const inFlight = new Map<string, AbortController>()
 
-  const patchItem = (id: string, change: (item: Item) => Item) =>
-    set({ items: session.items.map((it) => (it.id === id ? change(it) : it)) })
+  // Streamed text arrives a token at a time; the page is told at most about 30 times a second.
+  let pending = 0
+  const patchItem = (id: string, change: (item: Item) => Item) => {
+    session = { ...session, items: session.items.map((it) => (it.id === id ? change(it) : it)) }
+    if (pending) return
+    pending = window.setTimeout(() => {
+      pending = 0
+      for (const fn of listeners) fn()
+    }, 32)
+  }
 
   /** Load the thread, and pick up a run that is still going. Safe to call more than once. */
   async function start(d: DeskAPI) {
