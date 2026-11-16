@@ -19,8 +19,8 @@ the agent one way to point at the same thing, and a guide that follows what real
   `@hollis-labs/ade-agent` client is that code taken out of the desktop; moving onto it is a
   later step.
 
-Until the packages are published they are installed from `frontend/vendor/*.tgz`, built
-from the ADE repository with `npm pack`.
+The packages come from npm at exact versions. Their source is hollis-labs/frontend-support
+under `ts/ade`.
 
 Checked in a browser against a stand-in Caster: the tools are offered; the agent sees the
 diagram's parts and the owner's selection; its highlight sits on the node it names; the

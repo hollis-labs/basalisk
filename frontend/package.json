@@ -15,9 +15,9 @@
   },
   "dependencies": {
     "@base-ui/react": "1.8.0",
-    "@hollis-labs/ade-agent": "file:vendor/hollis-labs-ade-agent-0.1.0.tgz",
-    "@hollis-labs/ade-core": "file:vendor/hollis-labs-ade-core-0.1.0.tgz",
-    "@hollis-labs/ade-react": "file:vendor/hollis-labs-ade-react-0.1.0.tgz",
+    "@hollis-labs/ade-agent": "0.1.0",
+    "@hollis-labs/ade-core": "0.1.0",
+    "@hollis-labs/ade-react": "0.1.0",
     "@hollis-labs/app-shell": "0.1.0",
     "@hollis-labs/design-app-runtime": "0.5.0",
     "@hollis-labs/design-bindings": "0.2.0",
