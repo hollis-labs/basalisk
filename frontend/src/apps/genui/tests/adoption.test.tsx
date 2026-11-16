@@ -1,5 +1,5 @@
 import { createHub } from "@hollis-labs/ade-core"
-import { type Envelope, parseCall } from "@hollis-labs/genui"
+import { type Envelope, parseCall, parseResponse } from "@hollis-labs/genui"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { StrictMode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -117,6 +117,33 @@ function mount(id = "form") {
 }
 
 describe("Desktop GenUI adoption with synthetic HTTP", () => {
+  it("preserves BOM refusal across surface, action and recovery HTTP bodies", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(`\ufeff${JSON.stringify(envelope("approval", "approval"))}`)),
+    )
+    await expect(loadGenui("approval", new AbortController().signal)).rejects.toThrow()
+    const response = {
+      version: "1.0",
+      agentFunctionResponse: { functionCallId: "rpc", value: { status: "ok" } },
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(`\ufeff${JSON.stringify(response)}`)),
+    )
+    const action = await genuiTransport.submit("{}", new AbortController().signal)
+    expect(() => parseResponse(action, "rpc")).toThrow()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(`\ufeff${JSON.stringify({ response })}`)),
+    )
+    await expect(
+      genuiTransport.recover(
+        { surfaceId: "approval", actionId: "action_approval", functionCallId: "rpc" },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow()
+  })
   it("uses raw native messages through form, immutable review, acknowledgment and stored result", async () => {
     const surfaces = new Map([["form", envelope("form", "form")]])
     const submissions: ReturnType<typeof parseCall>[] = []

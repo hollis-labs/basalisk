@@ -30,7 +30,9 @@ async function text(response: Response, limit: number): Promise<string> {
     bytes.set(chunk, offset)
     offset += chunk.byteLength
   }
-  return new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+  // Keep a leading BOM observable: the canonical raw parser refuses it. The default
+  // decoder silently strips it, which would make transport accept different bytes.
+  return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)
 }
 
 async function raw(
