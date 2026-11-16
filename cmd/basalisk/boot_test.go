@@ -134,7 +134,7 @@ func (s *session) want(status int, method, path string, body any) map[string]any
 func TestAcceptance(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "data")
 	// A cheap password hash keeps the suite fast; it also exercises the SUBSTRATE_CONFIG override.
-	base := started(t, dir, "identity:\n  bcrypt_cost: 4\n")
+	base := started(t, dir, "identity:\n  bcrypt_cost: 4\n  setup: http\n")
 
 	// The host is up and unauthenticated health is open.
 	anon := newSession(t, base)

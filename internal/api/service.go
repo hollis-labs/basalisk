@@ -17,19 +17,21 @@ import (
 	"github.com/hollis-labs/libs/security/secrets"
 
 	"github.com/hollis-labs/basalisk/internal/activity"
+	"github.com/hollis-labs/basalisk/internal/preferences"
 )
 
 // Service is what the handlers share: the database handle, the credential resolver, the
 // activity journal, the device store and the delivery worker's observable state. It owns no
 // schema (that is internal/persistence) and no accounts (that is the identity module).
 type Service struct {
-	db         *sql.DB
-	secrets    *secrets.Resolver
-	activity   *activity.Store
-	pairing    *pairing.Store
-	deliveryMu sync.RWMutex
-	delivery   deliveryActivity
-	fragMode   string // how owner captures are delivered (frag.go)
+	db          *sql.DB
+	preferences *preferences.Store
+	secrets     *secrets.Resolver
+	activity    *activity.Store
+	pairing     *pairing.Store
+	deliveryMu  sync.RWMutex
+	delivery    deliveryActivity
+	fragMode    string // how owner captures are delivered (frag.go)
 }
 
 // New builds the Service over a migrated database. Companion devices keep their own tables,
@@ -42,5 +44,5 @@ func New(db *sql.DB, resolver *secrets.Resolver) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{db: db, secrets: resolver, activity: activity.New(db), pairing: devices}, nil
+	return &Service{db: db, preferences: preferences.New(db), secrets: resolver, activity: activity.New(db), pairing: devices}, nil
 }
