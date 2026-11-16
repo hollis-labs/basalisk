@@ -248,7 +248,14 @@ export function reducer(s: WMState, a: WMAction): WMState {
       if (!open.length) return s
       const at = open.findIndex((w) => w.id === s.focus)
       const next = open[(at + a.delta + open.length) % open.length]
-      return reducer(s, { type: "focus", id: next.id })
+      const current = open[at]
+      // Cycling a maximized app replaces the view in place instead of leaving it
+      // covering the newly focused (possibly tiled) window.
+      const cycling =
+        a.app && current?.maximized && next.id !== current.id
+          ? patch(patch(s, current.id, { maximized: false }), next.id, { maximized: true })
+          : s
+      return reducer(cycling, { type: "focus", id: next.id })
     }
     case "snap": {
       const { area } = a

@@ -4,6 +4,7 @@ import {
   ExternalLink,
   Globe,
   Lock,
+  Plus,
   RotateCw,
   Scissors,
   X,
@@ -91,6 +92,7 @@ interface Tab {
   url: string
   title?: string
   file?: FileRef
+  focusAddress?: boolean
 }
 
 export function BrowserWindow({ winId, args }: { winId: string; args: Record<string, unknown> }) {
@@ -123,7 +125,11 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   const add = useCallback(
     (url = HOME, nativeID?: string) => {
       const id = nativeID ?? `${winId}-tab-${crypto.randomUUID()}`
-      setTabs((old) => (old.some((t) => t.id === id) ? old : [...old, { id, url }]))
+      setTabs((old) =>
+        old.some((t) => t.id === id)
+          ? old
+          : [...old, { id, url, focusAddress: !nativeID && url === HOME }],
+      )
       select(id)
     },
     [select, winId],
@@ -198,6 +204,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
             viewId={t.id}
             args={{ url: t.url, file: t.file }}
             active={selected === t.id}
+            focusAddress={t.focusAddress ?? false}
             onState={state}
             onOpen={add}
             onClose={close}
@@ -213,6 +220,7 @@ function BrowserPage({
   viewId,
   args,
   active,
+  focusAddress,
   onState,
   onOpen,
   onClose,
@@ -221,6 +229,7 @@ function BrowserPage({
   viewId: string
   args: Record<string, unknown>
   active: boolean
+  focusAddress: boolean
   onState: (s: BrowserState) => void
   onOpen: (url: string, id?: string) => void
   onClose: (id: string) => void
@@ -542,6 +551,18 @@ function BrowserPage({
         ref.current?.select()
       })
   }
+  // Give a newly requested blank tab a visible typing target, once per tab.
+  const addressed = useRef(false)
+  useEffect(() => {
+    if (!active || !focusAddress || addressed.current) return
+    addressed.current = true
+    void send({ op: "blur" })
+      .catch(() => undefined)
+      .finally(() => {
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      })
+  }, [active, focusAddress, send])
   const find = useCallback(
     (query: string, backwards: boolean) =>
       send({ op: "find", query, backwards })
@@ -634,6 +655,15 @@ function BrowserPage({
     // biome-ignore lint/a11y/noStaticElementInteractions: browser shortcuts for the chrome
     <div className="browser" onKeyDown={onChromeKey}>
       <div className="browser-bar">
+        <button
+          type="button"
+          className="files-icon"
+          title="New tab (⌘T)"
+          aria-label="New tab"
+          onClick={() => onOpen(HOME)}
+        >
+          <Plus size={15} strokeWidth={1.6} aria-hidden="true" />
+        </button>
         <button
           type="button"
           className="files-icon"

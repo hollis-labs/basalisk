@@ -56,6 +56,24 @@ func TestBrowserViews(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	win := HxStart(hxBase + "/page")
 	waitFor(t, "page", func() bool { return HxEvalPage("return document.title") == `["app"]` })
+	// Exercise the real browser CSS in WebKit, including the bare desktop flex parent.
+	css, err := os.ReadFile("../../frontend/src/apps/browser/browser.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout := HxEvalPage(fmt.Sprintf(`
+const style=document.createElement('style');style.textContent=%q;document.head.append(style);
+const host=document.createElement('div');host.style.cssText='display:flex;width:600px;height:400px';
+host.innerHTML='<div class="browser-tabs-window"><div class="browser-tab-page" style="display:flex"><div class="browser"><div class="browser-bar">address</div><div class="browser-stage"><div class="browser-slot"></div></div></div></div></div>';
+document.body.append(host);
+const slot=host.querySelector('.browser-slot');
+const before=slot.getBoundingClientRect();host.style.width='1000px';host.style.height='700px';
+const after=slot.getBoundingClientRect();
+const result=[before.width,after.width,Math.round(after.height-before.height)];
+host.remove();style.remove();return result`, string(css)))
+	if layout != `[[600,1000,300]]` {
+		t.Fatalf("browser slot did not fill/rescale with its window: %s", layout)
+	}
 	HxAttach(win)
 	if got := HxEvalPage("return !!window.webkit.messageHandlers.basaliskBrowser"); got != "[true]" {
 		t.Fatalf("channel: %s", got)
