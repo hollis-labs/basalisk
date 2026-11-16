@@ -98,6 +98,12 @@ ones named in that file, each with the level the file gives it:
   `user/…` or `system` namespace is refused before it reaches the gateway.
 - Caster (named, revisioned text): `caster_head`, `caster_get`, `caster_ls`, `caster_log`
   and `caster_search` (read), and `caster_put` to store text or a new revision (asks first).
+- The Registry (the records of what exists and how it relates): the `registry_*` tools.
+  Listing, reading, searching, revisions, snapshots, reviews, diagnostics and resolving or
+  classifying a tool are read. Creating, updating, verifying or archiving a record, adding
+  or removing a relation, deciding a review and proposing a tool ask first.
+  `registry_record_delete` asks every time. `tether_registry_lookup` (read) looks up one
+  agent or project by its address.
 - Mail, when the agent has an address of its own (`agent_urn`): `tether_registry_search`,
   `tether_message_list` and `tether_message_get` (read), `tether_message_mark_read`, and
   `tether_message_notify` to send (asks first). Whatever the model passes, mail is sent
