@@ -623,3 +623,8 @@ fieldset {
 .shell-log-kind {
   color: var(--color-fg-muted);
 }
+
+/* Keep wheel, trackpad and keyboard scrolling; hide the chrome on every app surface. */
+* { scrollbar-width: none !important; }
+*::-webkit-scrollbar { display: none !important; width: 0; height: 0; }
+html, body { overscroll-behavior: none; }

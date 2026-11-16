@@ -28,6 +28,8 @@ import {
   useState,
 } from "react"
 import { ApiError, request } from "../api/account"
+import { browserTabGroups } from "../apps/browser/tabs"
+import { openTerminalWindow } from "../terminal/solo"
 import "../apps"
 import "./commands"
 import "../agent/contexts"
@@ -153,11 +155,11 @@ export function Desktop() {
 
   const { signedOut } = useSession()
   const terminal = useTerminalHost()
-  const terminalRef = useRef(terminal)
-  terminalRef.current = terminal
   const statusRef = useRef(status)
   statusRef.current = status
   const [palette, setPalette] = useState(false)
+  const paletteRef = useRef(false)
+  paletteRef.current = palette
   // Registered overlays that are showing (registry.ts, registerOverlay).
   const [overlays, setOverlays] = useState<string[]>([])
   const overlaysRef = useRef(overlays)
@@ -239,11 +241,11 @@ export function Desktop() {
       },
       panelOpen: (id) => panelRef.current === id,
       toggleTerminal() {
-        // With a terminal window open the shortcut goes to it; otherwise it drops one down.
+        // With a terminal window open the shortcut goes to it; otherwise it opens a normal window.
         const wins = stateRef.current.wins.filter((w) => w.app === "terminal")
         const win = wins.find((w) => w.key === "deck") ?? wins[0]
         if (win) dispatch({ type: "focus", id: win.id })
-        else terminalRef.current.setOverlayOpen(!terminalRef.current.overlayOpen)
+        else api.open("terminal")
       },
       shellStatus: () => statusRef.current,
       setKiosk: (on) =>
@@ -389,6 +391,45 @@ export function Desktop() {
   boundRef.current = bound
   const runChord = useCallback(
     (chord: string) => {
+      if (chord === "cmd+k") {
+        desk.togglePalette()
+        return true
+      }
+      if (paletteRef.current) {
+        if (chord === "cmd+w") window.dispatchEvent(new Event("basalisk:palette-close-tab"))
+        return ["cmd+w", "cmd+t", "cmd+`", "shift+cmd+`"].includes(chord)
+      }
+      const s = desk.wmState()
+      const focused = s.wins.find((w) => w.id === s.focus)
+      const browser = focused?.app === "browser" ? browserTabGroups.get(focused.id) : undefined
+      if (chord === "cmd+`" || chord === "shift+cmd+`") {
+        if (focused)
+          desk.wm({ type: "cycle", delta: chord.startsWith("shift") ? -1 : 1, app: focused.app })
+        return true
+      }
+      if (browser && ["ctrl+tab", "ctrl+shift+tab", "shift+cmd+[", "shift+cmd+]"].includes(chord)) {
+        const delta = chord === "ctrl+shift+tab" || chord === "shift+cmd+[" ? -1 : 1
+        const at = browser.tabs.findIndex((t) => t.id === browser.selected)
+        browser.select(browser.tabs[(at + delta + browser.tabs.length) % browser.tabs.length].id)
+        return true
+      }
+      if (chord === "cmd+t") {
+        if (browser) browser.add()
+        else if (focused?.app === "terminal") {
+          const e = new CustomEvent("basalisk:terminal-key", {
+            cancelable: true,
+            detail: { winId: focused.id, chord },
+          })
+          window.dispatchEvent(e)
+          if (!e.defaultPrevented) openTerminalWindow(desk)
+        } else desk.toggleTerminal()
+        return true
+      }
+      if (chord === "cmd+w") {
+        if (browser) browser.close(browser.selected)
+        else if (focused) desk.close(focused.id)
+        return true
+      }
       const id = boundRef.current.get(chord)
       const command = id ? allCommands().find((c) => c.id === id) : undefined
       if (!command || (command.when && !command.when(desk))) return false
@@ -514,31 +555,6 @@ export function Desktop() {
               onKiosk={() => desk.setKiosk(!status?.kiosk)}
               onOpenChange={setMenuOpen}
             />
-            <div className="desk-tasks">
-              {state.wins.map((w) => {
-                const app = appById(w.app)
-                const Icon = app?.icon ?? AppWindow
-                const active = state.focus === w.id && !w.minimized
-                return (
-                  <button
-                    key={w.id}
-                    type="button"
-                    className="desk-task"
-                    data-active={active}
-                    data-minimized={w.minimized}
-                    title={w.title}
-                    onClick={() =>
-                      dispatch(
-                        active ? { type: "minimize", id: w.id } : { type: "focus", id: w.id },
-                      )
-                    }
-                  >
-                    <Icon aria-hidden="true" size={14} strokeWidth={1.6} />
-                    <span>{w.title}</span>
-                  </button>
-                )
-              })}
-            </div>
           </div>
           <div className="desk-bar-side desk-bar-end">
             <button

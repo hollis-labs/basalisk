@@ -1,5 +1,6 @@
-import { AppWindow, type LucideIcon, Search } from "lucide-react"
+import { AppWindow, type LucideIcon, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { browserTabGroups, TABS_CHANGED } from "../apps/browser/tabs"
 import { chordFor, prettyChord } from "./keys"
 import { allCommands, allProviders, appById, type DeskAPI, type PaletteItem } from "./registry"
 import { useDeskSettings } from "./settings"
@@ -16,6 +17,7 @@ interface Row {
   section: string
   icon?: LucideIcon
   chord?: string
+  close?: () => void
   run: (desk: DeskAPI) => void | Promise<void>
 }
 
@@ -70,6 +72,18 @@ function remember(id: string) {
  */
 export function PaletteDialog({ desk, onClose }: { desk: DeskAPI; onClose: () => void }) {
   const settings = useDeskSettings()
+  const [mode, setMode] = useState<"tabs" | "commands">(() =>
+    desk.wmState().wins.find((w) => w.id === desk.wmState().focus)?.app === "browser"
+      ? "tabs"
+      : "commands",
+  )
+  const [scope, setScope] = useState<"all" | "window">("all")
+  const [tabEpoch, setTabEpoch] = useState(0)
+  useEffect(() => {
+    const update = () => setTabEpoch((n) => n + 1)
+    window.addEventListener(TABS_CHANGED, update)
+    return () => window.removeEventListener(TABS_CHANGED, update)
+  }, [])
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState(0)
   const [found, setFound] = useState<PaletteItem[]>([])
@@ -102,7 +116,7 @@ export function PaletteDialog({ desk, onClose }: { desk: DeskAPI; onClose: () =>
   // carry ids that start with "<provider id>:", which is how its newer answer replaces its older.
   useEffect(() => {
     const q = query.trim()
-    if (!q) {
+    if (!q || mode === "tabs") {
       setFound([])
       return
     }
@@ -122,10 +136,30 @@ export function PaletteDialog({ desk, onClose }: { desk: DeskAPI; onClose: () =>
       live = false
       window.clearTimeout(timer)
     }
-  }, [query, desk])
+  }, [query, desk, mode])
 
   const rows = useMemo<Row[]>(() => {
     const q = query.trim()
+    if (mode === "tabs") {
+      // Read the live registry on every tabs-changed event, including closes in this dialog.
+      void tabEpoch
+      return [...browserTabGroups.entries()].flatMap(([winId, group]) => {
+        if (scope === "window" && winId !== desk.wmState().focus) return []
+        return group.tabs
+          .filter((t) => !q || score(q, `${t.title ?? ""} ${t.url}`) > 0)
+          .map((t) => ({
+            id: t.id,
+            title: t.title || t.url || "New tab",
+            subtitle: t.url,
+            section: "Browser tabs",
+            run: (d: DeskAPI) => {
+              group.select(t.id)
+              d.wm({ type: "focus", id: winId })
+            },
+            close: () => group.close(t.id),
+          }))
+      })
+    }
     if (!q) {
       const recent = recents()
       const first = recent.map((id) => base.find((r) => r.id === id)).filter((r): r is Row => !!r)
@@ -141,10 +175,17 @@ export function PaletteDialog({ desk, onClose }: { desk: DeskAPI; onClose: () =>
       .sort((a, b) => b.s - a.s)
       .map((x) => ({ ...x.r, section: "Results" }))
     return [...ranked, ...found]
-  }, [base, found, query])
+  }, [base, found, query, mode, scope, tabEpoch, desk])
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new query starts at the top
-  useEffect(() => setSelected(0), [query])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset selection when the filter changes
+  useEffect(() => setSelected(0), [query, mode, scope])
+  useEffect(() => setSelected((i) => Math.max(0, Math.min(i, rows.length - 1))), [rows.length])
+  useEffect(() => {
+    const close = () => rows[selected]?.close?.()
+    window.addEventListener("basalisk:palette-close-tab", close)
+    return () => window.removeEventListener("basalisk:palette-close-tab", close)
+  }, [rows, selected])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll the newly selected row into view
   useEffect(() => {
     list.current
       ?.querySelector<HTMLElement>('[data-selected="true"]')
@@ -184,13 +225,39 @@ export function PaletteDialog({ desk, onClose }: { desk: DeskAPI; onClose: () =>
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={onKey}
       >
+        <div className="desk-palette-modes">
+          <button type="button" aria-pressed={mode === "tabs"} onClick={() => setMode("tabs")}>
+            Tabs
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === "commands"}
+            onClick={() => setMode("commands")}
+          >
+            Commands
+          </button>
+          {mode === "tabs" && (
+            <select
+              aria-label="Filter tabs"
+              value={scope}
+              onChange={(e) => setScope(e.target.value as "all" | "window")}
+            >
+              <option value="all">All browser windows</option>
+              <option value="window">Focused window</option>
+            </select>
+          )}
+        </div>
         <div className="desk-palette-input">
           <Search aria-hidden="true" size={16} strokeWidth={1.6} />
           <input
             // biome-ignore lint/a11y/noAutofocus: the palette exists to be typed into
             autoFocus
             value={query}
-            placeholder="Run a command, open an app, switch window…"
+            placeholder={
+              mode === "tabs"
+                ? "Search tabs by title or address…"
+                : "Run a command, open an app, switch window…"
+            }
             spellCheck={false}
             autoComplete="off"
             onChange={(e) => setQuery(e.target.value)}
@@ -205,24 +272,36 @@ export function PaletteDialog({ desk, onClose }: { desk: DeskAPI; onClose: () =>
             return (
               <div key={r.id}>
                 {heading && <div className="desk-palette-section">{heading}</div>}
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={i === selected}
-                  data-selected={i === selected}
-                  className="desk-palette-row"
-                  onPointerMove={() => i !== selected && setSelected(i)}
-                  onClick={() => run(r)}
-                >
-                  {Icon ? (
-                    <Icon aria-hidden="true" size={15} strokeWidth={1.6} />
-                  ) : (
-                    <span className="desk-palette-noicon" />
+                <div className="desk-palette-item">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={i === selected}
+                    data-selected={i === selected}
+                    className="desk-palette-row"
+                    onPointerMove={() => i !== selected && setSelected(i)}
+                    onClick={() => run(r)}
+                  >
+                    {Icon ? (
+                      <Icon aria-hidden="true" size={15} strokeWidth={1.6} />
+                    ) : (
+                      <span className="desk-palette-noicon" />
+                    )}
+                    <span className="desk-palette-title">{r.title}</span>
+                    {r.subtitle && <span className="desk-palette-sub">{r.subtitle}</span>}
+                    {r.chord && <kbd>{prettyChord(r.chord)}</kbd>}
+                  </button>
+                  {r.close && (
+                    <button
+                      type="button"
+                      className="desk-palette-tab-close"
+                      aria-label={`Close tab ${r.title}`}
+                      onClick={() => r.close?.()}
+                    >
+                      <X size={14} />
+                    </button>
                   )}
-                  <span className="desk-palette-title">{r.title}</span>
-                  {r.subtitle && <span className="desk-palette-sub">{r.subtitle}</span>}
-                  {r.chord && <kbd>{prettyChord(r.chord)}</kbd>}
-                </button>
+                </div>
               </div>
             )
           })}
@@ -230,7 +309,8 @@ export function PaletteDialog({ desk, onClose }: { desk: DeskAPI; onClose: () =>
         </div>
         <footer className="desk-palette-foot">
           <span>↑↓ move</span>
-          <span>↩ run</span>
+          <span>↩ {mode === "tabs" ? "switch" : "run"}</span>
+          {mode === "tabs" && <span>⌘W close tab</span>}
           <span>esc close</span>
         </footer>
       </div>

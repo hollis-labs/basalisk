@@ -30,12 +30,19 @@ import { useDeskSettings } from "../../desktop/settings"
 import { loadRoots } from "../files/browser"
 import { CLIP_EVENT, clipPage, setPendingClip } from "../frag/clip"
 import { FindBar } from "./find"
+import { browserTabGroups, tabsChanged } from "./tabs"
 
 const HOME = "https://duckduckgo.com/"
 /** The window's own shortcuts, which must work while the page has the keyboard. */
 const LOCAL_CHORDS = [
   "cmd+t",
   "cmd+w",
+  "ctrl+tab",
+  "ctrl+shift+tab",
+  "shift+cmd+[",
+  "shift+cmd+]",
+  "cmd+`",
+  "shift+cmd+`",
   "cmd+l",
   "cmd+[",
   "cmd+]",
@@ -167,37 +174,19 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     })
     desk.setTitle(winId, tab?.title || hostOf(tab?.url ?? "") || "Browser")
   }, [desk, winId, tabs, selected])
+  useEffect(() => {
+    browserTabGroups.set(winId, { tabs, selected, select, close, add })
+    tabsChanged()
+  }, [winId, tabs, selected, select, close, add])
+  useEffect(
+    () => () => {
+      browserTabGroups.delete(winId)
+      tabsChanged()
+    },
+    [winId],
+  )
   return (
     <div className="browser-tabs-window">
-      <div className="browser-tabs" role="tablist" aria-label="Browser tabs">
-        {tabs.map((t) => (
-          <div className="browser-tab" key={t.id}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={selected === t.id}
-              onClick={() => select(t.id)}
-            >
-              {t.title || hostOf(t.url) || "New tab"}
-            </button>
-            <button
-              type="button"
-              aria-label={`Close tab ${t.title || hostOf(t.url) || "New tab"}`}
-              onClick={() => close(t.id)}
-            >
-              <X size={12} />
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          className="browser-new-tab"
-          aria-label="New tab"
-          onClick={() => add()}
-        >
-          +
-        </button>
-      </div>
       {tabs.map((t) => (
         <div
           className="browser-tab-page"
@@ -583,12 +572,6 @@ function BrowserPage({
 
   runLocalRef.current = (chord: string) => {
     switch (chord) {
-      case "cmd+t":
-        onOpen(HOME)
-        return true
-      case "cmd+w":
-        onClose(viewId)
-        return true
       case "cmd+l":
         focusField(inputRef)
         return true

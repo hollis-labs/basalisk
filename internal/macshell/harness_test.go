@@ -108,6 +108,13 @@ func TestBrowserViews(t *testing.T) {
 		t.Errorf("the page moved: %+v", v)
 	}
 
+	before = countOpens()
+	HxControlClick(112, 742)
+	waitFor(t, "control-click open", func() bool { return countOpens() != before })
+	if v, _ := DefaultBrowser().List(); len(v) != 1 || v[0].Title != "Site One" {
+		t.Errorf("control-click navigated parent: %+v", v)
+	}
+
 	// A popup retains its actual WebKit view and opener, rather than replaying its URL.
 	_, _ = DefaultBrowser().Command(map[string]any{"op": "eval", "id": "w1", "js": "window.popup = window.open('/site2'); !!window.popup"})
 	var popupID string
@@ -204,17 +211,18 @@ func TestBrowserViews(t *testing.T) {
 		t.Error("external opened a file page")
 	}
 
-	// Chords the page asked for come back to it while the view has the keyboard; others go
-	// to the site.
-	HxEvalPage(`return await window.webkit.messageHandlers.basaliskBrowser.postMessage({op:'chords',chords:['cmd+k','ctrl+alt+t']})`)
+	// App chords reach the shell even with native page focus, before AppKit can close it.
+	HxEvalPage(`window.__shell=[];window.addEventListener('basalisk:shell',e=>window.__shell.push(e.detail.detail));return true`)
 	HxEvalPage(`return await window.webkit.messageHandlers.basaliskBrowser.postMessage({op:'focus',id:'w1'})`)
-	HxKey(40, true, "k") // cmd+k
-	HxKey(8, true, "c")  // cmd+c
-	waitFor(t, "chord event", func() bool {
-		return strings.Contains(HxEvalPage(`return window.__ev.filter(e=>e.kind==='chord').map(e=>e.chord)`), "cmd+k")
+	HxKey(40, true, "k")
+	HxKey(17, true, "t")
+	HxKey(13, true, "w")
+	HxKey(8, true, "c") // Copy remains with the site.
+	waitFor(t, "shell chords", func() bool {
+		return HxEvalPage(`return window.__shell`) == `[["cmd+k","cmd+t","cmd+w"]]`
 	})
-	if got := HxEvalPage(`return window.__ev.filter(e=>e.kind==='chord').map(e=>e.chord)`); got != `[["cmd+k"]]` {
-		t.Errorf("chords forwarded = %s, want only cmd+k", got)
+	if v, _ := DefaultBrowser().List(); len(v) != 1 {
+		t.Errorf("app chord closed the native view: %+v", v)
 	}
 
 	// Hidden when not visible; a cross-origin page may not drive the views.

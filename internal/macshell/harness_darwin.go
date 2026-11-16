@@ -63,3 +63,8 @@ func HxClick(x, y float64, cmd bool) {
 	}
 	C.hxClick(C.double(x), C.double(y), flags)
 }
+
+// HxControlClick exercises Control-click without opening the macOS context menu.
+func HxControlClick(x, y float64) {
+	C.hxClick(C.double(x), C.double(y), 1<<18)
+}

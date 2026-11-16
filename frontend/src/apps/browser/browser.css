@@ -221,41 +221,9 @@
   height: 100%;
   min-height: 0;
 }
-.browser-tabs {
-  display: flex;
-  gap: 3px;
-  padding: 4px 6px;
-  overflow-x: auto;
-  background: var(--desk-bg);
-  border-bottom: 1px solid var(--desk-border);
-  flex-shrink: 0;
-}
-.browser-tab {
-  display: flex;
-  min-width: 100px;
-  max-width: 230px;
-  align-items: center;
-  border-radius: 5px;
-  background: var(--desk-panel);
-}
-.browser-tab button,
-.browser-new-tab {
-  border: 0;
-  background: transparent;
-  color: var(--desk-fg-soft);
-  cursor: pointer;
-  padding: 6px 8px;
-}
-.browser-tab [role="tab"] {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.browser-tab [aria-selected="true"] {
-  color: var(--desk-accent);
-  font-weight: 600;
-}
 .browser-tab-page {
   flex: 1;
   min-height: 0;
 }
+
+.browser, .browser-tabs-window, .browser-tab-page { min-width: 0; overflow: hidden; }

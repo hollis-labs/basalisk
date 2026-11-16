@@ -181,11 +181,17 @@ static double num(NSDictionary *m, NSString *k) {
 }
 
 static BSLWebView *createConfigured(NSString *viewID, WKWebViewConfiguration *cfg) {
+	NSString *css = @"(()=>{const s=document.createElement('style');s.textContent='*{scrollbar-width:none!important}*::-webkit-scrollbar{display:none!important}html,body{overscroll-behavior-x:none!important}';(document.head||document.documentElement).appendChild(s)})()";
+	BOOL hasStyle = NO;
+	for (WKUserScript *script in cfg.userContentController.userScripts) {
+		if ([script.source isEqualToString:css]) { hasStyle = YES; break; }
+	}
+	if (!hasStyle) [cfg.userContentController addUserScript:[[WKUserScript alloc] initWithSource:css injectionTime:WKUserScriptInjectionTimeAtDocumentEnd forMainFrameOnly:NO]];
 	BSLWebView *w = [[BSLWebView alloc] initWithFrame:NSZeroRect configuration:cfg];
 	w.bslID = viewID;
 	w.navigationDelegate = bHandler;
 	w.UIDelegate = bHandler;
-	w.allowsBackForwardNavigationGestures = YES;
+	w.allowsBackForwardNavigationGestures = NO;
 	w.allowsMagnification = YES;
 	if (@available(macOS 13.3, *)) w.inspectable = YES;
 	w.hidden = YES;
@@ -406,7 +412,7 @@ static void handle(NSDictionary *m, BSLReply reply) {
 // ⌘-click and middle-click on a link open it in a new Browser window.
 static BOOL wantsNewWindow(WKNavigationAction *a) {
 	return a.navigationType == WKNavigationTypeLinkActivated &&
-	       ((a.modifierFlags & NSEventModifierFlagCommand) || a.buttonNumber == 2);
+	       ((a.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) || a.buttonNumber == 2);
 }
 
 - (void)webView:(WKWebView *)webView
@@ -633,12 +639,15 @@ void bslBrowserInit(void *window) {
 		}
 		// A click in a view tells the page, so the desktop focuses that window.
 		if (!bMouseMonitor) {
-			bMouseMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown
+			bMouseMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown | NSEventMaskLeftMouseUp | NSEventMaskRightMouseDown
 				handler:^NSEvent *(NSEvent *e) {
 					if (e.window != bWin) return e;
 					NSView *hit = [bWin.contentView hitTest:[bWin.contentView convertPoint:e.locationInWindow fromView:nil]];
 					while (hit && ![hit isKindOfClass:[BSLWebView class]]) hit = hit.superview;
-					if (hit) emit(@{@"kind" : @"focus", @"id" : ((BSLWebView *)hit).bslID});
+					if (hit && e.type != NSEventTypeLeftMouseUp) emit(@{@"kind" : @"focus", @"id" : ((BSLWebView *)hit).bslID});
+					if (hit && (e.type == NSEventTypeLeftMouseDown || e.type == NSEventTypeLeftMouseUp) && (e.modifierFlags & NSEventModifierFlagControl)) {
+						return [NSEvent mouseEventWithType:e.type location:e.locationInWindow modifierFlags:(e.modifierFlags & ~NSEventModifierFlagControl) | NSEventModifierFlagCommand timestamp:e.timestamp windowNumber:e.windowNumber context:nil eventNumber:e.eventNumber clickCount:e.clickCount pressure:e.pressure];
+					}
 					return e;
 				}];
 		}
@@ -646,10 +655,17 @@ void bslBrowserInit(void *window) {
 		if (!bKeyMonitor) {
 			bKeyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
 				handler:^NSEvent *(NSEvent *e) {
-					if (e.window != bWin || bChords.count == 0) return e;
+					if (e.window != bWin) return e;
+					NSString *chord = chordOf(e);
+					// Handle app-level chords before AppKit's Close/Hide menu equivalents.
+					if (chord && [@[@"cmd+t", @"cmd+w", @"cmd+k", @"cmd+`", @"shift+cmd+`"] containsObject:chord]) {
+						NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"kind":@"swallowed", @"detail":chord} options:0 error:nil];
+						NSString *js = [NSString stringWithFormat:@"window.dispatchEvent(new CustomEvent('basalisk:shell',{detail:%@}));0", [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]];
+						[bPage evaluateJavaScript:js completionHandler:nil];
+						return nil;
+					}
 					BSLWebView *w = focusedView();
 					if (!w) return e;
-					NSString *chord = chordOf(e);
 					if (!chord || ![bChords containsObject:chord]) return e;
 					emit(@{@"kind" : @"chord", @"id" : w.bslID, @"chord" : chord});
 					return nil;

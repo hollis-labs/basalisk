@@ -80,7 +80,7 @@ export type WMAction =
   | { type: "swap"; a: string; b: string }
   | { type: "promote"; id: string }
   | { type: "ratio"; value: number }
-  | { type: "cycle"; delta: number }
+  | { type: "cycle"; delta: number; app?: string }
   | { type: "snap"; id: string; to: Snap; area: Rect }
 
 export const GAP = 10
@@ -244,7 +244,7 @@ export function reducer(s: WMState, a: WMAction): WMState {
     case "ratio":
       return { ...s, ratio: Math.min(0.78, Math.max(0.22, a.value)) }
     case "cycle": {
-      const open = s.wins.filter((w) => !w.minimized)
+      const open = s.wins.filter((w) => !w.minimized && (!a.app || w.app === a.app))
       if (!open.length) return s
       const at = open.findIndex((w) => w.id === s.focus)
       const next = open[(at + a.delta + open.length) % open.length]

@@ -1348,3 +1348,10 @@ button.desk-shortcut-chord:hover {
   inset: 0;
   z-index: 15000;
 }
+
+.desk-palette-modes { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--desk-border); }
+.desk-palette-modes button, .desk-palette-modes select { background: var(--desk-panel); color: var(--desk-fg); border: 1px solid var(--desk-border); border-radius: 5px; padding: 5px 9px; }
+.desk-palette-modes button[aria-pressed="true"] { color: var(--desk-accent); }
+.desk-palette-item { display: flex; align-items: center; }
+.desk-palette-item .desk-palette-row { flex: 1; min-width: 0; }
+.desk-palette-tab-close { border: 0; background: transparent; color: var(--desk-muted); padding: 10px; cursor: pointer; }

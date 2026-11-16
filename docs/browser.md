@@ -143,7 +143,13 @@ sign-in use a sheet; credentials last for the session.
 
 ## Tabs and login popups
 
-Each Browser window keeps a tab strip. New-window links, command-click, middle-click and
+Browser tabs live in the command palette rather than a tab strip or top-bar window list.
+With Browser focused, Command-K opens the Tabs view: search titles or addresses, filter to
+the focused window, select a tab, or close it with its × button or Command-W. The Commands
+view remains available alongside Tabs. Control-Tab and Shift-Control-Tab cycle tabs;
+Command-backtick cycles windows of the focused app (Shift reverses).
+
+New-window links, control-click, command-click, middle-click and
 script popups become tabs in that window. Command-T opens a tab and Command-W closes the
 current tab while the page or address bar has focus. Tabs retain their live native views
 while hidden; switching does not reload them. The desktop restores their URLs and selected
@@ -156,3 +162,9 @@ This fixes the former URL-only popup recreation. It does not bypass a site's emb
 restrictions or grant the passkey entitlement described in `browser-passkeys.md`.
 Agent browser calls and Frag clipping target the selected tab of the named desktop window;
 an explicit tab id returned by a browser tool can also be addressed.
+
+App scrollbars are hidden while scrolling remains available. Native pages also hide their
+scrollbars and suppress horizontal overscroll; swipe-to-navigate is disabled.
+Command-T in Terminal creates a shell tab; elsewhere it opens or focuses a normal Terminal
+window. Command-W closes the focused desktop window (or the current Browser tab). These
+app chords are reserved before macOS menu handling, including when keyboard ownership is on.

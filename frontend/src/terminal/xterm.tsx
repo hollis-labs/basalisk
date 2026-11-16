@@ -79,6 +79,23 @@ export function XTermView({ id, active, epoch, fontSize, keys, onExit }: Props) 
   const exitRef = useRef(onExit)
   exitRef.current = onExit
 
+  useEffect(() => {
+    const onKey = (event: Event) => {
+      const e = event as CustomEvent<{ winId: string; chord: string }>
+      if (
+        !active ||
+        host.current?.closest<HTMLElement>("[data-win]")?.dataset.win !== e.detail.winId
+      )
+        return
+      if (e.detail.chord === "cmd+t") {
+        e.preventDefault()
+        keysRef.current.newTab()
+      }
+    }
+    window.addEventListener("basalisk:terminal-key", onKey)
+    return () => window.removeEventListener("basalisk:terminal-key", onKey)
+  }, [active])
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: the terminal is built once per session; font size and callbacks are applied through refs and the effects below
   useEffect(() => {
     const el = host.current
