@@ -5,12 +5,12 @@ immutable before/after approval, and a selected list/detail result. The existing
 account preference validator and revision CAS own the effect. An intervening
 ordinary preferences update makes an old review stale; it is never overwritten.
 
-The GenUI gateway, contract and renderer are shared Substrate capabilities. This
-Go adapter uses a normal published Substrate dependency and its BOM, without a
-replacement or workspace overlay. The renderer package is still awaiting its
-owner-approved registry publication; the isolated frontend build records its
-source overlay separately and is not a normal registry-install acceptance.
-Release and deployment remain separate.
+The GenUI gateway and contract use a normal published Substrate dependency and
+its BOM. The renderer is the published `@hollis-labs/genui` package, pinned at
+`0.1.0` with the matching shared UI packages in the frontend lockfile. A fresh
+empty-cache public-registry install verifies the normal dependency graph; no
+replacement, workspace or local package overlay is required. Basalisk release
+and deployment remain separate.
 
 ## Authority and persistence
 

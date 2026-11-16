@@ -12,14 +12,15 @@ ADE exposes observation, retained-surface selection and focus. It cannot submit,
 
 `tests/adoption.test.tsx` uses the real shared kit with synthetic HTTP responses to exercise exact draft serialization, confirmation, result navigation, reconnect-before-render, unknown outcomes, invalid raw JSON, session loss, routing-only persistence and ADE refusal. These are component adoption checks, not proof of backend identity or durable execution. The paired application acceptance must use actual isolated identity, store and HTTP services.
 
-Run the focused suite from `frontend` with Vitest, Testing Library React and jsdom available:
+Install the committed registry dependencies and run the focused suite from `frontend`:
 
 ```sh
-npx vitest run --config src/apps/genui/tests/vitest.config.ts
+npm ci
+npm run test:genui
 npm run typecheck
 npx biome check src/apps/genui src/api/genui.ts
 npx eslint src/apps/genui src/api/genui.ts
 npm run build
 ```
 
-The workspace requires the reviewed GenUI package with matching app-shell and design-bindings dependencies. Local integration overlays do not establish a published package pin; normal dependency and test-tool declarations are required before landing.
+The lockfile pins the published GenUI package and matching app-shell, design-bindings and design-app-runtime dependencies. Vitest, Testing Library React and jsdom are development dependencies. CI runs the focused adoption suite alongside frontend typechecking, lint and build; no local package overlay is required.
