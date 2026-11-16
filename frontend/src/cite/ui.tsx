@@ -17,6 +17,7 @@ import {
   cloneElement,
   type ElementType,
   isValidElement,
+  memo,
   type ReactNode,
   useLayoutEffect,
   useRef,
@@ -261,7 +262,7 @@ const MARKDOWN: Components = {
 const keepTach = (url: string) => (/^(https?:|mailto:|tach:|#|\/)/i.test(url) ? url : "")
 
 /** Markdown, with references linkified in prose and left alone in code. */
-export function Markdown({ source }: { source: string }) {
+export const Markdown = memo(function Markdown({ source }: { source: string }) {
   return (
     <div className="cite-markdown">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN} urlTransform={keepTach}>
@@ -269,7 +270,7 @@ export function Markdown({ source }: { source: string }) {
       </ReactMarkdown>
     </div>
   )
-}
+})
 
 function StatusPill({
   status,

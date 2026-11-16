@@ -1,7 +1,16 @@
 /** The agent's panel: the running thread, what it is doing, and a box to talk to it. */
 
 import { ArrowUp, ChevronRight, Plus, Square, X } from "lucide-react"
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react"
+import {
+  createContext,
+  memo,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { cardFor, ResultCardView } from "../cite/cards"
 import { Markdown } from "../cite/ui"
 import { useDesk } from "../desktop/context"
@@ -189,13 +198,36 @@ function Conversation({
     })
   }, [desk, noteContext])
 
+  // Kept shortly after the typing pauses, not on every key; and when the panel or page goes.
+  const latest = useRef(draft)
+  latest.current = draft
   useEffect(() => {
-    try {
-      window.sessionStorage.setItem(draftKey, draft)
-    } catch {
-      // Not kept.
+    const save = () => {
+      try {
+        window.sessionStorage.setItem(draftKey, latest.current)
+      } catch {
+        // Not kept.
+      }
     }
+    window.addEventListener("pagehide", save)
+    return () => {
+      window.removeEventListener("pagehide", save)
+      save()
+    }
+  }, [draftKey])
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        window.sessionStorage.setItem(draftKey, draft)
+      } catch {
+        // Not kept.
+      }
+    }, 250)
+    return () => window.clearTimeout(timer)
   }, [draft, draftKey])
+
+  // Typing redraws this component; the thread below is only rebuilt when it changes.
+  const rows = useMemo(() => folded(s.items), [s.items])
 
   // Stay at the bottom while the answer grows, unless the owner scrolled up to read.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll whenever the content changes
@@ -256,7 +288,7 @@ function Conversation({
             </p>
           )}
           {s.loaded && ready && !s.items.length && <p className="agent-empty">{empty}</p>}
-          {folded(s.items).map((item) =>
+          {rows.map((item) =>
             item.kind === "steps" ? (
               <StepsFold key={item.id} tools={item.tools} />
             ) : (
@@ -327,6 +359,20 @@ type ToolItem = Extract<Item, { kind: "tool" }>
  * so the conversation reads as what was said and what came of it. A call still running, and
  * one whose result is a card (a task started, a list of records), stay as they are.
  */
+/** Whether a tool call folds away, remembered per item: items are replaced, never changed. */
+const quietCache = new WeakMap<Item, boolean>()
+function isQuiet(item: Item) {
+  let quiet = quietCache.get(item)
+  if (quiet === undefined) {
+    quiet =
+      item.kind === "tool" &&
+      !item.running &&
+      !cardFor(item.name, item.input, item.result, !!item.isError)
+    quietCache.set(item, quiet)
+  }
+  return quiet
+}
+
 function folded(items: Item[]): (Item | { kind: "steps"; id: string; tools: ToolItem[] })[] {
   const out: (Item | { kind: "steps"; id: string; tools: ToolItem[] })[] = []
   let run: ToolItem[] = []
@@ -336,11 +382,7 @@ function folded(items: Item[]): (Item | { kind: "steps"; id: string; tools: Tool
     run = []
   }
   for (const item of items) {
-    const quiet =
-      item.kind === "tool" &&
-      !item.running &&
-      !cardFor(item.name, item.input, item.result, !!item.isError)
-    if (quiet) run.push(item as ToolItem)
+    if (isQuiet(item)) run.push(item as ToolItem)
     else {
       flush()
       out.push(item)
@@ -372,7 +414,7 @@ function StepsFold({ tools }: { tools: ToolItem[] }) {
   )
 }
 
-function ItemView({ item }: { item: Item }) {
+const ItemView = memo(function ItemView({ item }: { item: Item }) {
   switch (item.kind) {
     case "user":
       if (item.auto) return <div className="agent-auto">{item.auto}</div>
@@ -397,7 +439,7 @@ function ItemView({ item }: { item: Item }) {
         </p>
       )
   }
-}
+})
 
 const pretty = (v: unknown) => {
   if (v === undefined) return ""
@@ -412,9 +454,10 @@ const pretty = (v: unknown) => {
 }
 
 /** One tool call: a line that says what was done, opening to what was sent and what came back. */
-function ToolRow({ item }: { item: Extract<Item, { kind: "tool" }> }) {
+const ToolRow = memo(function ToolRow({ item }: { item: Extract<Item, { kind: "tool" }> }) {
   const [open, setOpen] = useState(false)
-  const input = pretty(item.input)
+  // Only worked out when the row is open.
+  const input = open ? pretty(item.input) : ""
   return (
     <div className="agent-tool" data-error={!!item.isError} data-running={item.running}>
       <button type="button" className="agent-tool-line" onClick={() => setOpen((o) => !o)}>
@@ -436,7 +479,7 @@ function ToolRow({ item }: { item: Extract<Item, { kind: "tool" }> }) {
       )}
     </div>
   )
-}
+})
 
 function Working({ items }: { items: Item[] }) {
   const last = items[items.length - 1]
