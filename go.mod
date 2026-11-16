@@ -14,7 +14,7 @@ require (
 	github.com/hollis-labs/libs/security/pairing v0.0.0-20261018164511-e8bfb38b4f31
 	github.com/hollis-labs/libs/security/secrets v0.1.0
 	github.com/hollis-labs/libs/ui/ui-go v0.4.0
-	github.com/hollis-labs/substrate v0.1.1-0.20261116072258-6673431862c6
+	github.com/hollis-labs/substrate v0.1.1-0.20261116220807-ab6c69519f45
 	github.com/pkg/sftp v1.13.12
 	github.com/spf13/cobra v1.10.2
 	github.com/wailsapp/wails/v3 v3.1.0
