@@ -20,7 +20,7 @@ export type BrowserEvent =
   | ({ kind: "state" } & BrowserState)
   | { kind: "error"; id: string; message: string; url: string }
   | { kind: "crashed"; id: string }
-  | { kind: "open"; id: string; url: string; view_id?: string }
+  | { kind: "open"; id: string; url: string; view_id?: string; background?: boolean }
   | { kind: "close"; id: string }
   | { kind: "focus"; id: string }
   | { kind: "chord"; id: string; chord: string }

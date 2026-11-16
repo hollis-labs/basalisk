@@ -121,7 +121,8 @@ history" forgets everything, after a confirm.
 
 ## Links and the way out
 
-⌘-click and middle-click on a link open it in a new Browser tab, and so does WebKit's own
+⌘-click, Control-click and middle-click on a link open it in a background Browser tab
+(Shift switches to it), and so does WebKit's own
 link menu ("Open Link in New Window", beside "Copy Link"), since it goes through the same
 new-window path as window.open. The ↗ button in the chrome opens the current page in the
 default browser, for a site that needs extensions or DRM.

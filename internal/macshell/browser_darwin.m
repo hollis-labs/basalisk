@@ -409,7 +409,7 @@ static void handle(NSDictionary *m, BSLReply reply) {
 
 // ---- Navigation ----
 
-// ⌘-click and middle-click on a link open it in a new Browser window.
+// Modified link clicks open background tabs unless Shift requests foreground.
 static BOOL wantsNewWindow(WKNavigationAction *a) {
 	return a.navigationType == WKNavigationTypeLinkActivated &&
 	       ((a.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl)) || a.buttonNumber == 2);
@@ -422,7 +422,8 @@ static BOOL wantsNewWindow(WKNavigationAction *a) {
 	NSString *scheme = u.scheme.lowercaseString ?: @"";
 	BSLWebView *w = (BSLWebView *)webView;
 	if (wantsNewWindow(action) && action.targetFrame.isMainFrame) {
-		emit(@{@"kind" : @"open", @"id" : w.bslID, @"url" : u.absoluteString ?: @""});
+		emit(@{@"kind" : @"open", @"id" : w.bslID, @"url" : u.absoluteString ?: @"",
+		       @"background" : @((BOOL)!(action.modifierFlags & NSEventModifierFlagShift))});
 		decisionHandler(WKNavigationActionPolicyCancel);
 		return;
 	}
@@ -555,7 +556,8 @@ static void failed(WKWebView *webView, NSError *error) {
 	NSString *childID = [@"tab-" stringByAppendingString:NSUUID.UUID.UUIDString];
 	BSLWebView *child = createConfigured(childID, configuration);
 	emit(@{@"kind" : @"open", @"id" : ((BSLWebView *)webView).bslID,
-	       @"view_id" : childID, @"url" : action.request.URL.absoluteString ?: @"about:blank"});
+	       @"view_id" : childID, @"url" : action.request.URL.absoluteString ?: @"about:blank",
+	       @"background" : @((BOOL)(wantsNewWindow(action) && !(action.modifierFlags & NSEventModifierFlagShift)))});
 	return child;
 }
 

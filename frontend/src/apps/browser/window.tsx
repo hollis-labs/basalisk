@@ -123,14 +123,14 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
     [winId],
   )
   const add = useCallback(
-    (url = HOME, nativeID?: string) => {
+    (url = HOME, nativeID?: string, background = false) => {
       const id = nativeID ?? `${winId}-tab-${crypto.randomUUID()}`
       setTabs((old) =>
         old.some((t) => t.id === id)
           ? old
           : [...old, { id, url, focusAddress: !nativeID && url === HOME }],
       )
-      select(id)
+      if (!background) select(id)
     },
     [select, winId],
   )
@@ -231,7 +231,7 @@ function BrowserPage({
   active: boolean
   focusAddress: boolean
   onState: (s: BrowserState) => void
-  onOpen: (url: string, id?: string) => void
+  onOpen: (url: string, id?: string, background?: boolean) => void
   onClose: (id: string) => void
 }) {
   const desk = useDesk()
@@ -376,7 +376,7 @@ function BrowserPage({
           setError("This page stopped working.")
           break
         case "open":
-          onOpen(ev.url || "about:blank", ev.view_id)
+          onOpen(ev.url || "about:blank", ev.view_id, ev.background)
           break
         case "close":
           onClose(viewId)

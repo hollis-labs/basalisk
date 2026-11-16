@@ -122,6 +122,9 @@ host.remove();style.remove();return result`, string(css)))
 	before := countOpens()
 	HxClick(112, 742, true)
 	waitFor(t, "cmd-click open", func() bool { return countOpens() != before })
+	if got := HxEvalPage(`return window.__ev.filter(e=>e.kind==='open').at(-1).background`); got != `[true]` {
+		t.Errorf("modified link should open in background: %s", got)
+	}
 	if v, _ := DefaultBrowser().List(); len(v) != 1 || v[0].Title != "Site One" {
 		t.Errorf("the page moved: %+v", v)
 	}
