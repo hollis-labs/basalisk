@@ -1,0 +1,21 @@
+/* The shared ADE interface in the desktop's colours, and where the guide sits. */
+:root {
+  --ade-agent: var(--desk-accent, #e2a53b);
+  --ade-bg: var(--desk-panel, #16181c);
+  --ade-fg: var(--desk-fg, #e8e6e1);
+  --ade-soft: var(--desk-fg-soft, #9aa0a8);
+  --ade-border: var(--desk-border, #2c3038);
+}
+.ade-dock {
+  position: fixed;
+  left: 50%;
+  bottom: 56px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  z-index: 2147483001;
+  pointer-events: none;
+}
+.ade-dock > * {
+  pointer-events: auto;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.45);
+}

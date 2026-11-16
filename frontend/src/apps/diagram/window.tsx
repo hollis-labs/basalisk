@@ -1,3 +1,5 @@
+import { at as anchorAt } from "@hollis-labs/ade-core"
+import { useSurface } from "@hollis-labs/ade-react"
 import {
   ChevronLeft,
   ChevronRight,
@@ -26,6 +28,7 @@ import {
   useRef,
   useState,
 } from "react"
+import { hub } from "../../ade"
 import {
   COLLAB_CHANGED,
   type CollabAnchor,
@@ -68,6 +71,7 @@ import {
 } from "./model"
 import { Defs, extent, ICON_NAMES, LEGEND_H, laneHeads, legendOf, Scene } from "./render"
 import { routeAll } from "./route"
+import { diagramSurface, diagramSurfaceId } from "./surface"
 import { TEMPLATES, type Template, templateBody } from "./templates"
 import { paletteFor } from "./theme"
 import "../../collab/collab.css"
@@ -133,6 +137,36 @@ export function DiagramWindow({ winId, args }: WindowProps) {
   nameRef.current = name
   const saved = doc ? doc.body : ""
   const dirty = !!doc && (serialize(dia) !== serialize(fromBody(saved)) || title !== doc.title)
+  // The diagram as a surface the owner and the agent both point at (surface.ts, ../../ade).
+  const surface = useSurface(
+    () =>
+      diagramSurface({
+        winId,
+        doc,
+        dia,
+        dirty,
+        selected: sel,
+        svg: svg.current,
+        select: (type, id) => setSel({ type, id }),
+      }),
+    hub,
+  )
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tell the hub when the content changes
+  useEffect(() => surface.changed(), [surface, doc, dia])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: and when the view moves
+  useEffect(() => surface.moved(), [surface, view])
+  // What the owner has selected is what "this" means to the agent.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: follows the selection
+  useEffect(() => {
+    const id = diagramSurfaceId(winId)
+    hub.attend({
+      actor: "user",
+      style: "select",
+      anchors: sel && sel.type !== "group" ? [anchorAt(id, sel.type, sel.id)] : [],
+      slot: id,
+    })
+    surface.changed() // a guide may be waiting on a selection
+  }, [sel, winId, surface])
   const dirtyRef = useRef(dirty)
   dirtyRef.current = dirty
   const theme: Theme = dia.theme ?? "app"
