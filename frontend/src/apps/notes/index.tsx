@@ -1,6 +1,7 @@
 import {
   Check,
   Code2,
+  Columns2,
   Copy,
   Eye,
   FilePlus2,
@@ -139,6 +140,9 @@ function NotesWindow({ winId, args }: WindowProps) {
   const [nonce, setNonce] = useState(0)
   // Editing (files only): the text being edited, or null when reading.
   const [draft, setDraft] = useState<string | null>(null)
+  const [split, setSplit] = useState(false)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: split view is opt-in for each note
+  useEffect(() => setSplit(false), [key])
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState("")
   const [conflict, setConflict] = useState(false)
@@ -405,7 +409,13 @@ function NotesWindow({ winId, args }: WindowProps) {
     [desk],
   )
   const headings = useRichPage(view, viewText, openLinked, rendered, createMissing)
-  useRichPage(preview, previewText, openLinked, draft !== null && !!doc?.markdown, createMissing)
+  useRichPage(
+    preview,
+    previewText,
+    openLinked,
+    draft !== null && !!doc?.markdown && split,
+    createMissing,
+  )
   const linkedFrom = useBacklinks(doc?.file, wiki, rendered && outline)
   // Opened at an anchor (a link from another note): scroll there once it is drawn.
   const anchor = typeof args.anchor === "string" ? args.anchor : ""
@@ -501,6 +511,7 @@ function NotesWindow({ winId, args }: WindowProps) {
             type="button"
             title="Edit"
             onClick={() => {
+              setSplit(false)
               setDraft(doc.text)
               window.requestAnimationFrame(() => editor.current?.focus())
             }}
@@ -510,6 +521,17 @@ function NotesWindow({ winId, args }: WindowProps) {
         )}
         {draft !== null && (
           <>
+            {doc.markdown && (
+              <button
+                type="button"
+                title={split ? "Edit only" : "Split editor and preview"}
+                aria-label="Split editor and preview"
+                aria-pressed={split}
+                onClick={() => setSplit((value) => !value)}
+              >
+                <Columns2 aria-hidden="true" size={14} strokeWidth={1.6} />
+              </button>
+            )}
             <button
               type="button"
               title="Save (⌘S)"
@@ -659,7 +681,7 @@ function NotesWindow({ winId, args }: WindowProps) {
         </div>
       )}
       {draft !== null ? (
-        <div className="notes-edit" data-preview={doc.markdown}>
+        <div className="notes-edit" data-preview={doc.markdown && split}>
           <textarea
             ref={editor}
             className="notes-editor"
@@ -675,7 +697,7 @@ function NotesWindow({ winId, args }: WindowProps) {
             data-keys-own={EDITOR_KEYS}
             aria-label={`Edit ${doc.title}`}
           />
-          {doc.markdown && (
+          {doc.markdown && split && (
             <div className="notes-preview">
               <article className="notes-page" ref={preview}>
                 <Markdown source={previewText} />

@@ -39,6 +39,8 @@ export interface WMState {
   /** Share of the width the master takes. */
   ratio: number
   seq: number
+  /** Previous windows in the expanded workspace, newest last. */
+  expandedTrail?: string[]
   z: number
 }
 
@@ -115,6 +117,9 @@ function restored(layout: Layout, known: (app: string) => boolean): WMState | nu
     const seq = Math.max(num(saved.seq, 0), ...wins.map((w) => Number(w.id.split("-").pop()) || 0))
     return {
       wins,
+      expandedTrail: Array.isArray(saved.expandedTrail)
+        ? saved.expandedTrail.filter((id) => wins.some((w) => w.id === id && !w.minimized))
+        : [],
       focus: wins.some((w) => w.id === saved.focus) ? (saved.focus as string) : null,
       layout,
       ratio: Math.min(0.78, Math.max(0.22, num(saved.ratio, 0.56))),
@@ -157,6 +162,41 @@ function nextFocus(s: WMState, gone: string): string | null {
   return rest.reduce((a, b) => (b.z > a.z ? b : a)).id
 }
 
+function focusWindow(s: WMState, id: string): WMState {
+  if (!s.wins.some((w) => w.id === id)) return s
+  const current = s.wins.find((w) => w.id === s.focus)
+  let next = s
+  if (current?.maximized && current.id !== id) {
+    next = patch(patch(s, current.id, { maximized: false }), id, { maximized: true })
+    next.expandedTrail = [
+      ...(s.expandedTrail ?? []).filter((previous) => previous !== id && previous !== current.id),
+      current.id,
+    ]
+  }
+  return { ...patch(next, id, { z: s.z + 1, minimized: false }), focus: id, z: s.z + 1 }
+}
+
+function leaveWindow(s: WMState, id: string, close: boolean): WMState {
+  const leaving = s.wins.find((w) => w.id === id)
+  const trail = (s.expandedTrail ?? []).filter(
+    (previous) => previous !== id && s.wins.some((w) => w.id === previous && !w.minimized),
+  )
+  let next: WMState = {
+    ...s,
+    wins: close
+      ? s.wins.filter((w) => w.id !== id)
+      : s.wins.map((w) => (w.id === id ? { ...w, minimized: true, maximized: false } : w)),
+    expandedTrail: trail,
+  }
+  if (s.focus !== id) return next
+  if (leaving?.maximized && trail.length) {
+    const previous = trail[trail.length - 1]
+    next = patch({ ...next, expandedTrail: trail.slice(0, -1) }, previous, { maximized: true })
+    return focusWindow({ ...next, focus: null }, previous)
+  }
+  return { ...next, focus: nextFocus(next, id) }
+}
+
 export function reducer(s: WMState, a: WMAction): WMState {
   switch (a.type) {
     case "open": {
@@ -189,7 +229,7 @@ export function reducer(s: WMState, a: WMAction): WMState {
         args: a.args ?? {},
         key: a.key,
       }
-      return { ...s, wins: [...s.wins, win], focus: win.id, seq: s.seq + 1, z: s.z + 1 }
+      return focusWindow({ ...s, wins: [...s.wins, win], seq: s.seq + 1 }, win.id)
     }
     case "title":
       return patch(s, a.id, { title: a.title })
@@ -198,13 +238,9 @@ export function reducer(s: WMState, a: WMAction): WMState {
     case "dirty":
       return patch(s, a.id, { dirty: a.dirty })
     case "close":
-      return {
-        ...s,
-        wins: s.wins.filter((w) => w.id !== a.id),
-        focus: s.focus === a.id ? nextFocus(s, a.id) : s.focus,
-      }
+      return leaveWindow(s, a.id, true)
     case "focus":
-      return { ...patch(s, a.id, { z: s.z + 1, minimized: false }), focus: a.id, z: s.z + 1 }
+      return focusWindow(s, a.id)
     case "rect":
       return patch(s, a.id, a.rect)
     case "float": {
@@ -213,13 +249,10 @@ export function reducer(s: WMState, a: WMAction): WMState {
     }
     case "maximize": {
       const w = s.wins.find((x) => x.id === a.id)
-      return w ? patch(s, a.id, { maximized: !w.maximized }) : s
+      return w ? patch({ ...s, expandedTrail: [] }, a.id, { maximized: !w.maximized }) : s
     }
     case "minimize":
-      return {
-        ...patch(s, a.id, { minimized: true }),
-        focus: s.focus === a.id ? nextFocus(s, a.id) : s.focus,
-      }
+      return leaveWindow(s, a.id, false)
     case "layout": {
       const layout = a.layout ?? (s.layout === "tile" ? "float" : "tile")
       try {
@@ -227,7 +260,12 @@ export function reducer(s: WMState, a: WMAction): WMState {
       } catch {
         // Not remembered.
       }
-      return { ...s, layout, wins: s.wins.map((w) => ({ ...w, maximized: false })) }
+      return {
+        ...s,
+        expandedTrail: [],
+        layout,
+        wins: s.wins.map((w) => ({ ...w, maximized: false })),
+      }
     }
     case "swap": {
       const i = s.wins.findIndex((w) => w.id === a.a)
@@ -248,14 +286,7 @@ export function reducer(s: WMState, a: WMAction): WMState {
       if (!open.length) return s
       const at = open.findIndex((w) => w.id === s.focus)
       const next = open[(at + a.delta + open.length) % open.length]
-      const current = open[at]
-      // Cycling a maximized app replaces the view in place instead of leaving it
-      // covering the newly focused (possibly tiled) window.
-      const cycling =
-        a.app && current?.maximized && next.id !== current.id
-          ? patch(patch(s, current.id, { maximized: false }), next.id, { maximized: true })
-          : s
-      return reducer(cycling, { type: "focus", id: next.id })
+      return focusWindow(s, next.id)
     }
     case "snap": {
       const { area } = a

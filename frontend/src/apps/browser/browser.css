@@ -230,3 +230,20 @@
 }
 
 .browser, .browser-tabs-window, .browser-tab-page { min-width: 0; overflow: hidden; }
+
+.browser-tab-pulse {
+  position: absolute;
+  inset: 1px;
+  border: 2px solid var(--desk-accent);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: browser-tab-pulse 850ms ease-out forwards;
+}
+@keyframes browser-tab-pulse {
+  from { opacity: 1; transform: scale(0.6); }
+  to { opacity: 0; transform: scale(1.5); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .browser-tab-pulse { animation-name: browser-tab-fade; }
+  @keyframes browser-tab-fade { from { opacity: 1; } to { opacity: 0; } }
+}

@@ -112,6 +112,12 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
   const [selected, setSelected] = useState(
     () => tabs[typeof args.active_tab === "number" ? args.active_tab : 0]?.id ?? tabs[0].id,
   )
+  const [tabPulse, setTabPulse] = useState(0)
+  useEffect(() => {
+    if (!tabPulse) return
+    const timer = window.setTimeout(() => setTabPulse(0), 900)
+    return () => window.clearTimeout(timer)
+  }, [tabPulse])
   const tabsRef = useRef(tabs)
   tabsRef.current = tabs
   const select = useCallback(
@@ -131,6 +137,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
           : [...old, { id, url, focusAddress: !nativeID && url === HOME }],
       )
       if (!background) select(id)
+      else setTabPulse((value) => value + 1)
     },
     [select, winId],
   )
@@ -205,6 +212,7 @@ export function BrowserWindow({ winId, args }: { winId: string; args: Record<str
             args={{ url: t.url, file: t.file }}
             active={selected === t.id}
             focusAddress={t.focusAddress ?? false}
+            tabPulse={selected === t.id ? tabPulse : 0}
             onState={state}
             onOpen={add}
             onClose={close}
@@ -221,6 +229,7 @@ function BrowserPage({
   args,
   active,
   focusAddress,
+  tabPulse,
   onState,
   onOpen,
   onClose,
@@ -230,6 +239,7 @@ function BrowserPage({
   args: Record<string, unknown>
   active: boolean
   focusAddress: boolean
+  tabPulse: number
   onState: (s: BrowserState) => void
   onOpen: (url: string, id?: string, background?: boolean) => void
   onClose: (id: string) => void
@@ -659,10 +669,19 @@ function BrowserPage({
           type="button"
           className="files-icon"
           title="New tab (⌘T)"
+          style={{ position: "relative" }}
           aria-label="New tab"
           onClick={() => onOpen(HOME)}
         >
           <Plus size={15} strokeWidth={1.6} aria-hidden="true" />
+          {tabPulse > 0 && (
+            <span
+              key={tabPulse}
+              className="browser-tab-pulse"
+              role="status"
+              aria-label="Tab opened in background"
+            />
+          )}
         </button>
         <button
           type="button"
