@@ -61,8 +61,32 @@ export function registerAgentTools(list: AgentTool[]) {
   for (const t of list) tools.set(t.name, t)
 }
 
+/**
+ * Tools that come and go with what is open (a surface's own actions: ../ade). A source is
+ * asked each time the list is needed; a fixed tool of the same name wins.
+ */
+const sources: (() => AgentTool[])[] = []
+export function registerAgentToolSource(source: () => AgentTool[]) {
+  sources.push(source)
+}
+
+/** Every tool on offer now, by name. */
+function current(): Map<string, AgentTool> {
+  if (!sources.length) return tools
+  const all = new Map<string, AgentTool>()
+  for (const source of sources) {
+    try {
+      for (const t of source()) all.set(t.name, t)
+    } catch {
+      // A source that fails offers nothing this time.
+    }
+  }
+  for (const [name, t] of tools) all.set(name, t)
+  return all
+}
+
 export const toolSpecs = (): ToolSpec[] =>
-  [...tools.values()].map(({ name, description, input_schema, level }) => ({
+  [...current().values()].map(({ name, description, input_schema, level }) => ({
     name,
     description,
     input_schema,
@@ -73,8 +97,9 @@ export const toolSpecs = (): ToolSpec[] =>
 export function describeCall(name: string, input: unknown): string {
   try {
     return (
-      tools.get(name)?.describe?.((input ?? {}) as Record<string, unknown>) ??
-      describeServerCall(name, input)
+      current()
+        .get(name)
+        ?.describe?.((input ?? {}) as Record<string, unknown>) ?? describeServerCall(name, input)
     )
   } catch {
     return ""
@@ -88,7 +113,7 @@ export async function runTool(
   desk: DeskAPI,
   signal: AbortSignal = new AbortController().signal,
 ): Promise<{ content: string; isError: boolean; images?: ToolImage[] }> {
-  const tool = tools.get(name)
+  const tool = current().get(name)
   if (!tool) return { content: `The desktop has no tool named "${name}".`, isError: true }
   try {
     let out = await tool.run((input ?? {}) as Record<string, unknown>, desk, { signal })

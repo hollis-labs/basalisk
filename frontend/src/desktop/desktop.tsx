@@ -33,6 +33,7 @@ import { openTerminalWindow } from "../terminal/solo"
 import "../apps"
 import "./commands"
 import "../agent/contexts"
+import { AdeLayer } from "../ade"
 import { AttentionChip } from "../agent/chip"
 import { SHELL_EVENT, type ShellEvent, type ShellStatus, shell } from "../api/shell"
 import { InboxBell } from "../apps/inbox/bell"
@@ -714,6 +715,7 @@ export function Desktop() {
           />
         )}
         <CiteCardLayer />
+        <AdeLayer />
       </div>
     </DeskContext.Provider>
   )
