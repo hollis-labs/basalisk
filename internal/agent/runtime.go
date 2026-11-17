@@ -39,6 +39,10 @@ type Config struct {
 	MaxTokens int
 	// MaxSteps bounds the model invocations in one run (each tool round is one).
 	MaxSteps int
+	// TaskMaxTokens and TaskMaxSteps are the same two limits for a task agent's run, which
+	// works alone on something long and so is given more room.
+	TaskMaxTokens int
+	TaskMaxSteps  int
 	// CompactAt is the size of a thread's last request, in tokens, past which its older
 	// messages are summarised for the model before the next request (compact.go).
 	// Negative: never.
@@ -56,6 +60,12 @@ func (c Config) withDefaults() Config {
 	}
 	if c.MaxSteps <= 0 {
 		c.MaxSteps = 24
+	}
+	if c.TaskMaxTokens <= 0 {
+		c.TaskMaxTokens = 16000
+	}
+	if c.TaskMaxSteps <= 0 {
+		c.TaskMaxSteps = 96
 	}
 	if c.CompactAt == 0 {
 		c.CompactAt = defaultCompactAt
@@ -606,6 +616,10 @@ func (r *run) execute(ctx context.Context) {
 	finish := chatstream.FinishStop
 	var failure error
 	steps, tries := 0, 0
+	maxSteps, maxTokens := rt.cfg.MaxSteps, rt.cfg.MaxTokens
+	if r.task {
+		maxSteps, maxTokens = rt.cfg.TaskMaxSteps, rt.cfg.TaskMaxTokens
+	}
 
 	// A thread that has grown long is shortened for the model before it is called again.
 	if r.route == nil {
@@ -625,7 +639,7 @@ func (r *run) execute(ctx context.Context) {
 			if ctx.Err() != nil {
 				return step{}, runloop.Terminate
 			}
-			if steps >= rt.cfg.MaxSteps {
+			if steps >= maxSteps {
 				finish = chatstream.FinishTurnLimit
 				return step{}, runloop.Finish
 			}
@@ -645,7 +659,7 @@ func (r *run) execute(ctx context.Context) {
 				RequireTerminal: true,
 				Stream: func(ctx context.Context) (<-chan llmtypes.StreamEvent, error) {
 					return rt.provider.StreamChat(ctx, llmtypes.ChatRequest{
-						Model: rt.cfg.Model, MaxTokens: rt.cfg.MaxTokens,
+						Model: rt.cfg.Model, MaxTokens: maxTokens,
 						SystemPrompt: r.system(), Messages: r.history, Tools: r.defs,
 					})
 				},
@@ -750,7 +764,65 @@ func (r *run) execute(ctx context.Context) {
 	if failure == nil {
 		failure = loopErr
 	}
+	if r.task && failure == nil && ctx.Err() == nil && (finish == chatstream.FinishTurnLimit || finish == chatstream.FinishLength) {
+		r.lastReport(ctx, finish)
+	}
 	r.end(ctx, finish, failure)
+}
+
+// lastReportTokens is the room a task agent has for the report it writes at a limit.
+const lastReportTokens = 4000
+
+// lastReport gives a task agent that ran into a limit one more request, with no tools, to
+// write down where it got to, so the work it did is not lost with the run. If the request
+// fails the task keeps whatever it last said.
+func (r *run) lastReport(ctx context.Context, finish chatstream.FinishReason) {
+	rt := r.rt
+	why := "You have used all the steps this task is allowed."
+	if finish == chatstream.FinishLength {
+		why = "Your last message was cut off at the length limit."
+	}
+	r.keep(ctx, "user", []llmtypes.ContentBlock{{Type: "text", Text: why + " You cannot call any more tools. Write your report now, and keep it short enough to finish: what you did, what you found (with the paths, links and figures someone would need to carry on), and what is left to do."}})
+	r.msgN++
+	msgID := fmt.Sprintf("m%d", r.msgN)
+	r.emit(chatstream.Event{Verb: chatstream.VerbMessageStart, MessageID: msgID, Role: "assistant"})
+	part := ""
+	res, err := turn.ExecuteTurn(ctx, turn.TurnRequest{
+		IdleTimeout:     90 * time.Second,
+		RequireTerminal: true,
+		Stream: func(ctx context.Context) (<-chan llmtypes.StreamEvent, error) {
+			return rt.provider.StreamChat(ctx, llmtypes.ChatRequest{
+				Model: rt.cfg.Model, MaxTokens: lastReportTokens,
+				SystemPrompt: r.system(), Messages: r.history,
+			})
+		},
+		Sink: turn.TurnSink{
+			OnDelta: func(s string) {
+				if part == "" {
+					r.partN++
+					part = fmt.Sprintf("p%d", r.partN)
+					r.emit(chatstream.Event{Verb: chatstream.VerbPartStart, PartID: part, Kind: string(chatstream.PartText)})
+				}
+				r.emit(chatstream.Event{Verb: chatstream.VerbPartDelta, PartID: part, Text: s})
+			},
+		},
+	})
+	if part != "" {
+		r.emit(chatstream.Event{Verb: chatstream.VerbPartEnd, PartID: part})
+	}
+	r.emit(chatstream.Event{Verb: chatstream.VerbMessageEnd, MessageID: msgID})
+	if res.Usage != nil {
+		r.in += res.Usage.InputTokens + res.Usage.CacheReadTokens + res.Usage.CacheCreationTokens
+		r.out += res.Usage.OutputTokens
+		r.emit(chatstream.Event{Verb: chatstream.VerbUsage, Usage: r.usage(chatstream.UsageCumulative)})
+	}
+	if err != nil {
+		slog.Warn("agent: a task's last report was not written", "run", r.id, "err", err)
+	}
+	if res.Text != "" {
+		r.keep(ctx, "assistant", []llmtypes.ContentBlock{{Type: "text", Text: res.Text}})
+		r.lastText = res.Text
+	}
 }
 
 // direct carries out the router's decision: the tool call the rule names, shown and kept
