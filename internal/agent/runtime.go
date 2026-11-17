@@ -129,14 +129,15 @@ type Runtime struct {
 	// base outlives a request: a run keeps going when the page that started it goes away.
 	base context.Context
 
-	mu      sync.Mutex
-	runs    map[string]*run            // running, by id
-	busy    map[string]string          // thread -> its running run
-	session map[string]map[string]bool // owner -> tools allowed until the app restarts
-	sources []ToolSource               // where the server's own tools come from (AddTools)
-	router  *Router                    // rules tried before the model (SetRouter); nil: none
-	reflex  *ReflexSet                 // standing rules over the conversation (SetReflexes); nil: none
-	pages   map[string]page            // owner -> the desktop page as last seen (for tasks)
+	mu         sync.Mutex
+	runs       map[string]*run            // running, by id
+	busy       map[string]string          // thread -> its running run
+	session    map[string]map[string]bool // owner -> tools allowed until the app restarts
+	sources    []ToolSource               // where the server's own tools come from (AddTools)
+	answerLink AnswerLink                 // how a linked question's answer is written down (questions.go)
+	router     *Router                    // rules tried before the model (SetRouter); nil: none
+	reflex     *ReflexSet                 // standing rules over the conversation (SetReflexes); nil: none
+	pages      map[string]page            // owner -> the desktop page as last seen (for tasks)
 }
 
 // SetReflexes gives the agent its reflexes. Call before serving.
@@ -189,7 +190,7 @@ func (rt *Runtime) AddTools(src ToolSource) {
 // ServerTools are the server's own tools as of now, for the interface to list.
 func (rt *Runtime) ServerTools(ctx context.Context) []ToolSpec {
 	out := []ToolSpec{}
-	for _, t := range append(rt.taskTools(), rt.serverTools(ctx)...) {
+	for _, t := range append(append(rt.taskTools(), rt.askTools()...), rt.serverTools(ctx)...) {
 		out = append(out, t.Spec)
 	}
 	return out
@@ -307,7 +308,7 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	var defs []llmtypes.ToolDefinition
 	// The server's own tools first: a page cannot take one of their names.
 	server := map[string]ServerTool{}
-	own := rt.serverTools(ctx)
+	own := append(rt.askTools(), rt.serverTools(ctx)...)
 	if !isTask {
 		own = append(rt.taskTools(), own...)
 	}
@@ -405,6 +406,11 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 		if ended := tasksBlock(rt.store.unreported(ctx, in.Owner)); ended != "" {
 			blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: ended})
 		}
+	}
+	// What the thread has asked the owner that still waits on them (not with the answers
+	// themselves, which close the set they are for).
+	if in.Auto == "" {
+		blocks = append(blocks, rt.questionsBlocks(ctx, thread)...)
 	}
 	blocks = append(blocks, llmtypes.ContentBlock{Type: "text", Text: text})
 	// The reflexes, for a message the router did not take: a reminder goes to the model

@@ -19,6 +19,8 @@ import type { DeskSnapshot, TaskInfo } from "./api"
 import { seenNews } from "./attention"
 import { ContextChip } from "./contexts-chip"
 import { NeedsStrip } from "./needs"
+import { QuestionCards, taskAsks } from "./question-cards"
+import { useQuestions } from "./questions"
 import { type AgentSession, type Approval, type Item, mainSession, taskSession } from "./session"
 import { closeTask, openTask, toneOf, useTasks } from "./tasks"
 import { describeCall } from "./tools"
@@ -85,7 +87,8 @@ function TaskStrip() {
 /** One task in the strip. It says so when its agent is waiting on a permission question. */
 function TaskRow({ task: t }: { task: TaskInfo }) {
   const desk = useDesk()
-  const asks = !!taskSession(t.id).use().approval
+  const questions = taskAsks(useQuestions(), t.id)
+  const asks = !!taskSession(t.id).use().approval || questions > 0
   // A run the assistant started for itself (sorting mail) stays out of sight unless it needs
   // an answer or failed; it is listed in Done for you.
   if (t.origin.startsWith("trigger:mail") && !asks && t.state !== "failed") return null
@@ -95,7 +98,11 @@ function TaskRow({ task: t }: { task: TaskInfo }) {
         type="button"
         className="agent-task-open"
         title={
-          asks ? "It is asking permission: open its window to answer" : "Open this task's window"
+          questions
+            ? "It has questions for you: open its window to answer"
+            : asks
+              ? "It is asking permission: open its window to answer"
+              : "Open this task's window"
         }
         onClick={() => openTask(desk, t.id, t.title)}
       >
@@ -295,6 +302,7 @@ function Conversation({
               <ItemView key={item.id} item={item} />
             ),
           )}
+          <QuestionCards session={session} />
           {s.run && !s.approval && <Working items={s.items} />}
           {s.approval && <ApprovalCard q={s.approval} />}
           {s.error && (

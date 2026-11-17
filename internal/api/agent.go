@@ -45,6 +45,10 @@ func (a *API) agentRoutes() []route {
 		route{"GET", "/api/agent/tasks", r, a.agentTasks},
 		route{"POST", "/api/agent/tasks", w, a.agentTaskStart},
 		route{"DELETE", "/api/agent/tasks/{id}", w, a.agentTaskClose},
+		route{"GET", "/api/agent/questions", r, a.agentQuestions},
+		route{"PUT", "/api/agent/questions/{set}/{id}", w, a.agentQuestionAnswer},
+		route{"POST", "/api/agent/questions/{set}/submit", w, a.agentQuestionsSubmit},
+		route{"DELETE", "/api/agent/questions/{set}", w, a.agentQuestionsDismiss},
 		route{"GET", "/api/agent/tools", r, a.agentTools},
 		route{"GET", "/api/agent/automation", r, a.agentAutomation},
 		route{"GET", "/api/agent/grants", r, a.agentGrants},
@@ -194,6 +198,99 @@ func (a *API) agentTaskClose(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.agent.Store().ArchiveTask(r.Context(), owner, id); err != nil {
 		fail(w, 500, "The task could not be put away.")
+		return
+	}
+	w.WriteHeader(204)
+}
+
+// agentQuestions lists what the agent has asked that still waits on the owner (questions.go).
+func (a *API) agentQuestions(w http.ResponseWriter, r *http.Request) {
+	owner, err := a.ownerID(r)
+	if err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	sets, err := a.agent.Store().OpenQuestionSets(r.Context(), owner)
+	if err != nil {
+		fail(w, 500, "The questions could not be read.")
+		return
+	}
+	reply(w, 200, map[string]any{"sets": sets})
+}
+
+// questionsFail answers for an error from the questions.
+func questionsFail(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, agent.ErrNoQuestions):
+		fail(w, 404, "There are no such questions.")
+	case errors.Is(err, agent.ErrQuestionsClosed):
+		fail(w, 409, "Those questions have already been sent or put away.")
+	case errors.Is(err, agent.ErrBusy):
+		fail(w, 409, "The agent is still working on the last message. Send the answers when it is done.")
+	case errors.Is(err, agent.ErrNotReady):
+		fail(w, 503, "No model is configured for the agent.")
+	default:
+		fail(w, 400, err.Error())
+	}
+}
+
+// agentQuestionAnswer holds the owner's answer on one card. Nothing is sent to the agent.
+func (a *API) agentQuestionAnswer(w http.ResponseWriter, r *http.Request) {
+	owner, err := a.ownerID(r)
+	if err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var in struct {
+		Options []string `json:"options"`
+		Text    string   `json:"text"`
+		Skip    bool     `json:"skip"`
+	}
+	if !decodeLimit(w, r, &in, 64<<10) {
+		return
+	}
+	set, err := a.agent.AnswerQuestion(r.Context(), owner, r.PathValue("set"), r.PathValue("id"), agent.QuestionAnswer{Options: in.Options, Text: in.Text}, in.Skip)
+	if err != nil {
+		questionsFail(w, err)
+		return
+	}
+	reply(w, 200, map[string]any{"set": set})
+}
+
+// agentQuestionsSubmit sends a set's answers to the agent, together, and starts it on them.
+// The page says what it can do, as with any message.
+func (a *API) agentQuestionsSubmit(w http.ResponseWriter, r *http.Request) {
+	owner, err := a.ownerID(r)
+	if err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	var in struct {
+		Note     string           `json:"note"`
+		ClientID string           `json:"client_id"`
+		Context  json.RawMessage  `json:"context"`
+		Tools    []agent.ToolSpec `json:"tools"`
+	}
+	if !decodeLimit(w, r, &in, 512<<10) {
+		return
+	}
+	runID, set, err := a.agent.SubmitQuestions(r.Context(), owner, r.PathValue("set"), agent.SubmitInput{Note: in.Note, ClientID: in.ClientID, Context: in.Context, Tools: in.Tools})
+	if err != nil {
+		questionsFail(w, err)
+		return
+	}
+	reply(w, 200, map[string]any{"run_id": runID, "set": set})
+}
+
+// agentQuestionsDismiss puts a set away unanswered, at the owner's asking.
+func (a *API) agentQuestionsDismiss(w http.ResponseWriter, r *http.Request) {
+	owner, err := a.ownerID(r)
+	if err != nil {
+		fail(w, 401, "Please sign in.")
+		return
+	}
+	if err := a.agent.DismissQuestions(r.Context(), owner, r.PathValue("set")); err != nil {
+		questionsFail(w, err)
 		return
 	}
 	w.WriteHeader(204)

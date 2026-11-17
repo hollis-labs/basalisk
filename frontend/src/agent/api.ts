@@ -120,6 +120,40 @@ export interface StreamEvent {
   ext?: Record<string, unknown>
 }
 
+/** One thing the owner can pick on a question card (internal/agent/questions.go). */
+export interface QuestionOption {
+  id: string
+  label: string
+  note?: string
+  recommended?: boolean
+}
+
+/** A question the agent asked, as a card: the answer is held on it until the set is sent. */
+export interface Question {
+  id: string
+  prompt: string
+  detail?: string
+  options: QuestionOption[]
+  multi?: boolean
+  group?: string
+  /** An item in the owner's plans the answer is also written to. */
+  link?: { workspace: string; item_id: string; kind: "decision" | "exploration" }
+  state: "open" | "answered" | "skipped"
+  answer: { options: string[]; text: string }
+  link_result?: string
+}
+
+/** What one ask_owner call asked. */
+export interface QuestionSet {
+  id: string
+  title: string
+  state: "open" | "submitted" | "withdrawn" | "dismissed"
+  created_at: string
+  questions: Question[]
+  /** The task whose agent asked; absent when the running thread did. */
+  task?: string
+}
+
 export const agentApi = {
   state: () => request<AgentState>("agent"),
   thread: (task?: string) =>
@@ -164,6 +198,32 @@ export const agentApi = {
   /** "Still running this call." Rejects (409) once the run has stopped waiting for it. */
   toolAlive: (run: string, call_id: string) =>
     request<void>(`agent/runs/${run}/tool-alive`, "POST", { call_id }),
+  /** The questions that wait on the owner. */
+  questions: () => request<{ sets: QuestionSet[] }>("agent/questions").then((r) => r.sets),
+  /** Hold an answer on a card. Nothing is sent to the agent. */
+  answerQuestion: (
+    set: string,
+    id: string,
+    body: { options: string[]; text: string; skip?: boolean },
+  ) =>
+    request<{ set: QuestionSet }>(
+      `agent/questions/${encodeURIComponent(set)}/${encodeURIComponent(id)}`,
+      "PUT",
+      body,
+    ).then((r) => r.set),
+  /** Send a set's answers to the agent together; it starts on them. */
+  submitQuestions: (
+    set: string,
+    body: { note: string; client_id: string; context: DeskSnapshot; tools: ToolSpec[] },
+  ) =>
+    request<{ run_id: string; set: QuestionSet }>(
+      `agent/questions/${encodeURIComponent(set)}/submit`,
+      "POST",
+      body,
+    ),
+  /** Put a set away unanswered. */
+  dismissQuestions: (set: string) =>
+    request<void>(`agent/questions/${encodeURIComponent(set)}`, "DELETE"),
   approve: (run: string, approval_id: string, decision: Decision) =>
     request<void>(`agent/runs/${run}/approvals`, "POST", { approval_id, decision }),
 }
