@@ -109,6 +109,29 @@ var migrations = []string{
 		def TEXT NOT NULL,
 		position INTEGER NOT NULL DEFAULT 0
 	)`,
+	// What the agent has asked the owner (questions.go): a set for each ask, a row for each
+	// card, with the answer held on it until the set is submitted.
+	`CREATE TABLE question_sets (
+		id TEXT PRIMARY KEY,
+		owner TEXT NOT NULL,
+		thread_id TEXT NOT NULL,                -- the thread that asked: the running thread or a task's
+		title TEXT NOT NULL DEFAULT '',
+		state TEXT NOT NULL,                    -- open, submitted, withdrawn, dismissed
+		created_at TEXT NOT NULL,
+		closed_at TEXT NOT NULL DEFAULT ''
+	);
+	CREATE INDEX question_sets_owner ON question_sets(owner, state);
+	CREATE INDEX question_sets_thread ON question_sets(thread_id, state);
+	CREATE TABLE questions (
+		set_id TEXT NOT NULL REFERENCES question_sets(id) ON DELETE CASCADE,
+		id TEXT NOT NULL,
+		position INTEGER NOT NULL,
+		card TEXT NOT NULL,                     -- JSON: the prompt, options and link
+		state TEXT NOT NULL DEFAULT 'open',     -- open, answered, skipped
+		answer TEXT NOT NULL DEFAULT '{}',      -- JSON: the options picked and the owner's words
+		link_result TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY(set_id, id)
+	)`,
 }
 
 // OpenStore opens (and creates or upgrades) the file at path.

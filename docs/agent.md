@@ -305,6 +305,39 @@ same time as the running thread.
 Routes: `GET /api/agent/tasks`, `GET /api/agent/thread?id=<task>`, `thread` on
 `POST /api/agent/turns` (a follow-up), `DELETE /api/agent/tasks/{id}`.
 
+## Questions
+
+When the agent has things to ask you it does not write a numbered list: it calls
+`ask_owner`, and each question is a card in the thread, with its options and room for your
+own words (`internal/agent/questions.go`, `frontend/src/agent/question-cards.tsx`).
+
+- **Asking does not wait.** The call returns at once and the agent ends its turn. There is
+  no time limit: the cards and the answers held on them are kept in `agent.db`, so they are
+  the same after the panel is closed or Basalisk restarts.
+- **Answering:** pick options (one, or several where the card allows), write your own
+  words, or both, in any order. An answer can be changed or cleared until it is sent. Skip
+  marks a card as one you chose not to answer.
+- **Sending:** one Send for the set. The answers go to the thread that asked as a single
+  message, an `<answers>` block that repeats each question; a card with no answer goes as
+  "Not answered", a skipped one as skipped, and the agent is told not to guess. A line you
+  add goes after the block. The thread shows "Answered 3 of 4 questions" for it. Send is
+  refused while the agent is in the middle of a message there; the set stays as it is.
+- **A task agent's questions** are on its line in the strip ("asks you") and in its
+  window. Sending them is a follow-up to the task, which sets it going again.
+- **Meanwhile:** a message you write while a set is open carries a `<questions_open>` block,
+  so the agent does not ask again. The ✕ on a set puts it away unanswered; the agent can
+  take one back with `ask_owner_withdraw` and see how sets stand with `ask_owner_status`.
+- **Plans:** a card can name an item in a Work workspace (the Planner, say) as a decision
+  or an exploration. When the set is sent, the answer is also written on that item as a
+  comment, by Basalisk, with no further asking. If that write fails the card says so and
+  the agent still has the answer.
+- **Limits:** twelve questions a set, six options a card, three open sets a thread.
+
+Routes: `GET /api/agent/questions`, `PUT /api/agent/questions/{set}/{id}` (hold an answer:
+`options`, `text`, `skip`), `POST /api/agent/questions/{set}/submit`,
+`DELETE /api/agent/questions/{set}`. A run that asks, or takes questions back, emits a
+`basalisk.questions` activity with the set's id.
+
 ## Triggers
 
 A trigger is a reflex that fires without you saying anything and starts a task agent

@@ -278,6 +278,15 @@ func (b *basalisk) serve(ctx context.Context) error {
 			}()
 		}
 	}
+	if agentRT != nil && workStore != nil {
+		// An answer to a question the agent linked to an item in the owner's plans is written
+		// there as a note (internal/agent/questions.go).
+		plans := workStore
+		agentRT.SetAnswerLink(func(ctx context.Context, link agent.QuestionLink, text string) error {
+			_, err := plans.AddNote(ctx, link.Workspace, link.ItemID, work.Note{Kind: "comment", Text: text})
+			return err
+		})
+	}
 	if agentRT != nil {
 		// The agent reaches Torque and Tesseract through the same gateway (internal/agent/tether.go).
 		tools := agent.TetherTools(link, agent.TetherOptions{URN: agentRT.Config().URN})

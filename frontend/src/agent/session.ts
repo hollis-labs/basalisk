@@ -96,6 +96,12 @@ async function execute(
 
 /** Told when a call that starts a task has answered, so the task list can catch up. */
 let onTaskStarted: () => void = () => undefined
+/** Called when a run asks the owner questions, or takes some back (questions.ts). */
+let onQuestions: () => void = () => undefined
+export function setOnQuestions(fn: () => void) {
+  onQuestions = fn
+}
+
 export function setOnTaskStarted(fn: () => void) {
   onTaskStarted = fn
 }
@@ -373,6 +379,7 @@ function createSession(thread: string | null) {
         case "activity":
           if (ev.kind === "basalisk.approval" && session.approval?.id === ev.value?.approval_id)
             set({ approval: null })
+          else if (ev.kind === "basalisk.questions") onQuestions()
           else if (ev.kind === "basalisk.route") routed = true
           else if (ev.kind === "basalisk.reflex" && typeof ev.value?.name === "string")
             set({
