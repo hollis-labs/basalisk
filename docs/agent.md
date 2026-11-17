@@ -293,6 +293,10 @@ same time as the running thread.
   message, are kept on the task. The running thread is told once, in a `<tasks>` block
   with your next message, and the main agent can ask with `task_status`. The ✕ on its line
   puts a finished task away; nothing is deleted.
+- **How far it may go:** 96 model requests (the running thread has 24) and 16,000 tokens
+  a message (8,192). A task that reaches either limit is not dropped: it gets one more
+  request, with no tools, to write its report (up to 4,000 tokens), and the report says it
+  stopped at a limit. `agent.Config` holds the numbers (`TaskMaxSteps`, `TaskMaxTokens`).
 - **Its tools run in the page** like any run's, whether or not its window is open: the
   page follows every running task from the moment the desktop is up. With Basalisk closed
   a task cannot use the desktop; one that was running when Basalisk stopped is marked

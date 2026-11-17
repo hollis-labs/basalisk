@@ -2,6 +2,8 @@ package agent
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -163,5 +165,102 @@ func TestOnlySoManyTasksRunAtOnce(t *testing.T) {
 	}
 	if _, _, err := rt.StartTask(t.Context(), TaskInput{Owner: "u1", Brief: "one more", Origin: "owner"}); err == nil || !strings.Contains(err.Error(), "already running") {
 		t.Fatalf("a fifth task: %v", err)
+	}
+}
+
+// taskRuntime is a runtime whose task agents may take only so many steps.
+func taskRuntime(t *testing.T, s *standIn, taskSteps int) *Runtime {
+	t.Helper()
+	dir := t.TempDir()
+	key := filepath.Join(dir, "key")
+	if err := os.WriteFile(key, []byte("test-key\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenStore(t.Context(), filepath.Join(dir, "agent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cfg := Config{GatewayURL: s.srv.URL, KeyFile: key, Model: "test-model", TaskMaxSteps: taskSteps}
+	return New(t.Context(), cfg, store, NewGateway(cfg))
+}
+
+func TestATaskAgentHasMoreRoomThanTheRunningThread(t *testing.T) {
+	cfg := Config{}.withDefaults()
+	if cfg.TaskMaxSteps <= cfg.MaxSteps || cfg.TaskMaxTokens <= cfg.MaxTokens {
+		t.Fatalf("a task's limits are not above the thread's: %+v", cfg)
+	}
+	s := newStandIn(t, textReply("Done."), textReply("Hello."))
+	rt := newRuntime(t, s)
+	task, _, err := rt.StartTask(t.Context(), TaskInput{Owner: "u1", Brief: "do it", Origin: "owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitTask(t, rt, "u1", task.ID)
+	id, _ := rt.Start(t.Context(), StartInput{Owner: "u1", Text: "hello", ClientID: "c1"})
+	follow(t, rt, id, nil)
+	if got := s.bodies[0]["max_tokens"]; got != float64(cfg.TaskMaxTokens) {
+		t.Errorf("the task agent's request allowed %v tokens, want %d", got, cfg.TaskMaxTokens)
+	}
+	if got := s.bodies[1]["max_tokens"]; got != float64(cfg.MaxTokens) {
+		t.Errorf("the running thread's request allowed %v tokens, want %d", got, cfg.MaxTokens)
+	}
+}
+
+func TestATaskThatRunsOutOfStepsStillWritesItsReport(t *testing.T) {
+	s := newStandIn(t,
+		toolReply("toolu_1", "no_such_tool", `{}`),
+		toolReply("toolu_2", "no_such_tool", `{}`),
+		// Out of steps: one more request, with no tools, for the report.
+		textReply("I read two of the three files; notes.md is left."),
+	)
+	rt := taskRuntime(t, s, 2)
+	task, _, err := rt.StartTask(t.Context(), TaskInput{Owner: "u1", Brief: "read the three files", Origin: "owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := waitTask(t, rt, "u1", task.ID)
+	if got.State != TaskDone || !strings.HasPrefix(got.Result, "I read two of the three files; notes.md is left.") || !strings.Contains(got.Result, "stopped at a limit") {
+		t.Fatalf("task: %+v", got)
+	}
+	if len(s.bodies) != 3 {
+		t.Fatalf("%d requests were made, want 3", len(s.bodies))
+	}
+	lastBody := s.bodies[2]
+	if tools, has := lastBody["tools"]; has && tools != nil {
+		if list, _ := tools.([]any); len(list) > 0 {
+			t.Errorf("the report request offered tools: %v", tools)
+		}
+	}
+	if sent := lastUserText(t, lastBody); !strings.Contains(sent, "Write your report now") {
+		t.Errorf("the task agent was not asked for its report: %q", sent)
+	}
+	if lastBody["max_tokens"] != float64(lastReportTokens) {
+		t.Errorf("the report request allowed %v tokens", lastBody["max_tokens"])
+	}
+}
+
+func TestATaskCutOffAtTheLengthLimitStillWritesItsReport(t *testing.T) {
+	cut := strings.Replace(textReply("The first part of a very long"), `"stop_reason":"end_turn"`, `"stop_reason":"max_tokens"`, 1)
+	s := newStandIn(t, cut, textReply("Short report: half done."))
+	rt := newRuntime(t, s)
+	task, _, err := rt.StartTask(t.Context(), TaskInput{Owner: "u1", Brief: "write it all up", Origin: "owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := waitTask(t, rt, "u1", task.ID)
+	if !strings.HasPrefix(got.Result, "Short report: half done.") || !strings.Contains(got.Result, "stopped at a limit") {
+		t.Fatalf("task: %+v", got)
+	}
+}
+
+func TestTheRunningThreadIsNotAskedForAReportAtItsLimit(t *testing.T) {
+	cut := strings.Replace(textReply("The first part of a very long"), `"stop_reason":"end_turn"`, `"stop_reason":"max_tokens"`, 1)
+	s := newStandIn(t, cut)
+	rt := newRuntime(t, s)
+	id, _ := rt.Start(t.Context(), StartInput{Owner: "u1", Text: "tell me everything", ClientID: "c1"})
+	follow(t, rt, id, nil)
+	if len(s.bodies) != 1 {
+		t.Fatalf("%d requests were made for the running thread, want 1", len(s.bodies))
 	}
 }
