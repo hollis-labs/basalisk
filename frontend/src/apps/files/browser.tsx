@@ -134,7 +134,15 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
   const [notice, setNotice] = useState("")
   const [reload, setReload] = useState(0)
   const [hasTerminal, setHasTerminal] = useState(false)
-  const listRef = useRef<HTMLDivElement>(null)
+  // The list is not in the page while the roots load or the search pane is up, so the
+  // element comes and goes: listEl follows the one that is mounted (the measuring below
+  // depends on it), and listRef holds the same element for focus calls.
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const [listEl, setListEl] = useState<HTMLDivElement | null>(null)
+  const attachList = useCallback((el: HTMLDivElement | null) => {
+    listRef.current = el
+    setListEl(el)
+  }, [])
   const crumbsRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -268,24 +276,31 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
   }, [loc])
 
   // ---- Scrolling: keep the selection in view; render only the visible rows. ----
+  // Measure the list element that is mounted now: a new one starts at its own height and
+  // scroll position, not the last one's.
   useLayoutEffect(() => {
-    const el = listRef.current
+    const el = listEl
     if (!el) return
-    const ro = new ResizeObserver(() => setViewH(el.clientHeight))
+    const measure = () => setViewH(el.clientHeight)
+    const ro = new ResizeObserver(measure)
     ro.observe(el)
-    setViewH(el.clientHeight)
+    measure()
+    setScrollTop(el.scrollTop)
     return () => ro.disconnect()
-  }, [])
+  }, [listEl])
   useLayoutEffect(() => {
-    const el = listRef.current
+    const el = listEl
     if (!el || index < 0) return
     const top = index * ROW_H
     if (top < el.scrollTop) el.scrollTop = top
     else if (top + ROW_H > el.scrollTop + el.clientHeight)
       el.scrollTop = top + ROW_H - el.clientHeight
-  }, [index])
-  const first = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN)
-  const last = Math.min(shown.length, Math.ceil((scrollTop + viewH) / ROW_H) + OVERSCAN)
+    setScrollTop(el.scrollTop)
+  }, [index, listEl])
+  // A shorter listing pulls the scroll position back; the rows follow it at once.
+  const scrolled = Math.max(0, Math.min(scrollTop, shown.length * ROW_H - viewH))
+  const first = Math.max(0, Math.floor(scrolled / ROW_H) - OVERSCAN)
+  const last = Math.min(shown.length, Math.ceil((scrolled + viewH) / ROW_H) + OVERSCAN)
 
   // A long path keeps its end in view.
   useLayoutEffect(() => {
@@ -831,7 +846,7 @@ export function FilesBrowser({ winId, args }: { winId: string; args: Record<stri
               <span>Modified</span>
             </div>
             <div
-              ref={listRef}
+              ref={attachList}
               className="files-list"
               role="listbox"
               tabIndex={0}
