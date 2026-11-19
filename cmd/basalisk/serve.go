@@ -28,6 +28,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/collab"
 	"github.com/hollis-labs/basalisk/internal/commands"
 	"github.com/hollis-labs/basalisk/internal/feeds"
+	"github.com/hollis-labs/basalisk/internal/gatecrasher"
 	"github.com/hollis-labs/basalisk/internal/hostguard"
 	"github.com/hollis-labs/basalisk/internal/inbox"
 	"github.com/hollis-labs/basalisk/internal/macshell"
@@ -232,6 +233,27 @@ func (b *basalisk) serve(ctx context.Context) error {
 					_ = log.Close()
 				}()
 			}
+		}
+	}
+	// Approvals from Gatecrasher, when ~/.config/basalisk/gatecrasher.json names it: the
+	// cards that wait on the owner, kept beside the database (internal/gatecrasher).
+	if scratchPath != "" {
+		home, _ := os.UserHomeDir()
+		secretsDir := filepath.Join(filepath.Dir(scratchPath), "secrets")
+		if sec, _ := app.Config["secrets"].(map[string]any); sec != nil {
+			if d, _ := sec["state_dir"].(string); filepath.IsAbs(d) {
+				secretsDir = d
+			}
+		}
+		gcfg, gerr := gatecrasher.LoadConfig(filepath.Join(home, ".config", "basalisk", "gatecrasher.json"), filepath.Join(secretsDir, "gatecrasher-owner.key"))
+		switch {
+		case errors.Is(gerr, gatecrasher.ErrNotConfigured):
+		case gerr != nil:
+			slog.Warn("approvals are off: the Gatecrasher config could not be read", "err", gerr)
+		default:
+			gate := gatecrasher.New(gcfg, filepath.Join(filepath.Dir(scratchPath), "gatecrasher-state.json"), slog.Default())
+			a.EnableGate(gate)
+			go gate.Run(ctx)
 		}
 	}
 	// Story: scripts and storyboards, kept in Caster's "story" namespace through the same

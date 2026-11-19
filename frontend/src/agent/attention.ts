@@ -8,6 +8,7 @@ import { request } from "../api/account"
 import { INBOX_CHANGED } from "../api/inbox"
 import { shell } from "../api/shell"
 import type { DeskAPI } from "../desktop/registry"
+import { gateWaiting, onGate, watchGate } from "./gate"
 import { mainSession } from "./session"
 
 export interface Sorted {
@@ -92,8 +93,13 @@ export async function refreshAttention() {
     return
   }
   for (const fn of listeners) fn()
-  // The Dock icon says how many things wait on the owner.
-  const next = current.needs.length ? String(current.needs.length) : ""
+  showBadge()
+}
+
+/** The Dock icon says how many things wait on the owner: mail that needs them, and approvals. */
+function showBadge() {
+  const n = current.needs.length + gateWaiting()
+  const next = n ? String(n) : ""
   if (next !== badge) {
     badge = next
     void shell.badge(next).catch(() => undefined)
@@ -107,6 +113,11 @@ export function watchAttention(desk?: DeskAPI) {
   started = true
   if (desk) panelShown = () => desk.panelOpen("agent")
   void refreshAttention()
+  watchGate()
+  onGate(() => {
+    showBadge()
+    for (const fn of listeners) fn()
+  })
   window.setInterval(() => void refreshAttention(), 10_000)
   window.addEventListener(INBOX_CHANGED, () => void refreshAttention())
 }

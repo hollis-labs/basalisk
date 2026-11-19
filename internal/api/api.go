@@ -23,6 +23,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/commands"
 	"github.com/hollis-labs/basalisk/internal/feeds"
 	"github.com/hollis-labs/basalisk/internal/files"
+	"github.com/hollis-labs/basalisk/internal/gatecrasher"
 	"github.com/hollis-labs/basalisk/internal/inbox"
 	"github.com/hollis-labs/basalisk/internal/macshell"
 	"github.com/hollis-labs/basalisk/internal/scratch"
@@ -76,6 +77,8 @@ type API struct {
 	assist      *assist.Log
 	assistWatch *assist.Watcher
 	commandList *commands.List // the owner's named commands, for the interface to list
+
+	gate *gatecrasher.Inbox // EnableGate (gate.go)
 }
 
 // API returns the HTTP layer. users supplies the sign-in identity (username, display name,
@@ -144,6 +147,7 @@ func (a *API) allRoutes() []route {
 	rts = append(rts, a.readerRoutes()...)  // reader.go
 	rts = append(rts, a.collabRoutes()...)  // collab.go
 	rts = append(rts, a.assistRoutes()...)  // assist.go
+	rts = append(rts, a.gateRoutes()...)    // gate.go
 	return append(rts, a.fragRoutes()...)   // frag.go
 }
 
