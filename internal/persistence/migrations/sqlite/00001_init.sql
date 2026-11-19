@@ -156,7 +156,23 @@ CREATE TABLE activity_commands (
     result      TEXT NOT NULL
 );
 
+-- GenUI records are scoped to a canonical owner. Claims and original calls are
+-- retained even when execution or commit acknowledgment becomes uncertain.
+CREATE TABLE genui_surfaces (
+ namespace TEXT NOT NULL, actor TEXT NOT NULL, id TEXT NOT NULL,
+ generation TEXT NOT NULL, snapshot BLOB NOT NULL, superseded INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(namespace,actor,id)
+);
+CREATE TABLE genui_actions (
+ namespace TEXT NOT NULL, actor TEXT NOT NULL, id TEXT NOT NULL,
+ revision INTEGER NOT NULL, digest TEXT NOT NULL, request BLOB NOT NULL,
+ claimed INTEGER NOT NULL, record BLOB NOT NULL,
+ PRIMARY KEY(namespace,actor,id)
+);
+
 -- +goose Down
+DROP TABLE genui_actions;
+DROP TABLE genui_surfaces;
 DROP TABLE activity_commands;
 DROP TABLE activity_events;
 DROP TABLE activity_sessions;

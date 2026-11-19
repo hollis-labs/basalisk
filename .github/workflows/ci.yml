@@ -28,6 +28,7 @@ jobs:
         run: |
           npm ci
           npm run typecheck
+          npm run test:genui
           npm run lint
           npm run build
       - run: go vet ./...

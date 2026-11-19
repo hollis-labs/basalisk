@@ -11,18 +11,20 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check . && npm run lint:design",
     "lint:design": "eslint src",
-    "lint:fix": "biome check --write ."
+    "lint:fix": "biome check --write .",
+    "test:genui": "vitest run --config src/apps/genui/tests/vitest.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.8.0",
     "@hollis-labs/ade-agent": "0.1.0",
     "@hollis-labs/ade-core": "0.1.0",
     "@hollis-labs/ade-react": "0.1.0",
-    "@hollis-labs/app-shell": "0.1.0",
-    "@hollis-labs/design-app-runtime": "0.5.0",
-    "@hollis-labs/design-bindings": "0.2.0",
+    "@hollis-labs/app-shell": "0.11.0",
+    "@hollis-labs/design-app-runtime": "0.6.0",
+    "@hollis-labs/design-bindings": "0.3.0",
     "@hollis-labs/design-components": "0.5.1",
     "@hollis-labs/design-tokens": "0.5.0",
+    "@hollis-labs/genui": "0.1.0",
     "@hollis-labs/kit-account": "0.1.0",
     "@hollis-labs/kit-dashboard": "0.6.0",
     "@hollis-labs/kit-settings": "0.2.0",
@@ -42,13 +44,16 @@
     "@biomejs/biome": "2.5.14",
     "@hollis-labs/eslint-config-design": "0.5.0",
     "@tailwindcss/vite": "4.3.3",
+    "@testing-library/react": "16.3.0",
     "@types/node": "26.6.4",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "eslint": "9.39.4",
+    "jsdom": "25.0.1",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
     "typescript-eslint": "8.58.0",
-    "vite": "7.3.6"
+    "vite": "7.3.6",
+    "vitest": "4.1.12"
   }
 }

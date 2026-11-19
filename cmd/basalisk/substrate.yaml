@@ -16,7 +16,9 @@ config:
   auth: { mode: enforce }
   # Sign-in lasts 12 hours, as it did before Substrate. Behind a local TLS proxy set
   # trusted_proxy and allowed_origins in the SUBSTRATE_CONFIG file.
-  identity: { key_file: identity-signing.key, session_ttl: 12h }
+  # Preserve Basalisk's browser-based first-owner setup on its loopback host.
+  # Operators may explicitly select offline setup in their config override.
+  identity: { key_file: identity-signing.key, session_ttl: 12h, setup: http }
   secrets: { state_dir: secrets }
   # The app's own block (internal/settings). Delivery stays off while the five delivery keys are empty.
   # Override any of it in the YAML file named by SUBSTRATE_CONFIG (docs/architecture.md lists every key).

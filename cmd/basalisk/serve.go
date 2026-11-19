@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -93,6 +94,10 @@ func (b *basalisk) serve(ctx context.Context) error {
 		return err
 	}
 	a := svc.API(api.IdentityUsers{Svc: id})
+	genuiHost, err := a.EnableGenUI(id, nil)
+	if err != nil {
+		return err
+	}
 	var agentRT *agent.Runtime
 	// The Work engine's store, once it is open: the assistant's overview reads the plans from it.
 	var workStore *work.Store
@@ -106,6 +111,15 @@ func (b *basalisk) serve(ctx context.Context) error {
 				scratchPath = filepath.Join(filepath.Dir(p), "scratch.db")
 			}
 		}
+	}
+	if agentRT != nil {
+		agentRT.AddTools(agent.GenUIShowTools(func(ctx context.Context, owner string, raw []byte) (json.RawMessage, error) {
+			envelope, showErr := genuiHost.ShowAgent(ctx, owner, raw)
+			if showErr != nil {
+				return nil, showErr
+			}
+			return json.Marshal(envelope)
+		}))
 	}
 	// References (Torque tasks, Tesseract items) resolve through the Tether gateway, when
 	// one is configured. It starts on first use and stops with the server.
@@ -338,7 +352,7 @@ func (b *basalisk) serve(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	handler, err := httphost.Handler(app, httphost.Options{Assets: assets, Routes: a.Handler(), Mounts: a.Mounts()})
+	handler, err := httphost.Handler(app, httphost.Options{Assets: assets, Routes: a.Handler(), Mounts: a.Mounts(), RawPrefixes: []string{"/api/genui/"}})
 	if err != nil {
 		return err
 	}

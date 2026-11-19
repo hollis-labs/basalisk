@@ -6,8 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 
+	"github.com/hollis-labs/basalisk/internal/preferences"
 	"github.com/hollis-labs/substrate/modules/identity"
 )
 
@@ -99,23 +99,6 @@ func (a *API) account(w http.ResponseWriter, r *http.Request) {
 	reply(w, 200, p)
 }
 
-func updated(w http.ResponseWriter, result sql.Result, err error) bool {
-	if err != nil {
-		fail(w, 500, "Could not save changes.")
-		return false
-	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		fail(w, 500, "Could not save changes.")
-		return false
-	}
-	if n == 0 {
-		fail(w, 409, "This account changed in another session. Reload before saving.")
-		return false
-	}
-	return true
-}
-
 // preferences saves the theme and time zone with an optimistic revision check. A person who
 // has never saved has the defaults at revision 1.
 func (a *API) preferences(w http.ResponseWriter, r *http.Request) {
@@ -134,18 +117,19 @@ func (a *API) preferences(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	_, e := time.LoadLocation(in.Timezone)
-	if (in.Theme != "dark" && in.Theme != "light" && in.Theme != "system") || in.Timezone == "" || in.Timezone == "Local" || len(in.Timezone) > 100 || e != nil {
+	value := preferences.Value{Theme: in.Theme, Timezone: in.Timezone, Revision: in.Revision}
+	if err := preferences.Validate(value); err != nil {
 		fail(w, 400, "Choose a valid theme and IANA timezone, such as America/Chicago.")
 		return
 	}
-	id := userID(r)
-	if _, e = a.svc.db.ExecContext(r.Context(), "INSERT OR IGNORE INTO app_preferences(user_id) VALUES(?)", id); e != nil {
+	err := a.svc.preferences.Update(r.Context(), userID(r), value)
+	if errors.Is(err, preferences.ErrConflict) {
+		fail(w, 409, "This account changed in another session. Reload before saving.")
+		return
+	}
+	if err != nil {
 		fail(w, 500, "Could not save changes.")
 		return
 	}
-	result, e := a.svc.db.ExecContext(r.Context(), "UPDATE app_preferences SET theme=?,timezone=?,revision=revision+1 WHERE user_id=? AND revision=?", in.Theme, in.Timezone, id, in.Revision)
-	if updated(w, result, e) {
-		a.account(w, r)
-	}
+	a.account(w, r)
 }

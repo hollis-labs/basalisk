@@ -23,6 +23,7 @@ import (
 	"github.com/hollis-labs/basalisk/internal/commands"
 	"github.com/hollis-labs/basalisk/internal/feeds"
 	"github.com/hollis-labs/basalisk/internal/files"
+	hostgenui "github.com/hollis-labs/basalisk/internal/genui"
 	"github.com/hollis-labs/basalisk/internal/inbox"
 	"github.com/hollis-labs/basalisk/internal/macshell"
 	"github.com/hollis-labs/basalisk/internal/scratch"
@@ -33,6 +34,7 @@ import (
 
 // API serves the owner routes and the companion routes over one Service.
 type API struct {
+	genui *hostgenui.Host
 	svc   *Service
 	users UserDirectory
 	// mu serializes integration credential replacement and removal, so a concurrent delete
@@ -131,6 +133,7 @@ func (a *API) routes() []route {
 // serve the rest only when enabled.
 func (a *API) allRoutes() []route {
 	rts := append(a.routes(), a.deskRoutes()...)
+	rts = append(rts, a.genuiRoutes()...)
 	rts = append(rts, a.citeRoutes()...)
 	rts = append(rts, a.shellRoutes()...)
 	rts = append(rts, a.terminalRoutes()...)
