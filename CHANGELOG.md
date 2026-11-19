@@ -6,7 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- The assistant's standing instructions are kept outside any conversation (`agent.db` table `standing`) and sent with every request of the running thread, so `/new` and compaction keep them. `standing_update` rewrites them; a starting record is read once from `~/.config/basalisk/standing.md`.
+- A running-thread turn that runs out of steps ends with one tool-less request for a reply to the owner.
+- Each run records its system prompt (by hash, in table `prompts`) and the names of the tools it was offered (`runs.prompt_hash`, `runs.tools`).
+
 ### Changed
+
+- The `long-thread` reminder no longer suggests starting a new conversation.
 
 - Rebuilt on [Substrate](https://github.com/hollis-labs/substrate): the manifest `cmd/basalisk/substrate.yaml` selects the framework modules, and accounts, sign-in, sessions, API keys and tokens are now the Substrate identity module.
 - The frontend is rebuilt on the app-shell with the published design kits.

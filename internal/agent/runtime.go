@@ -259,6 +259,7 @@ type run struct {
 	rt                *Runtime
 	id, owner, thread string
 	slot              string // the context the owner was in when this run began (slots.go)
+	standing          string // the owner's standing instructions, for the running thread (standing.go)
 	client            string
 	tools             map[string]ToolSpec
 	server            map[string]ServerTool // the tools among them that the server runs
@@ -310,7 +311,7 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	server := map[string]ServerTool{}
 	own := append(rt.askTools(), rt.serverTools(ctx)...)
 	if !isTask {
-		own = append(rt.taskTools(), own...)
+		own = append(append(rt.taskTools(), rt.standingTools()...), own...)
 	}
 	for _, t := range own {
 		server[t.Spec.Name] = t
@@ -336,6 +337,9 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 	}
 	r := &run{rt: rt, id: newID("run"), owner: in.Owner, thread: thread, client: in.ClientID, tools: tools, defs: defs, server: server, task: isTask,
 		waiting: map[string]*pending{}, approvals: map[string]chan string{}}
+	if !isTask {
+		r.standing, _ = rt.store.Standing(ctx)
+	}
 	// The rules first, for the running thread (a task's brief is for its agent, whatever it
 	// says). A rule that names a tool this message did not come with is no route.
 	if !isTask && in.Auto == "" {
@@ -364,6 +368,11 @@ func (rt *Runtime) Start(ctx context.Context, in StartInput) (string, error) {
 		err = rt.store.startRun(ctx, r.id, thread, in.Owner, rt.cfg.Model)
 	}
 	if err == nil {
+		names := make([]string, 0, len(defs))
+		for _, d := range defs {
+			names = append(names, d.Name)
+		}
+		rt.store.keepInputs(ctx, r.id, r.system(), names)
 		err = rt.hub.Open(ctx, r.id)
 	}
 	if err != nil {
@@ -770,7 +779,10 @@ func (r *run) execute(ctx context.Context) {
 	if failure == nil {
 		failure = loopErr
 	}
-	if r.task && failure == nil && ctx.Err() == nil && (finish == chatstream.FinishTurnLimit || finish == chatstream.FinishLength) {
+	// At a limit the agent gets one more request, with no tools, to say where it got to: a
+	// task agent its report, the running thread its reply to the owner (who would otherwise
+	// be left with no answer at all).
+	if failure == nil && ctx.Err() == nil && (finish == chatstream.FinishTurnLimit || (r.task && finish == chatstream.FinishLength)) {
 		r.lastReport(ctx, finish)
 	}
 	r.end(ctx, finish, failure)
@@ -779,16 +791,21 @@ func (r *run) execute(ctx context.Context) {
 // lastReportTokens is the room a task agent has for the report it writes at a limit.
 const lastReportTokens = 4000
 
-// lastReport gives a task agent that ran into a limit one more request, with no tools, to
-// write down where it got to, so the work it did is not lost with the run. If the request
-// fails the task keeps whatever it last said.
+// lastReport gives an agent that ran into a limit one more request, with no tools, to write
+// down where it got to, so the work it did is not lost with the run: a task agent its
+// report, the running thread its reply to the owner. If the request fails the run keeps
+// whatever it last said.
 func (r *run) lastReport(ctx context.Context, finish chatstream.FinishReason) {
 	rt := r.rt
 	why := "You have used all the steps this task is allowed."
 	if finish == chatstream.FinishLength {
 		why = "Your last message was cut off at the length limit."
 	}
-	r.keep(ctx, "user", []llmtypes.ContentBlock{{Type: "text", Text: why + " You cannot call any more tools. Write your report now, and keep it short enough to finish: what you did, what you found (with the paths, links and figures someone would need to carry on), and what is left to do."}})
+	ask := why + " You cannot call any more tools. Write your report now, and keep it short enough to finish: what you did, what you found (with the paths, links and figures someone would need to carry on), and what is left to do."
+	if !r.task {
+		ask = "You have used all the steps one message is allowed, so you cannot call any more tools now. Reply to the owner now, and keep it short enough to finish: what you did, what you found (with the ids, links and paths they need), what is left, and that they can tell you to carry on."
+	}
+	r.keep(ctx, "user", []llmtypes.ContentBlock{{Type: "text", Text: ask}})
 	r.msgN++
 	msgID := fmt.Sprintf("m%d", r.msgN)
 	r.emit(chatstream.Event{Verb: chatstream.VerbMessageStart, MessageID: msgID, Role: "assistant"})
@@ -823,7 +840,7 @@ func (r *run) lastReport(ctx context.Context, finish chatstream.FinishReason) {
 		r.emit(chatstream.Event{Verb: chatstream.VerbUsage, Usage: r.usage(chatstream.UsageCumulative)})
 	}
 	if err != nil {
-		slog.Warn("agent: a task's last report was not written", "run", r.id, "err", err)
+		slog.Warn("agent: the last report at a limit was not written", "run", r.id, "err", err)
 	}
 	if res.Text != "" {
 		r.keep(ctx, "assistant", []llmtypes.ContentBlock{{Type: "text", Text: res.Text}})
@@ -880,7 +897,7 @@ func (r *run) system() string {
 	if r.task {
 		return systemPrompt() + taskPrompt
 	}
-	return systemPrompt()
+	return systemPrompt() + standingBlock(r.standing)
 }
 
 // end closes the run: its record and the stream's last event.

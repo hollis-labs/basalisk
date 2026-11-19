@@ -64,6 +64,19 @@ func enableAgent(ctx context.Context, a *api.API, cfg agent.Config, dbPath strin
 			slog.Info("agent: roster read from the starting list", "count", n)
 		}
 	}
+	// The owner's standing instructions, from a starting file the first time there are none
+	// (a later start never overwrites them; the agent keeps them current with standing_update).
+	standing := os.Getenv("BASALISK_AGENT_STANDING_FILE")
+	if standing == "" && home != "" {
+		standing = filepath.Join(home, ".config", "basalisk", "standing.md")
+	}
+	if standing != "" {
+		if ok, err := rt.ImportStanding(ctx, standing); err != nil {
+			slog.Warn("agent: the starting standing instructions were not read", "err", err)
+		} else if ok {
+			slog.Info("agent: standing instructions read from the starting file")
+		}
+	}
 	// The router's rules: the ones that ship, and the owner's own from this file if it exists.
 	rules := os.Getenv("BASALISK_AGENT_RULES_FILE")
 	if rules == "" && home != "" {

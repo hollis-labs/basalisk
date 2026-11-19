@@ -261,6 +261,28 @@ knows who to message, so it should say what goes to the seat and what does not.
 - The owner's seats are theirs, not the repository's: a starting list is read once from
   `~/.config/basalisk/roster.json` (`{"seats": [...]}`) when the roster is empty.
 
+## Standing instructions (built)
+
+The owner's standing instructions (how they want things reported, whom a kind of thing goes
+to, what may be done without asking) used to live only in the running thread's compaction
+summary, so a new conversation (`/new`) started without them.
+
+- They are kept in `agent.db` (table `standing`, one row a version, the newest in force),
+  outside any thread, and sent at the end of the running thread's system prompt in a
+  `<standing>` block. `/new` and compaction leave them alone.
+- The assistant rewrites them with `standing_update` when the owner sets, changes or drops a
+  rule. It replaces the whole record and refuses a new record under half the length of the
+  one in force, so a rule is not dropped by accident. Earlier versions stay in the table.
+- The owner's rules are theirs, not the repository's: a starting record is read once from
+  `~/.config/basalisk/standing.md` (or `BASALISK_AGENT_STANDING_FILE`) when there is none.
+- The `long-thread` reminder no longer suggests `/new`; it asks the assistant to keep what is
+  worth carrying in its notes and the standing record.
+- A running-thread turn that uses all its steps gets one more request, with no tools, to
+  reply to the owner, as a task agent writes its report.
+- Each run records what it was sent: `runs.prompt_hash` names the system prompt in the
+  `prompts` table (each distinct text stored once) and `runs.tools` lists the tool names it
+  was offered.
+
 ## Answers are told, unasked (built)
 
 When the owner has the assistant ask a seat something, what they want back is the answer,
