@@ -123,8 +123,12 @@ func TestTheLongThreadReflexFiresOnceTheLastRequestWasLarge(t *testing.T) {
 			t.Fatalf("message %d: fired %v", i+1, got)
 		}
 	}
-	if sent := lastUserText(t, s.bodies[2]); !strings.Contains(sent, "/new starts a fresh conversation") {
+	sent := lastUserText(t, s.bodies[2])
+	if !strings.Contains(sent, "standing_update") {
 		t.Fatalf("the model was not told: %s", sent)
+	}
+	if strings.Contains(sent, "/new") {
+		t.Fatalf("the reminder still suggests a new conversation: %s", sent)
 	}
 }
 

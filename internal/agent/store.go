@@ -132,6 +132,24 @@ var migrations = []string{
 		link_result TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY(set_id, id)
 	)`,
+	// The owner's standing instructions, kept outside any thread so a new conversation and a
+	// compaction keep them (standing.go): every version is a row, the newest is in force.
+	// And what each run was sent: its system prompt (stored once per distinct text) and the
+	// names of the tools it was offered.
+	`CREATE TABLE standing (
+		rev INTEGER PRIMARY KEY AUTOINCREMENT,
+		text TEXT NOT NULL,
+		why TEXT NOT NULL DEFAULT '',
+		source TEXT NOT NULL DEFAULT '',        -- seed:<path>, agent, owner
+		created_at TEXT NOT NULL
+	);
+	CREATE TABLE prompts (
+		hash TEXT PRIMARY KEY,                  -- sha256 of text, hex
+		text TEXT NOT NULL,
+		created_at TEXT NOT NULL
+	);
+	ALTER TABLE runs ADD COLUMN prompt_hash TEXT NOT NULL DEFAULT '';
+	ALTER TABLE runs ADD COLUMN tools TEXT NOT NULL DEFAULT '[]';`,
 }
 
 // OpenStore opens (and creates or upgrades) the file at path.
