@@ -18,6 +18,7 @@ import { SlashMenu } from "../slash/menu"
 import type { DeskSnapshot, TaskInfo } from "./api"
 import { seenNews } from "./attention"
 import { ContextChip } from "./contexts-chip"
+import { GateCards } from "./gate-cards"
 import { NeedsStrip } from "./needs"
 import { QuestionCards, taskAsks } from "./question-cards"
 import { useQuestions } from "./questions"
@@ -302,6 +303,7 @@ function Conversation({
               <ItemView key={item.id} item={item} />
             ),
           )}
+          {session === mainSession && <GateCards />}
           <QuestionCards session={session} />
           {s.run && !s.approval && <Working items={s.items} />}
           {s.approval && <ApprovalCard q={s.approval} />}

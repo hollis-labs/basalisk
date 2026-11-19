@@ -1,13 +1,16 @@
 import { BellRing } from "lucide-react"
 import { useDesk } from "../desktop/context"
 import { seenNews, useAttention } from "./attention"
+import { useGate } from "./gate"
 
 /** The bar's "needs you" count: shown only when something waits on the owner; opens the assistant. */
 export function AttentionChip() {
   const desk = useDesk()
   const { on, needs, answers, news } = useAttention()
-  const n = needs.length
-  if (!on || (!n && !answers.length && !news)) return null
+  const gate = useGate()
+  // Approvals from Gatecrasher wait on the owner too, with or without mail sorting.
+  const n = needs.length + gate.waiting
+  if ((!on && !gate.waiting) || (!n && !answers.length && !news)) return null
   return (
     <button
       type="button"

@@ -11,6 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The assistant's standing instructions are kept outside any conversation (`agent.db` table `standing`) and sent with every request of the running thread, so `/new` and compaction keep them. `standing_update` rewrites them; a starting record is read once from `~/.config/basalisk/standing.md`.
 - A running-thread turn that runs out of steps ends with one tool-less request for a reply to the owner.
 - Each run records its system prompt (by hash, in table `prompts`) and the names of the tools it was offered (`runs.prompt_hash`, `runs.tools`).
+- Approvals from Gatecrasher: with `~/.config/basalisk/gatecrasher.json`, approvals that wait on the owner show as cards in the assistant's panel and on the "for you" chip and Dock badge, and are decided there. A `request_secret` card posts its value from the page straight to the requester's intake, never through Basalisk. See `docs/gatecrasher.md`.
 
 ### Changed
 
